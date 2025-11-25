@@ -1,0 +1,288 @@
+{# templates/finanzas/persona_list.html #}
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+{% load finanzas_extras %}
+
+{% block title %}Personas / Censo – Comuna de Tacuarendí{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h1 class="h4 mb-1">Personas / Censo de beneficiarios</h1>
+    <div class="text-muted small">
+      Registro de personas vinculadas a ayudas sociales, servicios y situación social.
+    </div>
+  </div>
+
+  <a href="{% url 'finanzas:persona_create' %}" class="btn btn-success btn-sm">
+    + Nueva persona
+  </a>
+</div>
+
+{# ===== Atajos rápidos (filtro por flag) ===== #}
+<div class="card shadow-sm mb-3">
+  <div class="card-body py-2">
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      <span class="small text-muted me-1">Filtrar por:</span>
+
+      {% comment %}
+        Usamos "flag" del contexto para marcar activo y armar URLs.
+        Siempre preservamos q, y cambiamos solo flag.
+      {% endcomment %}
+
+      <a
+        class="btn btn-sm {% if flag == 'beneficio' %}btn-info text-white active{% else %}btn-outline-info{% endif %}"
+        href="?q={{ q|urlencode }}&flag=beneficio"
+        aria-pressed="{% if flag == 'beneficio' %}true{% else %}false{% endif %}"
+        title="Personas que perciben beneficio"
+      >
+        Beneficio
+      </a>
+
+      <a
+        class="btn btn-sm {% if flag == 'servicios' %}btn-primary text-white active{% else %}btn-outline-primary{% endif %}"
+        href="?q={{ q|urlencode }}&flag=servicios"
+        aria-pressed="{% if flag == 'servicios' %}true{% else %}false{% endif %}"
+        title="Personas que pagan servicios"
+      >
+        Servicios
+      </a>
+
+      <a
+        class="btn btn-sm {% if flag == 'laboral' %}btn-warning text-dark active{% else %}btn-outline-warning{% endif %}"
+        href="?q={{ q|urlencode }}&flag=laboral"
+        aria-pressed="{% if flag == 'laboral' %}true{% else %}false{% endif %}"
+        title="Personas con vínculo laboral"
+      >
+        Laboral
+      </a>
+
+      <a
+        class="btn btn-sm {% if flag == 'sin_indicadores' %}btn-secondary text-white active{% else %}btn-outline-secondary{% endif %}"
+        href="?q={{ q|urlencode }}&flag=sin_indicadores"
+        aria-pressed="{% if flag == 'sin_indicadores' %}true{% else %}false{% endif %}"
+        title="Personas sin beneficio / servicios / laboral"
+      >
+        Sin indicadores
+      </a>
+
+      {% if flag %}
+        <span class="vr mx-1"></span>
+        <a class="btn btn-link btn-sm text-decoration-none px-1" href="?q={{ q|urlencode }}">
+          Limpiar filtros
+        </a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ===== Buscador ===== #}
+<form method="get" class="card shadow-sm mb-3" role="search" aria-label="Buscar persona en el censo">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-8">
+        <label class="form-label mb-1" for="persona-search">Buscar persona</label>
+        <input
+          id="persona-search"
+          type="text"
+          name="q"
+          value="{{ q }}"
+          class="form-control form-control-sm"
+          placeholder="Nombre, apellido, DNI, barrio, domicilio..."
+          autocomplete="off"
+        >
+        {# preserva flag si viene #}
+        {% if flag %}
+          <input type="hidden" name="flag" value="{{ flag }}">
+        {% endif %}
+      </div>
+      <div class="col-12 col-md-4 d-flex align-items-end gap-2">
+        <button class="btn btn-primary btn-sm w-100">
+          Buscar
+        </button>
+      </div>
+    </div>
+  </div>
+</form>
+
+{# ===== Resumen del resultado ===== #}
+<div class="d-flex justify-content-between align-items-center mb-2 small text-muted">
+  <div>
+    {% if q %}
+      Mostrando {{ page_obj.paginator.count }} persona{{ page_obj.paginator.count|pluralize:"s" }}
+      para "<strong>{{ q }}</strong>"
+    {% else %}
+      Total personas activas en el censo:
+      <strong>{{ page_obj.paginator.count }}</strong>
+    {% endif %}
+
+    {% if flag %}
+      <span class="ms-1">
+        · Filtro activo:
+        <strong>
+          {% if flag == "beneficio" %}Beneficio{% elif flag == "servicios" %}Servicios{% elif flag == "laboral" %}Laboral{% else %}Sin indicadores{% endif %}
+        </strong>
+      </span>
+    {% endif %}
+  </div>
+</div>
+
+<div class="table-responsive shadow-sm bg-white rounded">
+  <table class="table table-sm align-middle mb-0 table-hover">
+    <caption class="visually-hidden">
+      Listado de personas y beneficiarios con indicadores sociales y totales de ayudas
+    </caption>
+    <thead class="table-light">
+      <tr>
+        <th scope="col" style="width: 110px;">DNI</th>
+        <th scope="col">Apellido y nombre</th>
+        <th scope="col" style="width: 240px;">Beneficios / Servicios / Laboral</th>
+        <th scope="col" style="width: 160px;">Barrio</th>
+        <th scope="col">Domicilio</th>
+        <th scope="col" class="text-end" style="width: 120px;">Cant. ayudas</th>
+        <th scope="col" class="text-end" style="width: 150px;">Total ayudas ($)</th>
+        <th scope="col" style="width: 110px;"></th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for p in personas %}
+        <tr>
+          <td class="text-nowrap">
+            {% if p.dni %}
+              <a
+                href="{% url 'finanzas:persona_detail' p.pk %}"
+                class="text-decoration-none fw-semibold"
+                aria-label="Ver detalle de {{ p.apellido }} {{ p.nombre }}"
+              >
+                {{ p.dni }}
+              </a>
+            {% else %}
+              <span class="text-muted">-</span>
+            {% endif %}
+          </td>
+
+          <td>
+            <a
+              href="{% url 'finanzas:persona_detail' p.pk %}"
+              class="text-decoration-none"
+            >
+              {{ p.apellido }}, {{ p.nombre }}
+            </a>
+          </td>
+
+          {# ===== Indicadores claros ===== #}
+          <td>
+            <div class="d-flex flex-wrap gap-1">
+              {% if p.percibe_beneficio %}
+                <span class="badge bg-info-subtle text-info border border-info-subtle">
+                  Recibe beneficio
+                </span>
+              {% endif %}
+
+              {% if p.paga_servicios %}
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                  Paga servicios
+                </span>
+              {% endif %}
+
+              {% if p.tiene_vinculo_laboral %}
+                <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                  Vínculo laboral
+                </span>
+              {% endif %}
+
+              {% if not p.percibe_beneficio and not p.paga_servicios and not p.tiene_vinculo_laboral %}
+                <span class="text-muted small">Sin indicadores</span>
+              {% endif %}
+            </div>
+          </td>
+
+          <td class="text-nowrap">
+            {% if p.barrio %}
+              <span class="badge bg-light text-muted border">
+                {{ p.barrio }}
+              </span>
+            {% else %}
+              <span class="text-muted">-</span>
+            {% endif %}
+          </td>
+
+          <td class="text-truncate" style="max-width: 260px;">
+            {{ p.direccion|default:"-" }}
+          </td>
+
+          <td class="text-end">
+            <span class="badge bg-light text-muted border">
+              {{ p.cantidad_ayudas|default:"0" }}
+            </span>
+          </td>
+
+          <td class="text-end">
+            {% if p.total_ayudas %}
+              <span class="fw-semibold text-success">
+                ${{ p.total_ayudas|default:0|formato_pesos }}
+              </span>
+            {% else %}
+              <span class="text-muted">-</span>
+            {% endif %}
+          </td>
+
+          <td class="text-end">
+            <a
+              href="{% url 'finanzas:persona_detail' p.pk %}"
+              class="btn btn-outline-primary btn-sm"
+            >
+              Ver detalle
+            </a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="8" class="text-center py-3 text-muted">
+            No se encontraron personas para el criterio de búsqueda.
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if is_paginated %}
+  <nav class="mt-3" aria-label="Paginación de personas">
+    <ul class="pagination pagination-sm">
+      {% if page_obj.has_previous %}
+        <li class="page-item">
+          <a
+            class="page-link"
+            href="?page={{ page_obj.previous_page_number }}&q={{ q|urlencode }}{% if flag %}&flag={{ flag }}{% endif %}"
+            rel="prev"
+          >
+            Anterior
+          </a>
+        </li>
+      {% endif %}
+
+      <li class="page-item disabled">
+        <span class="page-link">
+          Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+        </span>
+      </li>
+
+      {% if page_obj.has_next %}
+        <li class="page-item">
+          <a
+            class="page-link"
+            href="?page={{ page_obj.next_page_number }}&q={{ q|urlencode }}{% if flag %}&flag={{ flag }}{% endif %}"
+            rel="next"
+          >
+            Siguiente
+          </a>
+        </li>
+      {% endif %}
+    </ul>
+  </nav>
+{% endif %}
+
+{% endblock %}

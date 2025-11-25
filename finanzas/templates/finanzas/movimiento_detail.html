@@ -1,0 +1,861 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+{% load finanzas_extras %}
+
+{% block title %}Movimiento #{{ movimiento.id }} – Comuna de Tacuarendí{% endblock %}
+
+{% block content %}
+
+{# ================== HEADER: TÍTULO + ACCIONES ================== #}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <p class="text-muted small mb-1 d-flex flex-wrap align-items-center gap-2">
+      <span>Movimiento #{{ movimiento.id }}</span>
+      <span>·</span>
+      <span
+        class="badge
+          {% if movimiento.esta_borrador %}
+            bg-secondary-subtle text-secondary border border-secondary-subtle
+          {% elif movimiento.esta_aprobado %}
+            bg-success-subtle text-success border border-success-subtle
+          {% elif movimiento.esta_rechazado %}
+            bg-danger-subtle text-danger border border-danger-subtle
+          {% else %}
+            bg-light text-muted border
+          {% endif %}
+        "
+      >
+        {% if movimiento.esta_borrador %}
+          Borrador
+        {% elif movimiento.esta_aprobado %}
+          Aprobado
+        {% elif movimiento.esta_rechazado %}
+          Rechazado / Anulado
+        {% else %}
+          Sin estado
+        {% endif %}
+      </span>
+
+      {# Si está vinculado a una Orden de pago, lo mostramos como meta rápida #}
+      {% if movimiento.orden_pago %}
+        <span>·</span>
+        <span class="badge bg-light text-muted border">
+          OP #{{ movimiento.orden_pago.numero|default:movimiento.orden_pago.id }}
+          · {{ movimiento.orden_pago.get_estado_display }}
+        </span>
+      {% endif %}
+    </p>
+
+    <h1 class="h4 mb-1">
+      {% if es_ingreso %}Ingreso{% elif es_gasto %}Gasto{% elif es_transferencia %}Transferencia{% else %}Movimiento{% endif %}
+      · ${{ movimiento.monto|formato_pesos }}
+    </h1>
+
+    {# Eyebrow meta: categoría + área + fecha #}
+    <p class="small text-muted mb-0 d-flex flex-wrap align-items-center gap-2">
+      <span>
+        {{ movimiento.categoria|default:"Sin categoría" }}
+      </span>
+      <span>·</span>
+      <span>
+        Área: {{ movimiento.area|default:"Sin área" }}
+      </span>
+      <span>·</span>
+      <span>
+        Fecha de operación: {{ movimiento.fecha_operacion|date:"d/m/Y" }}
+      </span>
+    </p>
+  </div>
+
+  <div class="d-flex flex-column align-items-end gap-2">
+    {# Acciones de estado (solo staff de finanzas) #}
+    {% if rol_staff_finanzas %}
+      <div class="d-flex flex-wrap justify-content-end gap-1">
+        {% if movimiento.esta_borrador %}
+          <form
+            method="post"
+            action="{% url 'finanzas:movimiento_cambiar_estado' movimiento.pk 'aprobar' %}"
+            onsubmit="return confirm('¿Seguro que querés aprobar este movimiento? Una vez aprobado impacta en saldos y balances.');"
+          >
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success btn-sm">
+              Aprobar
+            </button>
+          </form>
+
+          <form
+            method="post"
+            action="{% url 'finanzas:movimiento_cambiar_estado' movimiento.pk 'rechazar' %}"
+            onsubmit="return confirm('¿Seguro que querés marcar este movimiento como rechazado/anulado? No se contará en los balances.');"
+          >
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger btn-sm">
+              Rechazar / Anular
+            </button>
+          </form>
+
+        {% elif movimiento.esta_aprobado %}
+          <form
+            method="post"
+            action="{% url 'finanzas:movimiento_cambiar_estado' movimiento.pk 'borrador' %}"
+            onsubmit="return confirm('¿Seguro que querés pasar este movimiento a borrador? Deja de impactar en saldos y balances.');"
+          >
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-secondary btn-sm">
+              Pasar a borrador
+            </button>
+          </form>
+
+          <form
+            method="post"
+            action="{% url 'finanzas:movimiento_cambiar_estado' movimiento.pk 'rechazar' %}"
+            onsubmit="return confirm('¿Seguro que querés marcar este movimiento como rechazado/anulado? No se contará en los balances.');"
+          >
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger btn-sm">
+              Rechazar / Anular
+            </button>
+          </form>
+
+        {% elif movimiento.esta_rechazado %}
+          <form
+            method="post"
+            action="{% url 'finanzas:movimiento_cambiar_estado' movimiento.pk 'borrador' %}"
+            onsubmit="return confirm('¿Seguro que querés reabrir este movimiento como borrador? Seguirá sin impactar en balances hasta que lo apruebes.');"
+          >
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-secondary btn-sm">
+              Reabrir como borrador
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <div class="d-flex flex-wrap justify-content-end gap-2">
+      <a href="{% url 'finanzas:movimiento_list' %}" class="btn btn-outline-secondary btn-sm">
+        Volver al listado
+      </a>
+
+      {# Acceso directo a Órdenes de pago (nuevo módulo) #}
+      {% if rol_staff_finanzas and movimiento.tipo == movimiento.TIPO_GASTO %}
+        {% if movimiento.orden_pago %}
+          <a
+            href="{% url 'finanzas:orden_pago_detail' movimiento.orden_pago.pk %}"
+            class="btn btn-outline-primary btn-sm"
+          >
+            Ver orden de pago
+          </a>
+        {% elif movimiento.esta_aprobado %}
+          <a
+            href="{% url 'finanzas:orden_pago_list' %}"
+            class="btn btn-outline-primary btn-sm"
+          >
+            Órdenes de pago
+          </a>
+        {% endif %}
+      {% endif %}
+
+      {% if rol_staff_finanzas or rol_operador_finanzas %}
+        {% if rol_staff_finanzas or movimiento.esta_borrador %}
+          <a
+            href="{% url 'finanzas:movimiento_update' movimiento.pk %}"
+            class="btn btn-primary btn-sm"
+          >
+            Editar movimiento
+          </a>
+        {% endif %}
+        <a
+          href="{% url 'finanzas:movimiento_create' %}"
+          class="btn btn-outline-primary btn-sm"
+        >
+          + Nuevo movimiento
+        </a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ================== AVISOS SEGÚN ESTADO / ROL ================== #}
+{% if rol_staff_finanzas %}
+  {% if movimiento.esta_borrador %}
+    <div class="alert alert-info py-2 small mb-3">
+      Este movimiento está en <strong>BORRADOR</strong>. Podés editar todos los datos.
+      Al aprobarlo empezará a impactar en saldos y balances.
+    </div>
+  {% elif movimiento.esta_aprobado %}
+    <div class="alert alert-warning py-2 small mb-3">
+      Este movimiento está <strong>APROBADO</strong>.
+      Si lo editás, se mantienen congelados el <strong>tipo</strong>, la <strong>fecha</strong>,
+      el <strong>monto</strong> y las <strong>cuentas</strong>. Podés corregir la
+      <strong>categoría</strong>, el <strong>área</strong> y los datos de
+      <strong>persona / proveedor / programa / combustible</strong>.
+    </div>
+  {% elif movimiento.esta_rechazado %}
+    <div class="alert alert-secondary py-2 small mb-3">
+      Este movimiento está <strong>RECHAZADO / ANULADO</strong>. No impacta en balances.
+      Podés ajustar notas y datos descriptivos si necesitás dejarlo mejor documentado.
+    </div>
+  {% endif %}
+{% elif rol_operador_finanzas %}
+  {% if movimiento.esta_borrador %}
+    <div class="alert alert-info py-2 small mb-3">
+      Este movimiento está en <strong>BORRADOR</strong>. Como operador podés cargar y corregir todos los datos.
+      Solo el staff financiero puede aprobarlo para que impacte en saldos y balances.
+    </div>
+  {% else %}
+    <div class="alert alert-secondary py-2 small mb-3">
+      Este movimiento ya está <strong>aprobado o rechazado</strong>.
+      Para operadores financieros es de <strong>solo lectura</strong>;
+      cualquier ajuste debe hacerlo un responsable de finanzas.
+    </div>
+  {% endif %}
+{% endif %}
+
+{# ================== CUERPO PRINCIPAL ================== #}
+<div class="row g-3 mb-3">
+  <div class="col-12 col-lg-8">
+    <div class="card shadow-sm h-100 mv-detail-card {% if es_ingreso %}mv-detail-card--ingreso{% elif es_gasto %}mv-detail-card--gasto{% elif es_transferencia %}mv-detail-card--transferencia{% endif %}">
+      <div class="card-body">
+        {# Monto + tipo + fecha #}
+        <div class="row g-3 align-items-start mb-3">
+          <div class="col-12 col-md-6">
+            <div class="small text-muted text-uppercase mb-1">
+              Monto
+            </div>
+            <div class="fs-2 fw-bold {% if es_ingreso %}text-success{% elif es_gasto %}text-danger{% else %}text-body{% endif %}">
+              ${{ movimiento.monto|formato_pesos }}
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="small text-muted text-uppercase mb-1">
+              Tipo
+            </div>
+            {% if es_ingreso %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle">
+                Ingreso
+              </span>
+            {% elif es_gasto %}
+              <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+                Gasto
+              </span>
+            {% elif es_transferencia %}
+              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                Transferencia
+              </span>
+            {% else %}
+              <span class="badge bg-light text-muted border">Sin clasificar</span>
+            {% endif %}
+          </div>
+          <div class="col-6 col-md-3 text-md-end">
+            <div class="small text-muted text-uppercase mb-1">
+              Fecha de operación
+            </div>
+            <div class="fw-semibold">
+              {{ movimiento.fecha_operacion|date:"d/m/Y" }}
+            </div>
+          </div>
+        </div>
+
+        {# Chips / etiquetas lógicas #}
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          <span class="badge bg-light text-muted border">
+            Categoría:
+            <span class="fw-semibold text-body ms-1">
+              {{ movimiento.categoria|default:"Sin categoría" }}
+            </span>
+          </span>
+
+          <span class="badge bg-light text-muted border">
+            Área:
+            <span class="fw-semibold text-body ms-1">
+              {{ movimiento.area|default:"Sin área" }}
+            </span>
+          </span>
+
+          {% if movimiento.programa_ayuda or movimiento.programa_ayuda_texto %}
+            <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+              Programa de ayuda
+            </span>
+          {% endif %}
+
+          {% if es_pago_servicio %}
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+              Pago de servicio municipal
+            </span>
+          {% endif %}
+
+          {% if movimiento.es_ayuda_social %}
+            <span class="badge bg-info-subtle text-info border border-info-subtle">
+              Ayuda social
+            </span>
+          {% endif %}
+
+          {% if movimiento.es_gasto_personal %}
+            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+              Gasto de personal
+            </span>
+          {% endif %}
+
+          {% if movimiento.es_combustible %}
+            <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+              Combustible / vehículo
+            </span>
+          {% endif %}
+        </div>
+
+        {# Programa de ayuda (detalle) #}
+        {% if movimiento.programa_ayuda or movimiento.programa_ayuda_texto %}
+          <div class="mb-3">
+            <div class="small text-muted text-uppercase mb-1">
+              Programa de ayuda
+            </div>
+            {% if movimiento.programa_ayuda %}
+              <div>{{ movimiento.programa_ayuda }}</div>
+            {% endif %}
+            {% if movimiento.programa_ayuda_texto %}
+              <div class="small text-muted">
+                {{ movimiento.programa_ayuda_texto }}
+              </div>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        {# Descripción visible (concepto principal) #}
+        {% if movimiento.descripcion %}
+          <hr>
+          <div class="mb-2">
+            <div class="small text-muted text-uppercase mb-1">
+              Descripción
+            </div>
+            <p class="mb-0">
+              {{ movimiento.descripcion }}
+            </p>
+          </div>
+        {% endif %}
+
+        {# Observaciones internas #}
+        {% if movimiento.observaciones %}
+          <hr>
+          <div>
+            <div class="small text-muted text-uppercase mb-1">
+              Notas internas / observaciones
+            </div>
+            <p class="mb-0 text-muted small">
+              {{ movimiento.observaciones }}
+            </p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ============ COLUMNA DERECHA: CUENTAS + ORDEN + AUDITORÍA ============ #}
+  <div class="col-12 col-lg-4">
+
+    {# Cuentas #}
+    <div class="card shadow-sm mb-3">
+      <div class="card-header py-2">
+        <span class="small text-uppercase text-muted fw-semibold">
+          Cuentas involucradas
+        </span>
+      </div>
+      <div class="card-body small">
+        <div class="mb-2">
+          <div class="text-muted text-uppercase mb-1">
+            Cuenta origen
+          </div>
+          <div class="fw-semibold">
+            {{ movimiento.cuenta_origen|default:movimiento.cuenta_origen_texto|default:"-" }}
+          </div>
+        </div>
+        <div>
+          <div class="text-muted text-uppercase mb-1">
+            Cuenta destino
+          </div>
+          <div class="fw-semibold">
+            {{ movimiento.cuenta_destino|default:movimiento.cuenta_destino_texto|default:"-" }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Orden de pago / Factura (nuevo módulo + modo anterior, solo si aplica) #}
+    <div class="card shadow-sm mb-3">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <span class="small text-uppercase text-muted fw-semibold">
+          Orden de pago / Factura
+        </span>
+        {% if rol_staff_finanzas and movimiento.tipo == movimiento.TIPO_GASTO %}
+          {% if movimiento.orden_pago %}
+            <a href="{% url 'finanzas:orden_pago_detail' movimiento.orden_pago.pk %}" class="small text-decoration-none">
+              Ver orden →
+            </a>
+          {% elif movimiento.esta_aprobado %}
+            <a href="{% url 'finanzas:orden_pago_list' %}" class="small text-decoration-none">
+              Ir a órdenes →
+            </a>
+          {% endif %}
+        {% endif %}
+      </div>
+
+      <div class="card-body small">
+        {% if movimiento.tipo != movimiento.TIPO_GASTO %}
+          <div class="text-muted">
+            La orden de pago aplica principalmente a <strong>gastos</strong>.
+          </div>
+
+        {% else %}
+
+          {# --- NUEVO ESQUEMA: OrdenPago vinculada --- #}
+          {% if movimiento.orden_pago %}
+            <div class="mb-2">
+              <div class="text-muted text-uppercase mb-1">
+                Orden vinculada
+              </div>
+              <div class="fw-semibold">
+                OP #{{ movimiento.orden_pago.numero|default:movimiento.orden_pago.id }}
+                · {{ movimiento.orden_pago.get_estado_display }}
+              </div>
+              <div class="text-muted">
+                Fecha: {{ movimiento.orden_pago.fecha_orden|date:"d/m/Y" }}
+              </div>
+            </div>
+
+            <div class="mb-2">
+              <div class="text-muted text-uppercase mb-1">
+                Condición de pago
+              </div>
+              <div>
+                {{ movimiento.orden_pago.get_condicion_pago_display|default:"(sin especificar)" }}
+              </div>
+            </div>
+
+            <div class="mb-2">
+              <div class="text-muted text-uppercase mb-1">
+                Medio de pago previsto
+              </div>
+              <div>
+                {{ movimiento.orden_pago.get_medio_pago_previsto_display|default:"(sin especificar)" }}
+              </div>
+            </div>
+
+            {% if movimiento.orden_pago.factura_tipo or movimiento.orden_pago.factura_numero or movimiento.orden_pago.factura_fecha %}
+              <hr class="my-2">
+              <div class="mb-2">
+                <div class="text-muted text-uppercase mb-1">
+                  Tipo de comprobante
+                </div>
+                <div>
+                  {{ movimiento.orden_pago.get_factura_tipo_display|default:"(sin especificar)" }}
+                </div>
+              </div>
+              <div class="mb-2">
+                <div class="text-muted text-uppercase mb-1">
+                  Número de factura
+                </div>
+                <div>
+                  {{ movimiento.orden_pago.factura_numero|default:"(sin especificar)" }}
+                </div>
+              </div>
+              <div class="mb-0">
+                <div class="text-muted text-uppercase mb-1">
+                  Fecha de factura
+                </div>
+                <div>
+                  {% if movimiento.orden_pago.factura_fecha %}
+                    {{ movimiento.orden_pago.factura_fecha|date:"d/m/Y" }}
+                  {% else %}
+                    (sin especificar)
+                  {% endif %}
+                </div>
+              </div>
+            {% endif %}
+
+            {# Si además hay datos legacy en el movimiento, los mostramos aparte como histórico #}
+            {% if movimiento.condicion_pago or movimiento.medio_pago or movimiento.factura_tipo or movimiento.factura_numero or movimiento.orden_pago_fecha or movimiento.factura_fecha %}
+              <hr class="my-2">
+              <div class="text-muted text-uppercase mb-1">
+                Datos históricos (esquema anterior)
+              </div>
+
+              <div class="mb-2">
+                <span class="text-muted">Condición de pago:</span>
+                <span>{{ movimiento.get_condicion_pago_display|default:"(sin especificar)" }}</span>
+              </div>
+
+              <div class="mb-2">
+                <span class="text-muted">Medio de pago:</span>
+                <span>{{ movimiento.get_medio_pago_display|default:"(sin especificar)" }}</span>
+              </div>
+
+              <div class="mb-2">
+                <span class="text-muted">Fecha orden de pago:</span>
+                <span>
+                  {% if movimiento.orden_pago_fecha %}
+                    {{ movimiento.orden_pago_fecha|date:"d/m/Y" }}
+                  {% else %}
+                    (sin especificar)
+                  {% endif %}
+                </span>
+              </div>
+
+              {% if movimiento.orden_pago_observaciones %}
+                <div class="mb-2">
+                  <span class="text-muted">Observaciones:</span>
+                  <span>{{ movimiento.orden_pago_observaciones }}</span>
+                </div>
+              {% endif %}
+
+              <div class="mb-2">
+                <span class="text-muted">Tipo de comprobante:</span>
+                <span>{{ movimiento.get_factura_tipo_display|default:"(sin especificar)" }}</span>
+              </div>
+
+              <div class="mb-2">
+                <span class="text-muted">Número de factura:</span>
+                <span>{{ movimiento.factura_numero|default:"(sin especificar)" }}</span>
+              </div>
+
+              <div class="mb-0">
+                <span class="text-muted">Fecha de factura:</span>
+                <span>
+                  {% if movimiento.factura_fecha %}
+                    {{ movimiento.factura_fecha|date:"d/m/Y" }}
+                  {% else %}
+                    (sin especificar)
+                  {% endif %}
+                </span>
+              </div>
+
+              <div class="text-muted small mt-2">
+                Datos conservados del esquema anterior (cargados directamente en el movimiento).
+              </div>
+            {% endif %}
+
+          {# --- SIN OrdenPago pero con datos legacy --- #}
+          {% elif movimiento.condicion_pago or movimiento.medio_pago or movimiento.factura_tipo or movimiento.factura_numero or movimiento.orden_pago_fecha or movimiento.factura_fecha %}
+            <div class="mb-2">
+              <div class="text-muted text-uppercase mb-1">
+                Datos cargados en el movimiento (esquema anterior)
+              </div>
+
+              <div class="mb-2">
+                <span class="text-muted">Condición de pago:</span>
+                <span>{{ movimiento.get_condicion_pago_display|default:"(sin especificar)" }}</span>
+              </div>
+
+              <div class="mb-2">
+                <span class="text-muted">Medio de pago:</span>
+                <span>{{ movimiento.get_medio_pago_display|default:"(sin especificar)" }}</span>
+              </div>
+
+              <div class="mb-2">
+                <span class="text-muted">Fecha orden de pago:</span>
+                <span>
+                  {% if movimiento.orden_pago_fecha %}
+                    {{ movimiento.orden_pago_fecha|date:"d/m/Y" }}
+                  {% else %}
+                    (sin especificar)
+                  {% endif %}
+                </span>
+              </div>
+
+              {% if movimiento.orden_pago_observaciones %}
+                <div class="mb-2">
+                  <span class="text-muted">Observaciones:</span>
+                  <span>{{ movimiento.orden_pago_observaciones }}</span>
+                </div>
+              {% endif %}
+
+              <div class="mb-2">
+                <span class="text-muted">Tipo de comprobante:</span>
+                <span>{{ movimiento.get_factura_tipo_display|default:"(sin especificar)" }}</span>
+              </div>
+
+              <div class="mb-2">
+                <span class="text-muted">Número de factura:</span>
+                <span>{{ movimiento.factura_numero|default:"(sin especificar)" }}</span>
+              </div>
+
+              <div class="mb-0">
+                <span class="text-muted">Fecha de factura:</span>
+                <span>
+                  {% if movimiento.factura_fecha %}
+                    {{ movimiento.factura_fecha|date:"d/m/Y" }}
+                  {% else %}
+                    (sin especificar)
+                  {% endif %}
+                </span>
+              </div>
+
+              <div class="text-muted small mt-2">
+                Este gasto fue cargado con el esquema anterior.
+                Las nuevas órdenes se gestionan desde el módulo <strong>“Órdenes de pago”</strong>.
+              </div>
+            </div>
+
+          {# --- Sin OrdenPago ni datos legacy --- #}
+          {% else %}
+            <div class="text-muted">
+              Este gasto todavía no tiene una Orden de pago vinculada.
+              {% if rol_staff_finanzas and movimiento.esta_aprobado %}
+                Gestioná las órdenes desde el módulo <strong>“Órdenes de pago”</strong>.
+              {% endif %}
+            </div>
+          {% endif %}
+
+        {% endif %}
+      </div>
+    </div>
+
+    {# Metadatos / auditoría #}
+    <div class="card shadow-sm mb-3">
+      <div class="card-header py-2">
+        <span class="small text-uppercase text-muted fw-semibold">
+          Auditoría
+        </span>
+      </div>
+      <div class="card-body small">
+        <div class="mb-1">
+          <span class="text-muted">ID interno:</span>
+          <span class="fw-semibold">#{{ movimiento.id }}</span>
+        </div>
+
+        <div class="mb-1">
+          <span class="text-muted">Estado actual:</span>
+          <span class="fw-semibold">
+            {% if movimiento.esta_borrador %}
+              Borrador
+            {% elif movimiento.esta_aprobado %}
+              Aprobado
+            {% elif movimiento.esta_rechazado %}
+              Rechazado / Anulado
+            {% else %}
+              Sin estado
+            {% endif %}
+          </span>
+        </div>
+
+        <div class="mb-1">
+          <span class="text-muted">Fecha de carga:</span>
+          <span>
+            {{ movimiento.fecha_carga|date:"d/m/Y H:i" }}
+          </span>
+        </div>
+
+        <div class="mb-1">
+          <span class="text-muted">Última actualización:</span>
+          <span>
+            {{ movimiento.actualizado_en|date:"d/m/Y H:i" }}
+          </span>
+        </div>
+
+        {% if movimiento.creado_por %}
+          <div class="mb-1">
+            <span class="text-muted">Cargado por:</span>
+            <span>{{ movimiento.creado_por }}</span>
+          </div>
+        {% endif %}
+        {% if movimiento.actualizado_por %}
+          <div class="mb-1">
+            <span class="text-muted">Última modificación por:</span>
+            <span>{{ movimiento.actualizado_por }}</span>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{# ================== BLOQUES OPCIONALES: PROVEEDOR / PERSONA / COMBUSTIBLE ================== #}
+<div class="row g-3">
+
+  {# Proveedor #}
+  {% if movimiento.proveedor %}
+    <div class="col-12 col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-header py-2">
+          <span class="small text-uppercase text-muted fw-semibold">
+            Proveedor / Comercio
+          </span>
+        </div>
+        <div class="card-body small">
+          <div class="mb-2">
+            <div class="text-muted text-uppercase mb-1">
+              Nombre / razón social
+            </div>
+            <div class="fw-semibold">
+              {{ movimiento.proveedor.nombre|default:movimiento.proveedor }}
+            </div>
+          </div>
+          {% if movimiento.proveedor.cuit %}
+            <div>
+              <div class="text-muted text-uppercase mb-1">
+                CUIT
+              </div>
+              <div>{{ movimiento.proveedor.cuit }}</div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {# Beneficiario / Persona #}
+  {% if movimiento.beneficiario %}
+    <div class="col-12 col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <span class="small text-uppercase text-muted fw-semibold">
+            Beneficiario / Persona
+          </span>
+          <span class="badge bg-light text-muted border small">
+            Censo
+          </span>
+        </div>
+        <div class="card-body small">
+          <div class="mb-2">
+            <div class="text-muted text-uppercase mb-1">
+              Apellido y nombre
+            </div>
+            <div class="fw-semibold">
+              {{ movimiento.beneficiario.apellido }} {{ movimiento.beneficiario.nombre }}
+            </div>
+          </div>
+          {% if movimiento.beneficiario.dni %}
+            <div class="mb-2">
+              <div class="text-muted text-uppercase mb-1">
+                DNI
+              </div>
+              <div>{{ movimiento.beneficiario.dni }}</div>
+            </div>
+          {% endif %}
+          {% if movimiento.beneficiario.direccion or movimiento.beneficiario.barrio %}
+            <div class="mb-2">
+              <div class="text-muted text-uppercase mb-1">
+                Domicilio / barrio
+              </div>
+              <div>
+                {{ movimiento.beneficiario.direccion|default:"(sin domicilio)" }}<br>
+                <span class="text-muted">
+                  {{ movimiento.beneficiario.barrio|default:"(sin barrio)" }}
+                </span>
+              </div>
+            </div>
+          {% endif %}
+
+          {% if movimiento.tipo_pago_persona %}
+            <div class="mb-2">
+              <div class="text-muted text-uppercase mb-1">
+                Tipo de pago vinculado
+              </div>
+              <div>
+                {{ movimiento.get_tipo_pago_persona_display|default:movimiento.tipo_pago_persona }}
+              </div>
+            </div>
+          {% endif %}
+
+          <div class="mt-2">
+            <a href="{% url 'finanzas:persona_detail' movimiento.beneficiario.pk %}" class="small text-decoration-none">
+              Ver historial de ayudas →
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {# Combustible / Vehículo #}
+  {% if movimiento.vehiculo or movimiento.vehiculo_texto or movimiento.litros or movimiento.precio_unitario %}
+    <div class="col-12 col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-header py-2">
+          <span class="small text-uppercase text-muted fw-semibold">
+            Combustible / Vehículo
+          </span>
+        </div>
+        <div class="card-body small">
+          {% if movimiento.vehiculo %}
+            <div class="mb-2">
+              <div class="text-muted text-uppercase mb-1">
+                Vehículo
+              </div>
+              <div>{{ movimiento.vehiculo }}</div>
+            </div>
+          {% endif %}
+
+          {% if movimiento.vehiculo_texto %}
+            <div class="mb-2">
+              <div class="text-muted text-uppercase mb-1">
+                Detalle
+              </div>
+              <div>{{ movimiento.vehiculo_texto }}</div>
+            </div>
+          {% endif %}
+
+          {% if movimiento.litros or movimiento.precio_unitario or movimiento.tipo_combustible %}
+            <div class="row g-2">
+              {% if movimiento.litros %}
+                <div class="col-4">
+                  <div class="text-muted text-uppercase mb-1">Litros</div>
+                  <div>{{ movimiento.litros }}</div>
+                </div>
+              {% endif %}
+              {% if movimiento.precio_unitario %}
+                <div class="col-4">
+                  <div class="text-muted text-uppercase mb-1">Precio unit.</div>
+                  <div>${{ movimiento.precio_unitario|floatformat:2 }}</div>
+                </div>
+              {% endif %}
+              {% if movimiento.tipo_combustible %}
+                <div class="col-4">
+                  <div class="text-muted text-uppercase mb-1">Tipo</div>
+                  <div>{{ movimiento.tipo_combustible }}</div>
+                </div>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+{# ================== ADJUNTOS (SI LOS HAY) ================== #}
+{% with archivos=movimiento.adjuntos.all %}
+  {% if archivos %}
+    <div class="card shadow-sm mt-3">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <span class="small text-uppercase text-muted fw-semibold">
+          Adjuntos
+        </span>
+        <span class="badge bg-light text-muted border small">
+          {{ archivos|length }} archivo{{ archivos|length|pluralize:"s" }}
+        </span>
+      </div>
+      <div class="card-body small">
+        <ul class="mb-0 list-unstyled">
+          {% for adj in archivos %}
+            <li class="mb-1">
+              {% if adj.archivo.url %}
+                <a href="{{ adj.archivo.url }}" target="_blank" class="text-decoration-none">
+                  {{ adj.descripcion|default:adj.archivo.name }}
+                </a>
+              {% else %}
+                {{ adj.descripcion|default:adj }}
+              {% endif %}
+              <span class="text-muted">
+                · {{ adj.fecha_subida|date:"d/m/Y H:i" }}
+                {% if adj.subido_por %} · {{ adj.subido_por }}{% endif %}
+              </span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  {% endif %}
+{% endwith %}
+
+{% endblock %}

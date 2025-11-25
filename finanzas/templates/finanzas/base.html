@@ -1,0 +1,267 @@
+{% load static %}
+{% load humanize %}
+{% load finanzas_extras %}
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>
+      {% block title %}Sistema de Finanzas – Comuna de Tacuarendí{% endblock %}
+    </title>
+
+    <!-- Bootstrap CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    >
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{% static 'finanzas/css/app.css' %}">
+
+    {% block extra_head %}{% endblock %}
+  </head>
+  <body>
+
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark navbar-finanzas">
+      <div class="container-fluid">
+
+        <!-- Brand/Logo -->
+        {% if request.user.is_authenticated and request.user.is_staff %}
+          {% url 'finanzas:dashboard' as brand_url %}
+        {% else %}
+          {% url 'finanzas:home' as brand_url %}
+        {% endif %}
+
+        <a class="navbar-brand d-flex align-items-center gap-2" href="{{ brand_url }}">
+          <img
+            src="{% static 'finanzas/img/logo-comuna.png' %}"
+            alt="Comuna de Tacuarendí"
+            class="navbar-brand-logo d-none d-sm-inline-block"
+          >
+          <div class="navbar-brand-text">
+            <strong>Comuna de Tacuarendí</strong>
+            <span>Sistema de Finanzas</span>
+          </div>
+        </a>
+
+        <!-- Navbar Toggle Button -->
+        <button
+          class="navbar-toggler"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#mainNavbar"
+          aria-controls="mainNavbar"
+          aria-expanded="false"
+          aria-label="Mostrar navegación"
+        >
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <!-- Navbar Content -->
+        <div class="collapse navbar-collapse" id="mainNavbar">
+          {% if request.user.is_authenticated %}
+            {% with url_name=request.resolver_match.url_name %}
+              <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+
+                <!-- Inicio -->
+                <li class="nav-item">
+                  <a
+                    class="nav-link {% if url_name == 'home' %}active{% endif %}"
+                    href="{% url 'finanzas:home' %}"
+                  >
+                    Inicio
+                  </a>
+                </li>
+
+                <!-- Tablero (Dashboard) -->
+                {% if request.user.is_staff or request.user|tiene_rol:"STAFF_FINANZAS" or request.user|tiene_rol:"CONSULTA_POLITICA" %}
+                  <li class="nav-item">
+                    <a
+                      class="nav-link {% if url_name == 'dashboard' %}active{% endif %}"
+                      href="{% url 'finanzas:dashboard' %}"
+                    >
+                      Tablero
+                    </a>
+                  </li>
+                {% endif %}
+
+                <!-- Movimientos -->
+                <li class="nav-item">
+                  <a
+                    class="nav-link {% if url_name == 'movimiento_list' %}active{% endif %}"
+                    href="{% url 'finanzas:movimiento_list' %}"
+                  >
+                    Movimientos
+                  </a>
+                </li>
+
+                <!-- Gastos -->
+                <li class="nav-item">
+                  <a 
+                    class="nav-link" 
+                    href="{% url 'finanzas:movimiento_list' %}?tipo=GASTO"
+                  >
+                    Gastos
+                  </a>
+                </li>
+
+                <!-- Personas -->
+                {% if request.user.is_staff or request.user|tiene_rol:"STAFF_FINANZAS" or request.user|tiene_rol:"OPERADOR_FINANZAS" or request.user|tiene_rol:"OPERADOR_SOCIAL" or request.user|tiene_rol:"CONSULTA_POLITICA" %}
+                  <li class="nav-item">
+                    <a
+                      class="nav-link {% if url_name == 'persona_list' or url_name == 'persona_detail' or url_name == 'persona_update' %}active{% endif %}"
+                      href="{% url 'finanzas:persona_list' %}"
+                    >
+                      Personas
+                    </a>
+                  </li>
+                {% endif %}
+
+                <!-- Órdenes de pago -->
+                {% if request.user.is_staff or request.user|tiene_rol:"STAFF_FINANZAS" or request.user|tiene_rol:"OPERADOR_FINANZAS" or request.user|tiene_rol:"CONSULTA_POLITICA" %}
+                  <li class="nav-item">
+                    <a
+                      class="nav-link {% if url_name == 'orden_pago_list' or url_name == 'orden_pago_detail' or url_name == 'orden_pago_update' %}active{% endif %}"
+                      href="{% url 'finanzas:orden_pago_list' %}"
+                    >
+                      Órdenes de pago
+                    </a>
+                  </li>
+                {% endif %}
+
+                <!-- Agenda / Pendientes -->
+                <li class="nav-item">
+                  <a
+                    class="nav-link {% if url_name|slice:":6" == 'agenda' %}active{% endif %}"
+                    href="{% url 'agenda:agenda_list' %}"
+                  >
+                    Agenda
+                    {% if tareas_pendientes_usuario %}
+                      <span class="badge bg-danger ms-1">{{ tareas_pendientes_usuario }}</span>
+                    {% endif %}
+                  </a>
+                </li>
+
+                <!-- Balances -->
+                {% if request.user.is_staff or request.user|tiene_rol:"STAFF_FINANZAS" or request.user|tiene_rol:"CONSULTA_POLITICA" %}
+                  <li class="nav-item">
+                    <a
+                      class="nav-link {% if url_name == 'balance_resumen' %}active{% endif %}"
+                      href="{% url 'finanzas:balance_resumen' %}"
+                    >
+                      Balances
+                    </a>
+                  </li>
+                {% endif %}
+
+              </ul>
+            {% endwith %}
+
+            <!-- User Menu & Actions -->
+            <div class="d-flex align-items-center gap-2 ms-auto">
+              <!-- Nuevo movimiento button -->
+              {% if request.user.is_staff or request.user|tiene_rol:"STAFF_FINANZAS" or request.user|tiene_rol:"OPERADOR_FINANZAS" %}
+                <a
+                  href="{% url 'finanzas:movimiento_create' %}"
+                  class="btn btn-success btn-sm btn-header-primary d-none d-md-inline-flex"
+                  title="Crear nuevo movimiento"
+                >
+                  + Nuevo movimiento
+                </a>
+              {% endif %}
+
+              <!-- User Dropdown -->
+              <div class="dropdown">
+                <button
+                  class="btn btn-outline-light btn-sm dropdown-toggle btn-user-menu"
+                  type="button"
+                  id="userMenuButton"
+                  data-bs-toggle="dropdown"
+                  aria-expanded="false"
+                >
+                  {{ request.user.get_short_name|default:request.user.username }}
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenuButton">
+                  {% if request.user.is_staff %}
+                    <li>
+                      <a class="dropdown-item" href="{% url 'admin:index' %}">
+                        Panel de administración
+                      </a>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                  {% endif %}
+                  <li>
+                    <a class="dropdown-item" href="{% url 'logout' %}">
+                      Cerrar sesión
+                    </a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+          {% else %}
+            <!-- Login Button for Non-authenticated Users -->
+            <div class="ms-auto">
+              <a 
+                href="{% url 'login' %}" 
+                class="btn btn-outline-light btn-sm btn-header-primary"
+              >
+                Ingresar
+              </a>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="container">
+      <!-- Django Messages -->
+      {% if messages %}
+        <div class="mt-3">
+          {% for message in messages %}
+            <div
+              class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show"
+              role="alert"
+            >
+              {{ message }}
+              <button 
+                type="button" 
+                class="btn-close" 
+                data-bs-dismiss="alert" 
+                aria-label="Cerrar"
+              ></button>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <!-- Page Content Block -->
+      {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer (Optional - Descomenta si lo necesitas) -->
+    {% comment %}
+    <footer class="mt-5 py-4 bg-light">
+      <div class="container text-center text-muted">
+        <small>&copy; {% now "Y" %} Comuna de Tacuarendí - Sistema de Finanzas</small>
+      </div>
+    </footer>
+    {% endcomment %}
+
+    <!-- Bootstrap JS Bundle -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+      crossorigin="anonymous"
+    ></script>
+
+    <!-- Custom JS Block -->
+    {% block extra_js %}{% endblock %}
+  </body>
+</html>

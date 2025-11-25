@@ -1,0 +1,410 @@
+{% extends "finanzas/base.html" %}
+{% load static %}
+{% load humanize %}
+{% load finanzas_extras %}
+
+{% block title %}Movimientos – Comuna de Tacuarendí{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h1 class="h4 mb-0">Movimientos</h1>
+    <div class="text-muted small">
+      Listado general de ingresos, gastos y transferencias.
+      Por defecto se muestran solo movimientos aprobados, ordenados desde los más recientes.
+    </div>
+  </div>
+
+  {% if rol_staff_finanzas or rol_operador_finanzas %}
+    <a href="{% url 'finanzas:movimiento_create' %}" class="btn btn-success btn-sm">
+      + Nuevo movimiento
+    </a>
+  {% endif %}
+</div>
+
+{# =============== FILTROS =============== #}
+<form id="movimiento-filter-form" method="get" class="card shadow-sm mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-2">
+        <label class="form-label mb-1">Tipo</label>
+        <select name="tipo" class="form-select form-select-sm">
+          <option value="" {% if not request.GET.tipo %}selected{% endif %}>Todos</option>
+          {% for value,label in tipos %}
+            <option value="{{ value }}" {% if request.GET.tipo == value %}selected{% endif %}>
+              {{ label }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-6 col-md-2">
+        <label class="form-label mb-1">Desde</label>
+        <input
+          type="date"
+          name="desde"
+          value="{{ request.GET.desde }}"
+          class="form-control form-control-sm"
+        >
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label mb-1">Hasta</label>
+        <input
+          type="date"
+          name="hasta"
+          value="{{ request.GET.hasta }}"
+          class="form-control form-control-sm"
+        >
+      </div>
+
+      <div class="col-12 col-md-2">
+        <label class="form-label mb-1">Estado</label>
+
+        {% if rol_consulta_politica %}
+          <select class="form-select form-select-sm" disabled>
+            <option value="APROBADO" selected>Solo aprobados</option>
+          </select>
+          <input type="hidden" name="estado" value="APROBADO">
+          <div class="form-text small">
+            Como usuario de consulta siempre ves solo movimientos aprobados.
+          </div>
+        {% else %}
+          <select name="estado" class="form-select form-select-sm">
+            <option value="APROBADO"
+              {% if estado_actual == "APROBADO" or not estado_actual %}selected{% endif %}
+            >
+              Solo aprobados
+            </option>
+            <option value="BORRADOR" {% if estado_actual == "BORRADOR" %}selected{% endif %}>
+              Borradores
+            </option>
+            <option value="RECHAZADO" {% if estado_actual == "RECHAZADO" %}selected{% endif %}>
+              Rechazados
+            </option>
+            <option value="TODOS" {% if estado_actual == "TODOS" %}selected{% endif %}>
+              Todos los estados
+            </option>
+          </select>
+        {% endif %}
+      </div>
+
+      <div class="col-12 col-md-2">
+        <label class="form-label mb-1">Buscar</label>
+        <input
+          type="text"
+          name="q"
+          value="{{ request.GET.q }}"
+          class="form-control form-control-sm"
+          placeholder="Descripción, persona, proveedor..."
+        >
+      </div>
+
+      <div class="col-12 col-md-2 d-flex flex-column gap-1">
+        <button class="btn btn-primary btn-sm w-100">
+          Aplicar filtros
+        </button>
+        <div class="d-flex flex-wrap gap-1">
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-xs flex-fill"
+            data-quick-range="last30"
+          >
+            Últimos 30 días
+          </button>
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-xs flex-fill"
+            data-quick-range="this_month"
+          >
+            Este mes
+          </button>
+          <button
+            type="button"
+            class="btn btn-outline-secondary btn-xs flex-fill"
+            data-quick-range="this_year"
+          >
+            Este año
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
+{# =============== RESUMEN DEL FILTRO + CONTEXTO =============== #}
+<div class="d-flex justify-content-between align-items-center mb-2 small text-muted">
+  <div>
+    {% if page_obj %}
+      {% if hay_filtros %}
+        Mostrando {{ page_obj.paginator.count }} movimiento{{ page_obj.paginator.count|pluralize:"s" }}
+        para el filtro aplicado.
+      {% else %}
+        Mostrando {{ page_obj.paginator.count }} movimiento{{ page_obj.paginator.count|pluralize:"s" }}
+        aprobados más recientes.
+      {% endif %}
+    {% endif %}
+  </div>
+  <div class="text-end d-none d-md-block">
+    <span class="badge bg-light text-muted border">
+      Fecha de hoy: {{ hoy|date:"d/m/Y" }}
+    </span>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-12 col-md-4">
+    <div class="card border-success-subtle shadow-sm h-100">
+      <div class="card-body py-2">
+        <div class="small text-muted text-uppercase mb-1">
+          Ingresos en el filtro
+        </div>
+        <div class="fw-bold text-success">
+          ${{ total_ingresos_filtro|default:0|formato_pesos }}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card border-danger-subtle shadow-sm h-100">
+      <div class="card-body py-2">
+        <div class="small text-muted text-uppercase mb-1">
+          Gastos en el filtro
+        </div>
+        <div class="fw-bold text-danger">
+          ${{ total_gastos_filtro|default:0|formato_pesos }}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card border-secondary-subtle shadow-sm h-100">
+      <div class="card-body py-2">
+        <div class="small text-muted text-uppercase mb-1">
+          Saldo del filtro
+        </div>
+        <div class="fw-bold {% if saldo_filtro >= 0 %}text-success{% else %}text-danger{% endif %}">
+          ${{ saldo_filtro|default:0|formato_pesos }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# =============== TABLA =============== #}
+<div class="table-responsive shadow-sm bg-white rounded">
+  <table class="table table-sm align-middle mb-0 table-hover">
+    <thead class="table-light">
+      <tr>
+        <th style="width: 90px;">Fecha</th>
+        <th style="width: 110px;">Tipo</th>
+        <th style="width: 120px;">Estado</th>
+        <th>Categoría</th>
+        <th>Área</th>
+        <th>Beneficiario</th>
+        <th class="text-end" style="width: 140px;">Monto</th>
+        <th style="width: 160px;">Orden de pago / Factura</th>
+        <th>Detalle / acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in movimientos %}
+        <tr>
+          <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
+          <td>
+            {% if m.tipo == m.TIPO_INGRESO %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle">
+                Ingreso
+              </span>
+            {% elif m.tipo == m.TIPO_GASTO %}
+              <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+                Gasto
+              </span>
+            {% else %}
+              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                Transferencia
+              </span>
+            {% endif %}
+          </td>
+          <td>
+            {% if m.estado == m.ESTADO_APROBADO %}
+              <span class="badge badge-estado badge-estado-aprobado">
+                Aprobado
+              </span>
+            {% elif m.estado == m.ESTADO_BORRADOR %}
+              <span class="badge badge-estado badge-estado-borrador">
+                Borrador
+              </span>
+            {% elif m.estado == m.ESTADO_RECHAZADO %}
+              <span class="badge badge-estado badge-estado-rechazado">
+                Rechazado
+              </span>
+            {% else %}
+              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                -
+              </span>
+            {% endif %}
+          </td>
+          <td>{{ m.categoria }}</td>
+          <td>{{ m.area|default:"-" }}</td>
+          <td>
+            {% if m.beneficiario %}
+              {{ m.beneficiario.apellido }}, {{ m.beneficiario.nombre }}
+            {% else %}
+              <span class="text-muted">-</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            <span class="fw-semibold
+              {% if m.tipo == m.TIPO_INGRESO %}
+                text-success
+              {% elif m.tipo == m.TIPO_GASTO %}
+                text-danger
+              {% else %}
+                text-body
+              {% endif %}
+            ">
+              {% if m.tipo == m.TIPO_INGRESO %}+{% elif m.tipo == m.TIPO_GASTO %}-{% endif %}
+              ${{ m.monto|formato_pesos }}
+            </span>
+          </td>
+
+          {# Columna: Orden de pago / Factura #}
+          <td class="small">
+            {% if m.tipo == m.TIPO_GASTO and m.estado == m.ESTADO_APROBADO %}
+              {% if m.orden_pago %}
+                <div>
+                  <span class="badge bg-success-subtle text-success border border-success-subtle">
+                    Orden vinculada
+                  </span>
+                </div>
+                <div class="text-muted">
+                  OP #{{ m.orden_pago.numero|default:m.orden_pago.id }}
+                  · {{ m.orden_pago.get_estado_display }}
+                </div>
+                <div class="mt-1">
+                  <a
+                    href="{% url 'finanzas:orden_pago_detail' m.orden_pago.pk %}"
+                    class="small text-decoration-none"
+                  >
+                    Ver orden →
+                  </a>
+                </div>
+              {% elif m.orden_pago_fecha or m.factura_numero or m.factura_tipo %}
+                <div>
+                  <span class="badge bg-success-subtle text-success border border-success-subtle">
+                    Datos cargados
+                  </span>
+                </div>
+                {% if m.factura_numero %}
+                  <div class="text-muted">
+                    Fact.: {{ m.factura_numero }}
+                  </div>
+                {% endif %}
+                <div class="text-muted small">
+                  (Registrado directamente en el movimiento – modo anterior)
+                </div>
+              {% else %}
+                <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                  Sin orden vinculada
+                </span>
+              {% endif %}
+            {% else %}
+              <span class="text-muted">-</span>
+            {% endif %}
+          </td>
+
+          <td>
+            <div class="d-flex flex-column">
+              <a
+                href="{% url 'finanzas:movimiento_detail' m.pk %}"
+                class="text-decoration-none"
+              >
+                {{ m.descripcion|default:"(sin detalle)"|truncatechars:60 }}
+              </a>
+
+              <div class="mt-1 d-flex flex-wrap gap-1 small">
+                {% if m.es_ayuda_social %}
+                  <span class="badge rounded-pill bg-info-subtle text-info border border-info-subtle">
+                    Ayuda social
+                  </span>
+                {% endif %}
+                {% if m.es_gasto_personal %}
+                  <span class="badge rounded-pill bg-secondary-subtle text-secondary border border-secondary-subtle">
+                    Gasto de personal
+                  </span>
+                {% endif %}
+                {% if m.es_combustible %}
+                  <span class="badge rounded-pill bg-warning-subtle text-warning border border-warning-subtle">
+                    Combustible / vehículo
+                  </span>
+                {% endif %}
+                {% if m.es_pago_servicio %}
+                  <span class="badge rounded-pill bg-primary-subtle text-primary border border-primary-subtle">
+                    Pago de servicio
+                  </span>
+                {% endif %}
+              </div>
+
+              {% if rol_staff_finanzas or rol_operador_finanzas %}
+                <div class="mt-1 small">
+                  <a
+                    href="{% url 'finanzas:movimiento_update' m.pk %}"
+                    class="text-decoration-none"
+                  >
+                    ✏️ Editar
+                  </a>
+                </div>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="9" class="text-center py-3 text-muted">
+            No se encontraron movimientos para el filtro aplicado.
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if is_paginated %}
+  <nav class="mt-3">
+    <ul class="pagination pagination-sm">
+      {% if page_obj.has_previous %}
+        <li class="page-item">
+          <a
+            class="page-link"
+            href="?page={{ page_obj.previous_page_number }}&tipo={{ request.GET.tipo }}&desde={{ request.GET.desde }}&hasta={{ request.GET.hasta }}&estado={{ estado_actual }}&q={{ request.GET.q }}"
+          >
+            Anterior
+          </a>
+        </li>
+      {% endif %}
+      <li class="page-item disabled">
+        <span class="page-link">
+          Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+        </span>
+      </li>
+      {% if page_obj.has_next %}
+        <li class="page-item">
+          <a
+            class="page-link"
+            href="?page={{ page_obj.next_page_number }}&tipo={{ request.GET.tipo }}&desde={{ request.GET.desde }}&hasta={{ request.GET.hasta }}&estado={{ estado_actual }}&q={{ request.GET.q }}"
+          >
+            Siguiente
+          </a>
+        </li>
+      {% endif %}
+    </ul>
+  </nav>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+  {{ block.super }}
+  <script src="{% static 'finanzas/js/movimientos_filtros.js' %}"></script>
+{% endblock %}

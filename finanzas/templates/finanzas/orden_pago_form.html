@@ -1,0 +1,160 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+{% load finanzas_extras %}
+
+{% block title %}
+  {% if orden %}
+    Editar orden de pago #{{ orden.numero|default:orden.id }} – Comuna de Tacuarendí
+  {% else %}
+    Nueva orden de pago – Comuna de Tacuarendí
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h1 class="h4 mb-0">
+      {% if orden %}
+        Editar orden de pago #{{ orden.numero|default:orden.id }}
+      {% else %}
+        Nueva orden de pago
+      {% endif %}
+    </h1>
+    <div class="small text-muted">
+      Definí proveedor, condición de pago y los conceptos que incluye la orden.
+    </div>
+  </div>
+  <div>
+    <a href="{% url 'finanzas:orden_pago_list' %}" class="btn btn-outline-secondary btn-sm">
+      Volver a órdenes
+    </a>
+  </div>
+</div>
+
+<form method="post" novalidate>
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+    <div class="alert alert-danger py-2 small">
+      {{ form.non_field_errors }}
+    </div>
+  {% endif %}
+
+  <div class="row g-3">
+    <div class="col-12 col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          {% for field in form %}
+            <div class="mb-2">
+              <label class="form-label small mb-1" for="{{ field.id_for_label }}">
+                {{ field.label }}
+                {% if field.field.required %}
+                  <span class="text-danger">*</span>
+                {% endif %}
+              </label>
+              {{ field }}
+              {% if field.help_text %}
+                <div class="form-text small">{{ field.help_text }}</div>
+              {% endif %}
+              {% for error in field.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-8">
+      <div class="card shadow-sm h-100">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <span class="small text-uppercase text-muted fw-semibold">
+            Detalle de conceptos
+          </span>
+          <span class="small text-muted">
+            Al menos una línea con monto.
+          </span>
+        </div>
+        <div class="card-body">
+          {{ lineas_formset.management_form }}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 22%;">Categoría</th>
+                  <th style="width: 22%;">Área</th>
+                  <th>Descripción</th>
+                  <th style="width: 15%;" class="text-end">Monto</th>
+                  <th style="width: 40px;"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for f in lineas_formset.forms %}
+                  <tr>
+                    {% if f.instance.pk %}
+                      {{ f.id }}
+                    {% endif %}
+                    <td>
+                      {{ f.categoria }}
+                    </td>
+                    <td>
+                      {{ f.area }}
+                    </td>
+                    <td>
+                      {{ f.descripcion }}
+                    </td>
+                    <td class="text-end">
+                      {{ f.monto }}
+                    </td>
+                    <td class="text-center">
+                      {% if lineas_formset.can_delete %}
+                        <div class="form-check">
+                          {{ f.DELETE }}
+                        </div>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% for error in f.non_field_errors %}
+                    <tr>
+                      <td colspan="5" class="text-danger small">
+                        {{ error }}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          {% if lineas_formset.non_form_errors %}
+            <div class="text-danger small mt-2">
+              {{ lineas_formset.non_form_errors }}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-3 d-flex justify-content-between align-items-center">
+    <div class="small text-muted">
+      Los campos marcados con <span class="text-danger">*</span> son obligatorios.
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'finanzas:orden_pago_list' %}" class="btn btn-outline-secondary btn-sm">
+        Cancelar
+      </a>
+      <button type="submit" name="accion" value="borrador" class="btn btn-primary btn-sm">
+        Guardar borrador
+      </button>
+      {% if rol_staff_finanzas %}
+        <button type="submit" name="accion" value="autorizar" class="btn btn-success btn-sm">
+          Guardar y autorizar
+        </button>
+      {% endif %}
+    </div>
+  </div>
+</form>
+
+{% endblock %}

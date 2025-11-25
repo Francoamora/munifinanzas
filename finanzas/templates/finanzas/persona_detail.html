@@ -1,0 +1,317 @@
+{# templates/finanzas/persona_detail.html #}
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+{% load finanzas_extras %}
+
+{% block title %}Persona / Beneficiario – Comuna de Tacuarendí{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <p class="text-muted small mb-1">Persona / beneficiario</p>
+    <h1 class="h4 mb-1">
+      {{ persona.apellido }}, {{ persona.nombre }}
+    </h1>
+    <div class="text-muted small">
+      Histórico de ayudas sociales, sueldos/changas y relación con la comuna (servicios, si corresponde).
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{% url 'finanzas:persona_update' persona.pk %}" class="btn btn-primary btn-sm">
+      Editar datos
+    </a>
+    <a href="{% url 'finanzas:persona_list' %}" class="btn btn-outline-secondary btn-sm">
+      Volver al listado
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-12 col-lg-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <span class="small text-uppercase text-muted fw-semibold">
+          Datos de la persona
+        </span>
+        <span class="badge small {% if persona.activo %}badge-status-activo{% else %}badge-status-inactivo{% endif %}">
+          {% if persona.activo %}Activa en el censo{% else %}Inactiva{% endif %}
+        </span>
+      </div>
+
+      <div class="card-body small">
+        <div class="mb-2">
+          <div class="text-muted text-uppercase mb-1">DNI</div>
+          <div class="fw-semibold">{{ persona.dni|default:"-" }}</div>
+        </div>
+        <div class="mb-2">
+          <div class="text-muted text-uppercase mb-1">Barrio</div>
+          <div>{{ persona.barrio|default:"-" }}</div>
+        </div>
+        <div class="mb-2">
+          <div class="text-muted text-uppercase mb-1">Domicilio</div>
+          <div>{{ persona.direccion|default:"-" }}</div>
+        </div>
+        <div class="mb-2">
+          <div class="text-muted text-uppercase mb-1">Teléfono</div>
+          <div>{{ persona.telefono|default:"-" }}</div>
+        </div>
+
+        {% if persona.percibe_beneficio %}
+          <div class="mb-2">
+            <div class="text-muted text-uppercase mb-1">Beneficio / pensión</div>
+            <div class="fw-semibold">
+              {{ persona.beneficio_detalle|default:"Beneficio sin detalle" }}
+            </div>
+            {% if persona.beneficio_organismo %}
+              <div class="text-muted small">Organismo: {{ persona.beneficio_organismo }}</div>
+            {% endif %}
+            {% if persona.beneficio_monto_aprox %}
+              <div class="small mt-1">
+                Monto aprox.: <strong>${{ persona.beneficio_monto_aprox|formato_pesos }}</strong>
+              </div>
+            {% endif %}
+          </div>
+        {% else %}
+          <div class="mb-2">
+            <div class="text-muted text-uppercase mb-1">Beneficio / pensión</div>
+            <div class="text-muted">No registra beneficios sociales</div>
+          </div>
+        {% endif %}
+
+        <div class="mb-2">
+          <div class="text-muted text-uppercase mb-1">Notas</div>
+          <div>{{ persona.notas|default:"-" }}</div>
+        </div>
+
+        <hr class="my-3">
+
+        <div class="mb-3">
+          <div class="text-muted text-uppercase mb-1">Vínculo laboral con la comuna</div>
+          <div>
+            {% if persona.tiene_vinculo_laboral %}
+              {{ persona.get_tipo_vinculo_display }}
+              {% if persona.sector_laboral %}
+                – {{ persona.sector_laboral }}
+              {% endif %}
+            {% else %}
+              Sin vínculo laboral registrado
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <div class="text-muted text-uppercase mb-0">
+            Servicios a la comuna
+          </div>
+          {% if persona.paga_servicios %}
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle small">
+              Contribuyente de servicios
+            </span>
+          {% else %}
+            <span class="badge bg-light text-muted border small">
+              Sin datos de servicios
+            </span>
+          {% endif %}
+        </div>
+        {% if persona.paga_servicios and persona.detalle_servicios %}
+          <div class="mt-2">
+            <div class="text-muted text-uppercase mb-1 small">Detalle / referencia</div>
+            <div>{{ persona.detalle_servicios }}</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-7">
+    <div class="card shadow-sm h-100">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <span class="small text-uppercase text-muted fw-semibold">
+          Resumen de relación económica con la comuna
+        </span>
+        <div class="d-flex align-items-center gap-1">
+          <span class="badge bg-light text-muted border small">
+            {{ ayudas|length }} ayuda{{ ayudas|length|pluralize:"s" }}
+          </span>
+          {% if cantidad_sueldos_changas %}
+            <span class="badge bg-light text-muted border small">
+              {{ cantidad_sueldos_changas }} pago{{ cantidad_sueldos_changas|pluralize:"s" }} de sueldos/changas
+            </span>
+          {% endif %}
+          {% if cantidad_servicios_persona %}
+            <span class="badge bg-light text-muted border small">
+              {{ cantidad_servicios_persona }} pago{{ cantidad_servicios_persona|pluralize:"s" }} de servicios
+            </span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card-body small">
+        <div class="row g-3">
+          <div class="col-12 col-md-4">
+            <div class="text-muted text-uppercase mb-1">Total otorgado en ayudas</div>
+            <div class="fs-5 fw-bold text-success">
+              ${{ total_ayudas|default:0|formato_pesos }}
+            </div>
+          </div>
+
+          <div class="col-12 col-md-4">
+            <div class="text-muted text-uppercase mb-1">Total sueldos / changas</div>
+            <div class="fs-5 fw-bold text-warning">
+              {% if total_sueldos_changas %}
+                ${{ total_sueldos_changas|formato_pesos }}
+              {% else %}
+                -
+              {% endif %}
+            </div>
+            {% if cantidad_sueldos_changas %}
+              <div class="small text-muted mt-1">
+                {{ cantidad_sueldos_changas }} pago{{ cantidad_sueldos_changas|pluralize:"s" }} registrados.
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="col-12 col-md-4">
+            <div class="text-muted text-uppercase mb-1">Cantidad de ayudas</div>
+            <div class="fs-5 fw-bold">
+              {{ ayudas|length }}
+            </div>
+          </div>
+
+          {% if persona.paga_servicios %}
+            <div class="col-12 col-md-6 mt-2">
+              <div class="text-muted text-uppercase mb-1">Pagos de servicios</div>
+              <div class="fs-6 fw-bold text-primary">
+                {% if total_servicios_persona %}
+                  ${{ total_servicios_persona|formato_pesos }}
+                {% else %}
+                  Contribuyente con servicios activos
+                {% endif %}
+              </div>
+              {% if cantidad_servicios_persona %}
+                <div class="small text-muted mt-1">
+                  {{ cantidad_servicios_persona }} pago{{ cantidad_servicios_persona|pluralize:"s" }} registrados.
+                </div>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2 class="h6 mb-2">Detalle de ayudas sociales</h2>
+
+<div class="table-responsive shadow-sm bg-white rounded mb-4">
+  <table class="table table-sm align-middle mb-0 table-hover">
+    <caption class="visually-hidden">
+      Detalle de ayudas sociales otorgadas a {{ persona.apellido }}, {{ persona.nombre }}
+    </caption>
+    <thead class="table-light">
+      <tr>
+        <th scope="col" style="width: 90px;">Fecha</th>
+        <th scope="col">Categoría</th>
+        <th scope="col">Área</th>
+        <th scope="col" class="text-end" style="width: 140px;">Monto</th>
+        <th scope="col">Programa / Descripción</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if ayudas %}
+        {% for m in ayudas %}
+          <tr>
+            <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
+            <td>{{ m.categoria }}</td>
+            <td>{{ m.area|default:"-" }}</td>
+            <td class="text-end">
+              ${{ m.monto|formato_pesos }}
+            </td>
+            <td>
+              {{ m.programa_ayuda_texto|default:m.descripcion|default:"-" }}
+            </td>
+          </tr>
+        {% endfor %}
+      {% else %}
+        <tr>
+          <td colspan="5" class="text-center py-3 text-muted">
+            Esta persona aún no tiene ayudas sociales registradas.
+          </td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{% if sueldos_changas %}
+  <h2 class="h6 mb-2">Detalle de sueldos / jornales / changas</h2>
+
+  <div class="table-responsive shadow-sm bg-white rounded mb-4">
+    <table class="table table-sm align-middle mb-0 table-hover">
+      <caption class="visually-hidden">
+        Detalle de pagos de sueldos, jornales y changas de {{ persona.apellido }}, {{ persona.nombre }}
+      </caption>
+      <thead class="table-light">
+        <tr>
+          <th scope="col" style="width: 90px;">Fecha</th>
+          <th scope="col">Categoría</th>
+          <th scope="col">Área</th>
+          <th scope="col" class="text-end" style="width: 140px;">Monto</th>
+          <th scope="col">Descripción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in sueldos_changas %}
+          <tr>
+            <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
+            <td>{{ m.categoria }}</td>
+            <td>{{ m.area|default:"-" }}</td>
+            <td class="text-end">
+              ${{ m.monto|formato_pesos }}
+            </td>
+            <td>
+              {{ m.descripcion|default:"(sin detalle)"|truncatechars:80 }}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+{% if pagos_servicios %}
+  <h2 class="h6 mb-2">Detalle de pagos de servicios</h2>
+
+  <div class="table-responsive shadow-sm bg-white rounded">
+    <table class="table table-sm align-middle mb-0 table-hover">
+      <caption class="visually-hidden">
+        Detalle de pagos de servicios realizados por {{ persona.apellido }}, {{ persona.nombre }}
+      </caption>
+      <thead class="table-light">
+        <tr>
+          <th scope="col" style="width: 90px;">Fecha</th>
+          <th scope="col">Categoría</th>
+          <th scope="col" class="text-end" style="width: 140px;">Monto</th>
+          <th scope="col">Descripción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in pagos_servicios %}
+          <tr>
+            <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
+            <td>{{ m.categoria }}</td>
+            <td class="text-end">
+              ${{ m.monto|formato_pesos }}
+            </td>
+            <td>
+              {{ m.descripcion|default:"(sin detalle)"|truncatechars:80 }}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+{% endblock %}

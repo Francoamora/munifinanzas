@@ -1,0 +1,394 @@
+{% extends "finanzas/base.html" %}
+{% load static %}
+{% load humanize %}
+{% load finanzas_extras %}
+
+{% block title %}
+  {% if form.instance.pk %}
+    Editar movimiento – Comuna de Tacuarendí
+  {% else %}
+    Nuevo movimiento – Comuna de Tacuarendí
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+  <div>
+    <h1 class="h4 mb-1">
+      {% if form.instance.pk %}
+        Editar movimiento
+      {% else %}
+        Nuevo movimiento
+      {% endif %}
+    </h1>
+    <p id="tipo-hint" class="small text-muted mb-0">
+      Seleccioná el tipo de movimiento y completá fecha, cuentas y monto.
+      Para cobros de servicios usá categorías marcadas como <strong>servicio</strong>;
+      para ayudas sociales, sueldos y changas, usá categorías de <strong>ayudas</strong> o <strong>personal</strong>.
+      Si vinculás una persona, podés indicar si el pago es <strong>sueldo</strong> o <strong>changa/jornal</strong>.
+    </p>
+  </div>
+
+  <div class="d-flex flex-column align-items-end gap-2">
+    {% if form.instance.pk %}
+      {% if form.instance.estado %}
+        <span class="badge
+          {% if form.instance.esta_borrador %}
+            bg-warning-subtle text-warning border border-warning-subtle
+          {% elif form.instance.esta_rechazado %}
+            bg-danger-subtle text-danger border border-danger-subtle
+          {% else %}
+            bg-success-subtle text-success border border-success-subtle
+          {% endif %}
+        ">
+          Estado: {{ form.instance.get_estado_display }}
+        </span>
+      {% endif %}
+    {% else %}
+      <span class="badge bg-light text-secondary border border-secondary-subtle">
+        Estado inicial: Borrador (no impacta en saldos ni balances hasta que sea aprobado)
+      </span>
+    {% endif %}
+
+    <a href="{% url 'finanzas:movimiento_list' %}" class="btn btn-outline-secondary btn-sm">
+      Volver al listado
+    </a>
+  </div>
+</div>
+
+{% if form.instance.pk and form.instance.esta_aprobado %}
+  <div class="alert alert-warning py-2 small">
+    Este movimiento ya está <strong>aprobado</strong>.  
+    Usá esta pantalla principalmente para corregir la <strong>clasificación contable</strong>, el <strong>área</strong>,
+    los datos de <strong>persona / programa</strong> y las <strong>notas</strong>.
+    Por prolijidad contable se recomienda no modificar <strong>tipo, fecha, monto ni cuentas</strong>.
+  </div>
+{% endif %}
+
+<form method="post" class="card shadow-sm">
+  <div class="card-body">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger py-2">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    {# ========== BLOQUE 1: DATOS GENERALES ========== #}
+    <h2 class="h6 text-uppercase text-muted mb-2">Datos generales</h2>
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-md-4">
+        <label class="form-label mb-1" for="{{ form.tipo.id_for_label }}">Tipo</label>
+        {{ form.tipo }}
+        {% if form.tipo.errors %}
+          <div class="text-danger small mt-1">{{ form.tipo.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+
+      <div class="col-12 col-md-4">
+        <label class="form-label mb-1" for="{{ form.fecha_operacion.id_for_label }}">Fecha</label>
+        {{ form.fecha_operacion }}
+        {% if form.fecha_operacion.errors %}
+          <div class="text-danger small mt-1">{{ form.fecha_operacion.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+
+      <div class="col-12 col-md-4">
+        <label class="form-label mb-1" for="{{ form.monto.id_for_label }}">Monto</label>
+        {{ form.monto }}
+        {% if form.monto.errors %}
+          <div class="text-danger small mt-1">{{ form.monto.errors|join:", " }}</div>
+        {% endif %}
+        <div class="form-text">Ingresá el monto en pesos. El formato se ajusta automáticamente.</div>
+      </div>
+    </div>
+
+    {# ========== BLOQUE 2: CLASIFICACIÓN CONTABLE ========== #}
+    <h2 class="h6 text-uppercase text-muted mb-2">Clasificación contable</h2>
+    <div class="row g-3 mb-1">
+      <div class="col-12 col-md-6">
+        <label class="form-label mb-1" for="{{ form.categoria.id_for_label }}">Categoría</label>
+        {{ form.categoria }}
+        {% if form.categoria.errors %}
+          <div class="text-danger small mt-1">{{ form.categoria.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+      <div class="col-12 col-md-6">
+        <label class="form-label mb-1" for="{{ form.area.id_for_label }}">Área</label>
+        {{ form.area }}
+        {% if form.area.errors %}
+          <div class="text-danger small mt-1">{{ form.area.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+    </div>
+    <p class="text-muted small mb-3">
+      Recordá marcar en el maestro de categorías cuáles son <strong>servicios</strong>, <strong>ayudas sociales</strong>,
+      <strong>personal</strong> o <strong>combustible</strong> para que los reportes y la ficha de cada persona se armen solos.
+    </p>
+
+    {# ========== BLOQUE 3: CUENTAS (usa *_texto) ========== #}
+    <h2 class="h6 text-uppercase text-muted mb-2">Cuentas</h2>
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-md-6">
+        <label class="form-label mb-1" for="{{ form.cuenta_origen_texto.id_for_label }}">Cuenta origen</label>
+        {{ form.cuenta_origen_texto }}
+        {% if form.cuenta_origen_texto.errors %}
+          <div class="text-danger small mt-1">{{ form.cuenta_origen_texto.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+      <div class="col-12 col-md-6">
+        <label class="form-label mb-1" for="{{ form.cuenta_destino_texto.id_for_label }}">Cuenta destino</label>
+        {{ form.cuenta_destino_texto }}
+        {% if form.cuenta_destino_texto.errors %}
+          <div class="text-danger small mt-1">{{ form.cuenta_destino_texto.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ========== BLOQUE 4: PROGRAMA DE AYUDA ========== #}
+    <h2 class="h6 text-uppercase text-muted mb-2">Programa de ayuda</h2>
+    <div class="row g-3 mb-3">
+      {% if form.programa_ayuda %}
+        <div class="col-12 col-md-6">
+          <label class="form-label mb-1" for="{{ form.programa_ayuda.id_for_label }}">Programa (catálogo)</label>
+          {{ form.programa_ayuda }}
+          {% if form.programa_ayuda.errors %}
+            <div class="text-danger small mt-1">{{ form.programa_ayuda.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+      {% endif %}
+      <div class="col-12 col-md-6">
+        <label class="form-label mb-1" for="{{ form.programa_ayuda_texto.id_for_label }}">Detalle del programa</label>
+        {{ form.programa_ayuda_texto }}
+        {% if form.programa_ayuda_texto.errors %}
+          <div class="text-danger small mt-1">{{ form.programa_ayuda_texto.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ========== BLOQUE 5: PROVEEDOR (OPCIONAL) ========== #}
+    <div class="d-flex align-items-center justify-content-between mb-1">
+      <h2 class="h6 text-uppercase text-muted mb-0">Proveedor / Comercio</h2>
+      <div class="form-check form-switch small">
+        <input class="form-check-input" type="checkbox" id="toggle-proveedor">
+        <label class="form-check-label" for="toggle-proveedor">
+          Compra / pago a proveedor
+        </label>
+      </div>
+    </div>
+    <p class="text-muted small mb-2">
+      Activá si este movimiento es una compra o pago a un comercio/proveedor.
+    </p>
+
+    <div id="proveedor-section" class="row g-3 mb-3">
+      <div class="col-12 col-md-4">
+        <label class="form-label mb-1" for="{{ form.proveedor_cuit.id_for_label }}">CUIT</label>
+        {{ form.proveedor_cuit }}
+        {% if form.proveedor_cuit.errors %}
+          <div class="text-danger small mt-1">{{ form.proveedor_cuit.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+      <div class="col-12 col-md-8">
+        <label class="form-label mb-1" for="{{ form.proveedor_nombre.id_for_label }}">Nombre / razón social</label>
+        {{ form.proveedor_nombre }}
+        {% if form.proveedor_nombre.errors %}
+          <div class="text-danger small mt-1">{{ form.proveedor_nombre.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ========== BLOQUE 6: BENEFICIARIO / PERSONA (OPCIONAL) ========== #}
+    <div class="d-flex align-items-center justify-content-between mb-1">
+      <h2 class="h6 text-uppercase text-muted mb-0">Beneficiario / Persona</h2>
+      <div class="form-check form-switch small">
+        <input class="form-check-input" type="checkbox" id="toggle-beneficiario">
+        <label class="form-check-label" for="toggle-beneficiario">
+          Este movimiento tiene persona vinculada (ayuda / trabajo / servicios)
+        </label>
+      </div>
+    </div>
+    <p class="text-muted small mb-2">
+      Usá este bloque para ayudas sociales, pagos de sueldos/changas o cobros de servicios
+      vinculados a una persona. Se integra con el censo por DNI.
+    </p>
+
+    <div
+      id="beneficiario-section"
+      class="mb-3"
+      data-persona-dni-url="{% url 'finanzas:persona_buscar_dni' %}"
+    >
+      <div id="beneficiario-alert" class="alert alert-info py-2 mb-2 d-none small"></div>
+
+      <div class="row g-3">
+        <div class="col-12 col-md-4">
+          <label class="form-label mb-1" for="{{ form.beneficiario_dni.id_for_label }}">DNI</label>
+          {{ form.beneficiario_dni }}
+          {% if form.beneficiario_dni.errors %}
+            <div class="text-danger small mt-1">{{ form.beneficiario_dni.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+        <div class="col-12 col-md-8">
+          <label class="form-label mb-1" for="{{ form.beneficiario_nombre.id_for_label }}">Apellido y nombre</label>
+          {{ form.beneficiario_nombre }}
+          {% if form.beneficiario_nombre.errors %}
+            <div class="text-danger small mt-1">{{ form.beneficiario_nombre.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label mb-1" for="{{ form.beneficiario_direccion.id_for_label }}">Domicilio</label>
+          {{ form.beneficiario_direccion }}
+          {% if form.beneficiario_direccion.errors %}
+            <div class="text-danger small mt-1">{{ form.beneficiario_direccion.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label mb-1" for="{{ form.beneficiario_barrio.id_for_label }}">Barrio</label>
+          {{ form.beneficiario_barrio }}
+          {% if form.beneficiario_barrio.errors %}
+            <div class="text-danger small mt-1">{{ form.beneficiario_barrio.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+
+        <div class="col-12 mt-2">
+          <label class="form-label mb-1" for="{{ form.tipo_pago_persona.id_for_label }}">
+            Tipo de pago a la persona (opcional)
+          </label>
+          {{ form.tipo_pago_persona }}
+          <div class="form-text small">
+            Elegí <strong>"Pago de sueldo (planta permanente)"</strong> para sueldos mensuales de personal
+            y <strong>"Pago de changa / jornal / eventual"</strong> para trabajos puntuales o semanales.
+            Dejá <strong>"Ninguno / genérico"</strong> si se trata de una ayuda social u otro movimiento
+            que solo vincula a la persona.
+          </div>
+          {% if form.tipo_pago_persona.errors %}
+            <div class="text-danger small mt-1">{{ form.tipo_pago_persona.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {# ========== BLOQUE 7: COMBUSTIBLE / VEHÍCULO (OPCIONAL) ========== #}
+    <div class="d-flex align-items-center justify-content-between mb-1">
+      <h2 class="h6 text-uppercase text-muted mb-0">Combustible / Vehículo</h2>
+      <div class="form-check form-switch small">
+        <input class="form-check-input" type="checkbox" id="toggle-combustible">
+        <label class="form-check-label" for="toggle-combustible">
+          Es un gasto de combustible / vehículo
+        </label>
+      </div>
+    </div>
+    <p class="text-muted small mb-2">
+      Activá solo si el movimiento corresponde a carga de combustible o gasto del vehículo.
+    </p>
+
+    <div id="combustible-section" class="row g-3 mb-3">
+      <div class="col-12 col-md-6">
+        <label class="form-label mb-1" for="{{ form.vehiculo_texto.id_for_label }}">Vehículo / detalle</label>
+        {{ form.vehiculo_texto }}
+        {% if form.vehiculo_texto.errors %}
+          <div class="text-danger small mt-1">{{ form.vehiculo_texto.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+      <div class="col-12 col-md-2">
+        <label class="form-label mb-1" for="{{ form.litros.id_for_label }}">Litros</label>
+        {{ form.litros }}
+        {% if form.litros.errors %}
+          <div class="text-danger small mt-1">{{ form.litros.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+      <div class="col-12 col-md-2">
+        <label class="form-label mb-1" for="{{ form.precio_unitario.id_for_label }}">Precio unit.</label>
+        {{ form.precio_unitario }}
+        {% if form.precio_unitario.errors %}
+          <div class="text-danger small mt-1">{{ form.precio_unitario.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+      <div class="col-12 col-md-2">
+        <label class="form-label mb-1" for="{{ form.tipo_combustible.id_for_label }}">Tipo comb.</label>
+        {{ form.tipo_combustible }}
+        {% if form.tipo_combustible.errors %}
+          <div class="text-danger small mt-1">{{ form.tipo_combustible.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ========== BLOQUE 8: DETALLE / NOTAS ========== #}
+    <h2 class="h6 text-uppercase text-muted mb-2">Detalle</h2>
+    <div class="row g-3">
+      <div class="col-12 col-md-6">
+        <label class="form-label mb-1" for="{{ form.descripcion.id_for_label }}">Descripción</label>
+        {{ form.descripcion }}
+        {% if form.descripcion.errors %}
+          <div class="text-danger small mt-1">{{ form.descripcion.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+      <div class="col-12 col-md-6">
+        {% if form.notas_internas %}
+          <label class="form-label mb-1" for="{{ form.notas_internas.id_for_label }}">
+            Notas internas (no se imprimen)
+          </label>
+          {{ form.notas_internas }}
+          {% if form.notas_internas.errors %}
+            <div class="text-danger small mt-1">{{ form.notas_internas.errors|join:", " }}</div>
+          {% endif %}
+        {% elif form.observaciones %}
+          <label class="form-label mb-1" for="{{ form.observaciones.id_for_label }}">
+            Notas internas (no se imprimen)
+          </label>
+          {{ form.observaciones }}
+          {% if form.observaciones.errors %}
+            <div class="text-danger small mt-1">{{ form.observaciones.errors|join:", " }}</div>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+
+    {# Campos ocultos (por si hubiera ids internos) #}
+    {% for field in form.hidden_fields %}
+      {{ field }}
+    {% endfor %}
+  </div>
+
+  <div class="card-footer d-flex justify-content-between align-items-center">
+    <a href="{% url 'finanzas:movimiento_list' %}" class="btn btn-outline-secondary btn-sm">
+      Cancelar
+    </a>
+
+    <div class="d-flex flex-wrap gap-2">
+      {% if not form.instance.pk or form.instance.esta_borrador %}
+        {# Nuevo movimiento o movimiento en BORRADOR #}
+        <button
+          type="submit"
+          name="accion"
+          value="borrador"
+          class="btn btn-outline-secondary btn-sm"
+        >
+          Guardar como borrador
+        </button>
+        <button
+          type="submit"
+          name="accion"
+          value="aprobar"
+          class="btn btn-primary btn-sm"
+          onclick="return confirm('¿Guardar y aprobar este movimiento? Quedará incluido en saldos y balances si tu usuario tiene permisos para aprobar.');"
+        >
+          Guardar y aprobar
+        </button>
+      {% else %}
+        {# Para edición de aprobados/rechazados: edición blanda #}
+        <button type="submit" class="btn btn-primary btn-sm">
+          Guardar cambios
+        </button>
+      {% endif %}
+    </div>
+  </div>
+</form>
+
+{% endblock %}
+
+{% block extra_js %}
+  {{ block.super }}
+  <script src="{% static 'finanzas/js/movimiento_form.js' %}"></script>
+{% endblock %}

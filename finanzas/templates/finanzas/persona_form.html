@@ -1,0 +1,283 @@
+{% extends "finanzas/base.html" %}
+
+{% block title %}
+  {% if form.instance.pk %}
+    Editar persona – Comuna de Tacuarendí
+  {% else %}
+    Nueva persona – Comuna de Tacuarendí
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h1 class="h4 mb-1">
+      {% if form.instance.pk %}
+        Editar persona / beneficiario
+      {% else %}
+        Nueva persona / beneficiario
+      {% endif %}
+    </h1>
+    <div class="text-muted small">
+      Datos de contacto, ubicación y relación con la comuna (servicios, ayudas, sueldos/changas).
+    </div>
+  </div>
+
+  <a href="{% url 'finanzas:persona_list' %}" class="btn btn-outline-secondary btn-sm">
+    Volver al listado
+  </a>
+</div>
+
+<form method="post" class="card shadow-sm">
+  <div class="card-body">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger py-2">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    {# ===== Datos principales ===== #}
+    <h2 class="h6 text-uppercase text-muted mb-2">Datos principales</h2>
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-md-4">
+        <label class="form-label mb-1" for="{{ form.apellido.id_for_label }}">Apellido</label>
+        {{ form.apellido }}
+        {% if form.apellido.errors %}
+          <div class="text-danger small">{{ form.apellido.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label mb-1" for="{{ form.nombre.id_for_label }}">Nombre</label>
+        {{ form.nombre }}
+        {% if form.nombre.errors %}
+          <div class="text-danger small">{{ form.nombre.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label mb-1" for="{{ form.dni.id_for_label }}">DNI</label>
+        {{ form.dni }}
+        {% if form.dni.errors %}
+          <div class="text-danger small">{{ form.dni.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ===== Ubicación y contacto ===== #}
+    <h2 class="h6 text-uppercase text-muted mb-2">Ubicación y contacto</h2>
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-md-6">
+        <label class="form-label mb-1" for="{{ form.direccion.id_for_label }}">Domicilio</label>
+        {{ form.direccion }}
+        {% if form.direccion.errors %}
+          <div class="text-danger small">{{ form.direccion.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label mb-1" for="{{ form.barrio.id_for_label }}">Barrio</label>
+        {{ form.barrio }}
+        {% if form.barrio.errors %}
+          <div class="text-danger small">{{ form.barrio.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label mb-1" for="{{ form.telefono.id_for_label }}">Teléfono</label>
+        {{ form.telefono }}
+        {% if form.telefono.errors %}
+          <div class="text-danger small">{{ form.telefono.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ===== Vínculo laboral con la comuna (ARREGLA el bug) ===== #}
+    <h2 class="h6 text-uppercase text-muted mb-2">Vínculo laboral con la comuna</h2>
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-md-6">
+        <label class="form-label mb-1" for="{{ form.tipo_vinculo.id_for_label }}">
+          Tipo de vínculo laboral
+        </label>
+        {{ form.tipo_vinculo }}
+        {% if form.tipo_vinculo.errors %}
+          <div class="text-danger small">{{ form.tipo_vinculo.errors|join:", " }}</div>
+        {% endif %}
+        <div class="form-text small">
+          Si no trabaja para la comuna, dejá “Sin vínculo laboral”.
+        </div>
+      </div>
+      <div class="col-12 col-md-6">
+        <label class="form-label mb-1" for="{{ form.sector_laboral.id_for_label }}">
+          Área / sector en la comuna (si corresponde)
+        </label>
+        {{ form.sector_laboral }}
+        {% if form.sector_laboral.errors %}
+          <div class="text-danger small">{{ form.sector_laboral.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ===== Beneficios sociales / pensión ===== #}
+    <h2 class="h6 text-uppercase text-muted mb-2">Beneficios sociales / Pensión</h2>
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-md-4 d-flex align-items-start">
+        <div class="form-check mt-2">
+          {{ form.percibe_beneficio }}
+          <label class="form-check-label" for="{{ form.percibe_beneficio.id_for_label }}">
+            Percibe pensión o beneficio social
+          </label>
+        </div>
+        {% if form.percibe_beneficio.errors %}
+          <div class="text-danger small ms-2">{{ form.percibe_beneficio.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+
+      <div class="col-12 col-md-8">
+        <label class="form-label mb-1" for="{{ form.beneficio_detalle.id_for_label }}">
+          Detalle del beneficio
+        </label>
+        {{ form.beneficio_detalle }}
+        {% if form.beneficio_detalle.errors %}
+          <div class="text-danger small">{{ form.beneficio_detalle.errors|join:", " }}</div>
+        {% endif %}
+        <div class="form-text small">
+          Ej: AUH, jubilación mínima, pensión no contributiva, tarjeta alimentaria, etc.
+        </div>
+      </div>
+
+      <div class="col-12 col-md-6">
+        <label class="form-label mb-1" for="{{ form.beneficio_organismo.id_for_label }}">
+          Organismo / programa
+        </label>
+        {{ form.beneficio_organismo }}
+        {% if form.beneficio_organismo.errors %}
+          <div class="text-danger small">{{ form.beneficio_organismo.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+
+      <div class="col-12 col-md-6">
+        <label class="form-label mb-1" for="{{ form.beneficio_monto_aprox.id_for_label }}">
+          Monto aproximado mensual (opcional)
+        </label>
+        {{ form.beneficio_monto_aprox }}
+        {% if form.beneficio_monto_aprox.errors %}
+          <div class="text-danger small">{{ form.beneficio_monto_aprox.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+
+    {# ===== Servicios / contribuciones ===== #}
+    <h2 class="h6 text-uppercase text-muted mb-2">Servicios / contribuciones a la comuna</h2>
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-md-4 d-flex align-items-start">
+        <div class="form-check mt-2">
+          {{ form.paga_servicios }}
+          <label class="form-check-label" for="{{ form.paga_servicios.id_for_label }}">
+            Paga servicios a la comuna
+          </label>
+        </div>
+        {% if form.paga_servicios.errors %}
+          <div class="text-danger small ms-2">{{ form.paga_servicios.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+      <div class="col-12 col-md-8">
+        <label class="form-label mb-1" for="{{ form.detalle_servicios.id_for_label }}">
+          Detalle de servicios / referencia
+        </label>
+        {{ form.detalle_servicios }}
+        <div class="form-text small">
+          Ejemplo: "Agua potable – Medidor 123, Lote 5 Manzana 3" u otra referencia útil para localizar al contribuyente.
+        </div>
+        {% if form.detalle_servicios.errors %}
+          <div class="text-danger small">{{ form.detalle_servicios.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ===== Notas y estado ===== #}
+    <h2 class="h6 text-uppercase text-muted mb-2">Notas y estado</h2>
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-md-9">
+        <label class="form-label mb-1" for="{{ form.notas.id_for_label }}">Notas</label>
+        {{ form.notas }}
+        {% if form.notas.errors %}
+          <div class="text-danger small">{{ form.notas.errors|join:", " }}</div>
+        {% endif %}
+        <div class="form-text small">
+          Podés registrar datos relevantes: situación social, referencias, observaciones de entrevistas, etc.
+        </div>
+      </div>
+      <div class="col-12 col-md-3 d-flex align-items-start">
+        <div class="form-check mt-2">
+          {{ form.activo }}
+          <label class="form-check-label" for="{{ form.activo.id_for_label }}">
+            Activo en el censo
+          </label>
+        </div>
+        {% if form.activo.errors %}
+          <div class="text-danger small ms-2">{{ form.activo.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card-footer d-flex justify-content-between align-items-center">
+    <a href="{% url 'finanzas:persona_list' %}" class="btn btn-outline-secondary btn-sm">
+      Cancelar
+    </a>
+    <button type="submit" class="btn btn-primary btn-sm">
+      {% if form.instance.pk %}
+        Guardar cambios
+      {% else %}
+        Crear persona
+      {% endif %}
+    </button>
+  </div>
+</form>
+
+<script>
+  (function () {
+    // ===== Servicios: toggle detalle_servicios =====
+    const checkServicios = document.getElementById("id_paga_servicios");
+    const detalleServicios = document.getElementById("id_detalle_servicios");
+
+    function toggleServicios() {
+      if (!checkServicios || !detalleServicios) return;
+      const enabled = checkServicios.checked;
+      detalleServicios.disabled = !enabled;
+      detalleServicios.classList.toggle("is-disabled-field", !enabled);
+      if (!enabled) detalleServicios.value = "";
+    }
+
+    if (checkServicios) {
+      checkServicios.addEventListener("change", toggleServicios);
+      toggleServicios();
+    }
+
+    // ===== Beneficios: toggle detalle/organismo/monto =====
+    const checkBeneficio = document.getElementById("id_percibe_beneficio");
+    const detalleBeneficio = document.getElementById("id_beneficio_detalle");
+    const orgBeneficio = document.getElementById("id_beneficio_organismo");
+    const montoBeneficio = document.getElementById("id_beneficio_monto_aprox");
+
+    function toggleBeneficio() {
+      if (!checkBeneficio) return;
+      const enabled = checkBeneficio.checked;
+
+      [detalleBeneficio, orgBeneficio, montoBeneficio].forEach(el => {
+        if (!el) return;
+        el.disabled = !enabled;
+        el.classList.toggle("is-disabled-field", !enabled);
+        if (!enabled) el.value = "";
+      });
+    }
+
+    if (checkBeneficio) {
+      checkBeneficio.addEventListener("change", toggleBeneficio);
+      toggleBeneficio();
+    }
+  })();
+</script>
+
+{% endblock %}

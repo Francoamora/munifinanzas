@@ -1,0 +1,455 @@
+/* ================================
+ * Layout general
+ * ================================ */
+body {
+  min-height: 100vh;
+  background-color: #f5f5f5;
+}
+
+main {
+  padding-top: 1.25rem;
+  padding-bottom: 2rem;
+}
+
+/* ================================
+ * Navbar refinada
+ * ================================ */
+.navbar-finanzas {
+  background: #111827;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.8);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.45);
+}
+
+.navbar-finanzas .navbar-brand {
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
+.navbar-brand-logo {
+  height: 32px;
+  width: auto;
+}
+
+.navbar-brand-text {
+  line-height: 1.1;
+}
+
+.navbar-finanzas .navbar-brand-text strong {
+  font-size: 0.95rem;
+}
+
+.navbar-finanzas .navbar-brand-text span {
+  display: block;
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+/* Links del menú: estilo app */
+.navbar-finanzas .navbar-nav .nav-link {
+  font-size: 0.9rem;
+  padding-inline: 0.8rem;
+  border-bottom: 2px solid transparent;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.navbar-finanzas .navbar-nav .nav-link:hover {
+  color: #f9fafb;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.navbar-finanzas .navbar-nav .nav-link.active {
+  border-bottom-color: #22c55e;
+  color: #f9fafb;
+}
+
+/* Botón principal en navbar */
+.btn-header-primary {
+  border-radius: 999px;
+  padding-inline: 0.9rem;
+  font-weight: 500;
+}
+
+/* Botón usuario */
+.btn-user-menu {
+  border-radius: 999px;
+  padding-inline: 0.9rem;
+}
+
+/* ================================
+ * Tarjetas / tablas / tipografía
+ * ================================ */
+.card {
+  border-radius: 0.75rem;
+}
+
+.card.shadow-sm {
+  box-shadow: 0 0.125rem 0.35rem rgba(0, 0, 0, 0.06);
+}
+
+/* Hover general leve para cards clickeables */
+a .card.h-100,
+.mv-activity-card {
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+a:hover .card.h-100 {
+  transform: translateY(-1px);
+  box-shadow: 0 0.35rem 1.25rem rgba(15, 23, 42, 0.18);
+}
+
+/* Tablas */
+.table {
+  font-size: 0.875rem;
+}
+
+.table thead th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.table-hover tbody tr:hover {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.table-sm td,
+.table-sm th {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
+
+/* Badges más prolijas */
+.badge {
+  font-weight: 500;
+  border-radius: 999px;
+}
+
+/* ================================
+ * HOME: tarjetas de resumen del mes
+ * ================================ */
+
+.home-summary-card {
+  position: relative;
+  border-radius: 0.9rem;
+  overflow: hidden;
+  background-color: #ffffff;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    border-color 0.12s ease,
+    background-color 0.12s ease;
+}
+
+.home-summary-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.45;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  background: radial-gradient(circle at top left, rgba(15, 23, 42, 0.08), transparent 60%);
+}
+
+.home-summary-card .card-body {
+  position: relative;
+  z-index: 1;
+}
+
+.home-summary-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0.35rem 1.25rem rgba(15, 23, 42, 0.18);
+}
+
+/* Variantes con leve tinte según tipo */
+.home-summary-card--ingresos {
+  background: linear-gradient(135deg, rgba(25, 135, 84, 0.08), #ffffff);
+  border-left: 3px solid rgba(25, 135, 84, 0.8);
+}
+
+.home-summary-card--gastos {
+  background: linear-gradient(135deg, rgba(220, 53, 69, 0.08), #ffffff);
+  border-left: 3px solid rgba(220, 53, 69, 0.85);
+}
+
+.home-summary-card--saldo {
+  background: linear-gradient(135deg, rgba(13, 110, 253, 0.08), #ffffff);
+  border-left: 3px solid rgba(13, 110, 253, 0.85);
+}
+
+.home-summary-card--ayudas {
+  background: linear-gradient(135deg, rgba(13, 202, 240, 0.08), #ffffff);
+  border-left: 3px solid rgba(13, 202, 240, 0.9);
+}
+
+/* ================================
+ * Detalle de movimiento: tarjeta principal
+ * ================================ */
+
+.mv-detail-card {
+  border-radius: 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background-color: #ffffff;
+  position: relative;
+  overflow: hidden;
+  transition:
+    box-shadow 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.mv-detail-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  background: radial-gradient(circle at top left, rgba(15, 23, 42, 0.08), transparent 55%);
+}
+
+.mv-detail-card .card-body {
+  position: relative;
+  z-index: 1;
+}
+
+.mv-detail-card--ingreso {
+  border-left: 4px solid rgba(25, 135, 84, 0.9);
+}
+
+.mv-detail-card--gasto {
+  border-left: 4px solid rgba(220, 53, 69, 0.95);
+}
+
+.mv-detail-card--transferencia {
+  border-left: 4px solid rgba(108, 117, 125, 0.9);
+}
+
+.mv-detail-card:hover {
+  box-shadow: 0 0.35rem 1.25rem rgba(15, 23, 42, 0.18);
+  background-color: #ffffff;
+}
+
+/* ================================
+ * Badges de estado (persona activa/inactiva)
+ * ================================ */
+
+.badge-status-activo {
+  background-color: rgba(25, 135, 84, 0.08);
+  color: #157347;
+  border: 1px solid rgba(25, 135, 84, 0.45);
+  border-radius: 999px;
+}
+
+.badge-status-inactivo {
+  background-color: rgba(108, 117, 125, 0.08);
+  color: #495057;
+  border: 1px solid rgba(108, 117, 125, 0.45);
+  border-radius: 999px;
+}
+
+/* ================================
+ * Botones de filtros / atajos rápidos
+ * ================================ */
+.btn-quick {
+  --bs-btn-padding-y: 0.25rem;
+  --bs-btn-padding-x: 0.7rem;
+  --bs-btn-font-size: 0.75rem;
+  border-style: dashed;
+  border-radius: 999px;
+}
+
+.btn-quick-active {
+  background-color: #0d6efd;
+  color: #fff;
+  border-color: #0d6efd;
+}
+
+.btn-quick-active:hover {
+  background-color: #0b5ed7;
+  border-color: #0a58ca;
+  color: #fff;
+}
+
+/* ================================
+ * Bloques activos en el form de movimientos
+ * ================================ */
+.mv-section-active {
+  border-left: 0.25rem solid var(--bs-primary, #0d6efd);
+  background-color: rgba(13, 110, 253, 0.03);
+  border-radius: 0.5rem;
+  padding: 0.75rem 0.75rem 0.25rem;
+}
+
+/* ================================
+ * Pequeños ajustes de formularios
+ * ================================ */
+.form-label {
+  font-size: 0.86rem;
+  margin-bottom: 0.2rem;
+}
+
+.form-control-sm,
+.form-select-sm {
+  font-size: 0.85rem;
+}
+
+/* ================================
+ * Alertas compactas
+ * ================================ */
+.alert.small,
+.alert .small {
+  font-size: 0.8rem;
+}
+
+/* ================================
+ * HOME: lista moderna de últimos movimientos
+ * ================================ */
+.mv-activity-card .card-body {
+  padding: 0;
+}
+
+.mv-activity-card .card-header {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.04);
+}
+
+.mv-activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem 0;
+}
+
+.mv-activity-item + .mv-activity-item {
+  border-top: 1px solid rgba(15, 23, 42, 0.04);
+}
+
+.mv-activity-link {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.55rem 0.9rem;
+  text-decoration: none;
+  color: inherit;
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.12s ease;
+}
+
+.mv-activity-link:hover {
+  background-color: rgba(13, 110, 253, 0.03);
+  box-shadow: inset 2px 0 0 rgba(13, 110, 253, 0.9);
+  transform: translateY(-0.5px);
+}
+
+.mv-activity-pill {
+  flex: 0 0 2.3rem;
+  height: 2.3rem;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.mv-activity-pill--ingreso {
+  background-color: rgba(25, 135, 84, 0.12);
+  color: #157347;
+}
+
+.mv-activity-pill--gasto {
+  background-color: rgba(220, 53, 69, 0.14);
+  color: #b02a37;
+}
+
+.mv-activity-pill--transferencia {
+  background-color: rgba(108, 117, 125, 0.14);
+  color: #495057;
+}
+
+.mv-activity-title {
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+
+.mv-activity-meta {
+  font-size: 0.75rem;
+  color: #6c757d;
+}
+
+.mv-activity-amount {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* ================================
+ * Formularios "crudos" en cards
+ * (persona_form y similares)
+ * ================================ */
+
+form.card.shadow-sm .card-body input[type="text"]:not(.form-control),
+form.card.shadow-sm .card-body input[type="number"]:not(.form-control),
+form.card.shadow-sm .card-body input[type="tel"]:not(.form-control),
+form.card.shadow-sm .card-body input[type="email"]:not(.form-control),
+form.card.shadow-sm .card-body textarea:not(.form-control),
+form.card.shadow-sm .card-body select:not(.form-select) {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #ced4da;
+  font-size: 0.875rem;
+  background-color: #fff;
+  transition:
+    border-color 0.15s ease-in-out,
+    box-shadow 0.15s ease-in-out,
+    background-color 0.15s ease-in-out;
+}
+
+form.card.shadow-sm .card-body textarea:not(.form-control) {
+  min-height: 160px;
+  resize: vertical;
+}
+
+form.card.shadow-sm .card-body input[type="text"]:not(.form-control):focus,
+form.card.shadow-sm .card-body input[type="number"]:not(.form-control):focus,
+form.card.shadow-sm .card-body input[type="tel"]:not(.form-control):focus,
+form.card.shadow-sm .card-body input[type="email"]:not(.form-control):focus,
+form.card.shadow-sm .card-body textarea:not(.form-control):focus,
+form.card.shadow-sm .card-body select:not(.form-select):focus {
+  border-color: #0d6efd;
+  outline: 0;
+  box-shadow: 0 0 0 0.15rem rgba(13, 110, 253, 0.15);
+}
+
+/* Checkbox de "Activo en el censo" */
+form.card.shadow-sm .card-body .form-check input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  border: 1px solid #adb5bd;
+  margin-right: 0.4rem;
+}
+
+form.card.shadow-sm .card-body .form-check-label {
+  font-size: 0.875rem;
+}
+
+/* Títulos de sección dentro de formularios */
+form.card.shadow-sm h2.h6 {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6c757d;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Limitar ancho interno de formularios largos */
+form.card.shadow-sm .card-body {
+  max-width: 960px;
+  margin-inline: auto;
+}

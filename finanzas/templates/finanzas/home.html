@@ -1,0 +1,321 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+{% load finanzas_extras %}
+
+{% block title %}Inicio – Comuna de Tacuarendí{% endblock %}
+
+{% block content %}
+
+{# ===== Héroe principal ===== #}
+<div class="row align-items-center mb-3">
+  <div class="col-12 col-lg-8">
+    <h1 class="h3 mb-1">
+      Hola {{ request.user.get_short_name|default:request.user.username }}, ¿qué hacemos hoy?
+    </h1>
+    <p class="text-muted mb-0">
+      Panel de trabajo de la <strong>Comuna de Tacuarendí</strong>. Elegí una acción rápida o revisá el resumen del mes.
+    </p>
+  </div>
+  <div class="col-12 col-lg-4 text-lg-end mt-3 mt-lg-0">
+    <span class="badge bg-light text-secondary border rounded-pill px-3 py-2">
+      {{ hoy|date:"l d \\d\\e F Y"|capfirst }}
+    </span>
+  </div>
+</div>
+
+{# ===== Atajos rápidos ===== #}
+<nav class="d-flex flex-wrap align-items-center gap-2 mb-4" aria-label="Atajos rápidos">
+  <span class="small text-muted me-1">Atajos rápidos:</span>
+
+  {# Alta de movimiento: staff de finanzas u operador financiero #}
+  {% if rol_staff_finanzas or rol_operador_finanzas %}
+    <a href="{% url 'finanzas:movimiento_create' %}"
+       class="btn btn-success btn-sm btn-quick btn-quick-active">
+      + Registrar movimiento
+    </a>
+  {% endif %}
+
+  {# Listados de movimientos: staff, operadores y consulta política #}
+  {% if rol_staff_finanzas or rol_operador_finanzas or rol_consulta_politica %}
+    <a href="{% url 'finanzas:movimiento_list' %}?tipo=INGRESO"
+       class="btn btn-outline-secondary btn-sm btn-quick">
+      Ver ingresos
+    </a>
+
+    <a href="{% url 'finanzas:movimiento_list' %}?tipo=GASTO"
+       class="btn btn-outline-secondary btn-sm btn-quick">
+      Ver gastos
+    </a>
+
+    <a href="{% url 'finanzas:movimiento_list' %}?tipo=TRANSFERENCIA"
+       class="btn btn-outline-secondary btn-sm btn-quick">
+      Transferencias
+    </a>
+  {% endif %}
+
+  {# Órdenes de pago: módulo propio #}
+  {% if rol_staff_finanzas or rol_operador_finanzas %}
+    <a href="{% url 'finanzas:orden_pago_create' %}"
+       class="btn btn-outline-secondary btn-sm btn-quick">
+      + Nueva orden de pago
+    </a>
+  {% endif %}
+
+  {% if rol_staff_finanzas or rol_operador_finanzas or rol_consulta_politica %}
+    <a href="{% url 'finanzas:orden_pago_list' %}"
+       class="btn btn-outline-secondary btn-sm btn-quick">
+      Órdenes de pago
+    </a>
+  {% endif %}
+
+  {# Censo / ayudas: todos los roles que pueden ver personas #}
+  {% if rol_staff_finanzas or rol_operador_finanzas or rol_operador_social or rol_consulta_politica %}
+    <a href="{% url 'finanzas:persona_list' %}"
+       class="btn btn-outline-secondary btn-sm btn-quick">
+      Ayudas sociales
+    </a>
+  {% endif %}
+</nav>
+
+{# ===== Acciones principales (tarjetas grandes) ===== #}
+<div class="row g-3 mb-4">
+  {% if rol_staff_finanzas or rol_operador_finanzas or rol_consulta_politica %}
+    <div class="col-12 col-md-4">
+      <a href="{% url 'finanzas:movimiento_list' %}" class="text-decoration-none text-reset">
+        <div class="card h-100 shadow-sm border-0">
+          <div class="card-body d-flex flex-column">
+            <div class="mb-2">
+              <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                Movimientos
+              </span>
+            </div>
+            <h2 class="h6 mb-2">Ver y gestionar movimientos</h2>
+            <p class="small text-muted mb-3">
+              Listá, filtrá y analizá ingresos, gastos y transferencias de la comuna.
+            </p>
+            <div class="mt-auto small text-muted">
+              Saldo del mes (aprobados): <strong>${{ saldo_mes|formato_pesos }}</strong>
+            </div>
+          </div>
+        </div>
+      </a>
+    </div>
+  {% endif %}
+
+  {% if rol_staff_finanzas or rol_operador_finanzas or rol_operador_social or rol_consulta_politica %}
+    <div class="col-12 col-md-4">
+      <a href="{% url 'finanzas:persona_list' %}" class="text-decoration-none text-reset">
+        <div class="card h-100 shadow-sm border-0">
+          <div class="card-body d-flex flex-column">
+            <div class="mb-2">
+              <span class="badge bg-success-subtle text-success border border-success-subtle">
+                Personas
+              </span>
+            </div>
+            <h2 class="h6 mb-2">Censo de beneficiarios</h2>
+            <p class="small text-muted mb-3">
+              Consultá y actualizá datos de contacto y ayudas sociales otorgadas.
+            </p>
+            <div class="mt-auto small text-muted">
+              Ayudas sociales del mes (aprobadas): <strong>${{ ayudas_mes|formato_pesos }}</strong>
+            </div>
+          </div>
+        </div>
+      </a>
+    </div>
+  {% endif %}
+
+  {% if rol_staff_finanzas or rol_consulta_politica %}
+    <div class="col-12 col-md-4">
+      <a href="{% url 'finanzas:balance_resumen' %}" class="text-decoration-none text-reset">
+        <div class="card h-100 shadow-sm border-0">
+          <div class="card-body d-flex flex-column">
+            <div class="mb-2">
+              <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                Balances
+              </span>
+            </div>
+            <h2 class="h6 mb-2">Ver balances y resumen</h2>
+            <p class="small text-muted mb-3">
+              Analizá en detalle ingresos, gastos, áreas y categorías con más movimiento.
+            </p>
+            <div class="mt-auto small text-muted">
+              Ingresos mes (aprobados): <strong>${{ total_ingresos_mes|formato_pesos }}</strong><br>
+              Gastos mes (aprobados): <strong>${{ total_gastos_mes|formato_pesos }}</strong>
+            </div>
+          </div>
+        </div>
+      </a>
+    </div>
+  {% endif %}
+</div>
+
+{# ===== Resumen del mes + últimos movimientos ===== #}
+<div class="row g-3">
+  <div class="col-12 col-lg-6">
+    <h2 class="h6 mb-1">Resumen del mes</h2>
+    <p class="small text-muted mb-2">
+      Basado únicamente en movimientos aprobados.
+    </p>
+    <div class="row g-2">
+      <div class="col-12 col-sm-4">
+        <div class="card border-success-subtle shadow-sm home-summary-card home-summary-card--ingresos">
+          <div class="card-body py-3">
+            <div class="small text-muted text-uppercase">Ingresos</div>
+            <div class="fw-bold text-success fs-6">
+              ${{ total_ingresos_mes|formato_pesos }}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-sm-4">
+        <div class="card border-danger-subtle shadow-sm home-summary-card home-summary-card--gastos">
+          <div class="card-body py-3">
+            <div class="small text-muted text-uppercase">Gastos</div>
+            <div class="fw-bold text-danger fs-6">
+              ${{ total_gastos_mes|formato_pesos }}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-sm-4">
+        <div class="card border-primary-subtle shadow-sm home-summary-card home-summary-card--saldo">
+          <div class="card-body py-3">
+            <div class="small text-muted text-uppercase">Saldo</div>
+            <div class="fw-bold fs-6 {% if saldo_mes >= 0 %}text-primary{% else %}text-danger{% endif %}">
+              ${{ saldo_mes|formato_pesos }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% if rol_staff_finanzas %}
+        <div class="col-12">
+          <div class="card border-info-subtle shadow-sm mt-2 home-summary-card home-summary-card--ayudas">
+            <div class="card-body py-3">
+              <div class="small text-muted text-uppercase mb-1">
+                Ayudas, sueldos y servicios del mes
+              </div>
+              <p class="mb-1 small">
+                <span class="text-muted">Ayudas sociales:</span>
+                <span class="fw-bold text-info">${{ ayudas_mes|formato_pesos }}</span>
+              </p>
+              <p class="mb-1 small">
+                <span class="text-muted">Sueldos / jornales / changas:</span>
+                <span class="fw-bold text-warning">
+                  ${{ personal_mes|default:0|formato_pesos }}
+                </span>
+              </p>
+              <p class="mb-0 small">
+                <span class="text-muted">Servicios cobrados:</span>
+                <span class="fw-bold text-primary">
+                  ${{ servicios_mes|default:0|formato_pesos }}
+                </span>
+              </p>
+              <div class="small text-muted mt-2">
+                Basado en movimientos aprobados y en categorías marcadas como ayuda social, personal y servicios.
+              </div>
+            </div>
+          </div>
+
+          <div class="card border-primary-subtle shadow-sm mt-2 home-summary-card home-summary-card--ordenes">
+            <div class="card-body py-3">
+              <div class="small text-muted text-uppercase mb-1">
+                Órdenes de pago pendientes
+              </div>
+              <p class="mb-1 small">
+                <span class="text-muted">Cantidad:</span>
+                <span class="fw-bold">
+                  {{ cantidad_ordenes_pendientes|default:0 }}
+                </span>
+              </p>
+              <p class="mb-0 small">
+                <span class="text-muted">Monto comprometido:</span>
+                <span class="fw-bold text-primary">
+                  ${{ total_ordenes_pendientes|default:0|formato_pesos }}
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ===== Últimos movimientos (lista moderna) ===== #}
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm mv-activity-card">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <div>
+          <span class="small text-uppercase text-muted fw-semibold d-block">
+            Últimos movimientos
+          </span>
+          <span class="small text-muted">
+            Últimos 5 registros aprobados cargados en el sistema.
+          </span>
+        </div>
+        <a href="{% url 'finanzas:movimiento_list' %}" class="small text-decoration-none">
+          Ver todos
+        </a>
+      </div>
+      <div class="card-body">
+        {% if ultimos_movimientos %}
+          <ul class="mv-activity-list" aria-label="Últimos movimientos aprobados">
+            {% for m in ultimos_movimientos %}
+              <li class="mv-activity-item">
+                <a
+                  href="{% url 'finanzas:movimiento_detail' m.pk %}"
+                  class="mv-activity-link"
+                >
+                  <div class="mv-activity-pill
+                    {% if m.tipo == m.TIPO_INGRESO %}
+                      mv-activity-pill--ingreso
+                    {% elif m.tipo == m.TIPO_GASTO %}
+                      mv-activity-pill--gasto
+                    {% else %}
+                      mv-activity-pill--transferencia
+                    {% endif %}
+                  ">
+                    {{ m.get_tipo_display }}
+                  </div>
+
+                  <div class="flex-grow-1">
+                    <div class="d-flex justify-content-between align-items-baseline mb-1">
+                      <div class="mv-activity-title">
+                        {{ m.categoria|default:"Sin categoría" }}
+                      </div>
+                      <div class="mv-activity-amount
+                        {% if m.tipo == m.TIPO_INGRESO %}
+                          text-success
+                        {% elif m.tipo == m.TIPO_GASTO %}
+                          text-danger
+                        {% else %}
+                          text-secondary
+                        {% endif %}
+                      ">
+                        {% if m.tipo == m.TIPO_INGRESO %}+{% elif m.tipo == m.TIPO_GASTO %}-{% endif %}
+                        ${{ m.monto|formato_pesos }}
+                      </div>
+                    </div>
+                    <div class="d-flex justify-content-between mv-activity-meta">
+                      <span>{{ m.fecha_operacion|date:"d/m/Y" }}</span>
+                      <span>
+                        {{ m.descripcion|default:"(sin detalle)"|truncatechars:40 }}
+                      </span>
+                    </div>
+                  </div>
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="p-3 small text-muted">
+            Todavía no hay movimientos cargados.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

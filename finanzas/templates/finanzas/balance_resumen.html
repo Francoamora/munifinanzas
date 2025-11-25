@@ -1,0 +1,592 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+{% load finanzas_extras %}
+
+{% block title %}Balances – Comuna de Tacuarendí{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h1 class="h4 mb-0">Resumen general de balances</h1>
+    <div class="text-muted small">
+      Corte al día {{ hoy|date:"d/m/Y" }} — solo se contabilizan movimientos aprobados.
+    </div>
+  </div>
+
+  {% if request.user.is_staff %}
+    <a href="{% url 'finanzas:movimiento_create' %}" class="btn btn-primary btn-sm">
+      + Nuevo movimiento
+    </a>
+  {% endif %}
+</div>
+
+{# ================== CARDS DE TOTALES GLOBALES ================== #}
+<div class="row g-3 mb-3">
+  <div class="col-12 col-md-4">
+    <div class="card border-success-subtle shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase mb-1">
+          Ingresos acumulados
+        </div>
+        <div class="fs-4 fw-bold text-success">
+          ${{ total_ingresos|default:0|formato_pesos }}
+        </div>
+        <div class="small text-muted mt-1">
+          Entradas registradas en el sistema.
+        </div>
+        {% if total_servicios %}
+          <div class="small text-muted mt-1">
+            De los cuales ${{ total_servicios|formato_pesos }} provienen de servicios municipales.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card border-danger-subtle shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase mb-1">
+          Gastos acumulados
+        </div>
+        <div class="fs-4 fw-bold text-danger">
+          ${{ total_gastos|default:0|formato_pesos }}
+        </div>
+        <div class="small text-muted mt-1">
+          Egresos totales (todas las categorías de gasto).
+        </div>
+        {% if total_personal %}
+          <div class="small text-muted mt-1">
+            Incluye ${{ total_personal|formato_pesos }} en sueldos / jornales / changas.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card border-secondary-subtle shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase mb-1">
+          Saldo global
+        </div>
+        <div class="fs-4 fw-bold {% if saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
+          ${{ saldo|default:0|formato_pesos }}
+        </div>
+        <div class="small text-muted mt-1">
+          Ingresos menos gastos. Movimientos registrados: {{ cantidad_movimientos|default:0 }}.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ================== TOTALES DEL MES ACTUAL ================== #}
+<h2 class="h6 text-uppercase text-muted mb-2">
+  Mes actual ({{ primer_dia_mes|date:"d/m" }} al {{ hoy|date:"d/m" }})
+</h2>
+<div class="row g-3 mb-4">
+  <div class="col-12 col-md-4">
+    <div class="card border-success-subtle shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase mb-1">
+          Ingresos del mes
+        </div>
+        <div class="fs-5 fw-bold text-success">
+          ${{ total_ingresos_mes|default:0|formato_pesos }}
+        </div>
+        <div class="small text-muted mt-1">
+          Desde el {{ primer_dia_mes|date:"d/m" }} hasta hoy.
+        </div>
+        {% if total_servicios_mes %}
+          <div class="small text-muted mt-1">
+            De los cuales ${{ total_servicios_mes|formato_pesos }} por servicios municipales.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card border-danger-subtle shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase mb-1">
+          Gastos del mes
+        </div>
+        <div class="fs-5 fw-bold text-danger">
+          ${{ total_gastos_mes|default:0|formato_pesos }}
+        </div>
+        <div class="small text-muted mt-1">
+          Incluye todas las salidas del período.
+        </div>
+        {% if total_personal_mes %}
+          <div class="small text-muted mt-1">
+            De los cuales ${{ total_personal_mes|formato_pesos }} en sueldos / jornales / changas.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card border-secondary-subtle shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase mb-1">
+          Saldo del mes
+        </div>
+        <div class="fs-5 fw-bold {% if saldo_mes >= 0 %}text-success{% else %}text-danger{% endif %}">
+          ${{ saldo_mes|default:0|formato_pesos }}
+        </div>
+        <div class="small text-muted mt-1">
+          Movimientos del mes: {{ cantidad_movimientos_mes|default:0 }}.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ================== MÉTRICAS PRO ================== #}
+{% if total_ingresos or total_ayudas or total_servicios or total_personal %}
+  <div class="row g-3 mb-4">
+    {% if total_ingresos %}
+      {% widthratio total_gastos total_ingresos 100 as pct_gasto %}
+      <div class="col-12 col-md-6 col-xl-3">
+        <div class="card border-info-subtle shadow-sm h-100">
+          <div class="card-body">
+            <div class="small text-muted text-uppercase mb-1">
+              Relación gasto / ingreso
+            </div>
+            <div class="fs-4 fw-bold text-info">
+              {{ pct_gasto }}%
+            </div>
+            <div class="small text-muted mt-1">
+              Porcentaje de los ingresos totales que ya se gastaron.
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if total_ayudas %}
+      <div class="col-12 col-md-6 col-xl-3">
+        <div class="card border-warning-subtle shadow-sm h-100">
+          <div class="card-body">
+            <div class="small text-muted text-uppercase mb-1">
+              Ayudas sociales acumuladas
+            </div>
+            <div class="fs-4 fw-bold text-warning">
+              ${{ total_ayudas|default:0|formato_pesos }}
+            </div>
+            {% if total_gastos %}
+              <div class="small text-muted mt-1">
+                Equivale al {{ porcentaje_ayudas_sobre_gastos|default:0|floatformat:1 }}%
+                del gasto acumulado.
+              </div>
+            {% else %}
+              <div class="small text-muted mt-1">
+                Aún no hay gastos registrados para calcular proporción.
+              </div>
+            {% endif %}
+            {% if total_ayudas_mes %}
+              <div class="small text-muted mt-1">
+                En el mes: ${{ total_ayudas_mes|formato_pesos }} en ayudas.
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if total_personal %}
+      <div class="col-12 col-md-6 col-xl-3">
+        <div class="card border-warning-subtle shadow-sm h-100">
+          <div class="card-body">
+            <div class="small text-muted text-uppercase mb-1">
+              Sueldos / jornales / changas
+            </div>
+            <div class="fs-4 fw-bold text-warning">
+              ${{ total_personal|default:0|formato_pesos }}
+            </div>
+            {% if total_gastos %}
+              {% widthratio total_personal total_gastos 100 as pct_personal %}
+              <div class="small text-muted mt-1">
+                Representa el {{ pct_personal }}% del gasto acumulado.
+              </div>
+            {% else %}
+              <div class="small text-muted mt-1">
+                Aún no hay gastos registrados para calcular proporción.
+              </div>
+            {% endif %}
+            {% if total_personal_mes %}
+              <div class="small text-muted mt-1">
+                En el mes: ${{ total_personal_mes|formato_pesos }} en sueldos / jornales / changas.
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if total_servicios %}
+      <div class="col-12 col-md-6 col-xl-3">
+        <div class="card border-primary-subtle shadow-sm h-100">
+          <div class="card-body">
+            <div class="small text-muted text-uppercase mb-1">
+              Ingresos por servicios
+            </div>
+            <div class="fs-4 fw-bold text-primary">
+              ${{ total_servicios|default:0|formato_pesos }}
+            </div>
+            {% if total_ingresos %}
+              {% widthratio total_servicios total_ingresos 100 as pct_servicios %}
+              <div class="small text-muted mt-1">
+                Equivale al {{ pct_servicios }}% de los ingresos acumulados.
+              </div>
+            {% else %}
+              <div class="small text-muted mt-1">
+                Aún no hay ingresos registrados para calcular proporción.
+              </div>
+            {% endif %}
+            {% if total_servicios_mes %}
+              <div class="small text-muted mt-1">
+                En el mes: ${{ total_servicios_mes|formato_pesos }} por servicios municipales.
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
+
+{# ================== RANKINGS ================== #}
+<div class="row g-3">
+  <div class="col-12 col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <span class="small text-uppercase text-muted fw-semibold">
+          Categorías con más gasto
+        </span>
+        <span class="badge bg-light text-muted border small">
+          Top {{ top_categorias|length }}
+        </span>
+      </div>
+      <div class="card-body p-0">
+        {% if top_categorias %}
+          <table class="table table-sm mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Categoría</th>
+                <th class="text-end">Total gastado</th>
+                <th class="text-end">Mov.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for cat in top_categorias %}
+                <tr>
+                  <td>{{ cat.categoria__nombre }}</td>
+                  <td class="text-end">
+                    ${{ cat.total|default:0|formato_pesos }}
+                  </td>
+                  <td class="text-end">
+                    {{ cat.cantidad }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div class="p-3 text-muted small">
+            Todavía no hay movimientos de gasto registrados.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <span class="small text-uppercase text-muted fw-semibold">
+          Áreas con más gasto
+        </span>
+        <span class="badge bg-light text-muted border small">
+          Top {{ top_areas|length }}
+        </span>
+      </div>
+      <div class="card-body p-0">
+        {% if top_areas %}
+          <table class="table table-sm mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Área</th>
+                <th class="text-end">Total gastado</th>
+                <th class="text-end">Mov.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for a in top_areas %}
+                <tr>
+                  <td>{{ a.area__nombre }}</td>
+                  <td class="text-end">
+                    ${{ a.total|default:0|formato_pesos }}
+                  </td>
+                  <td class="text-end">
+                    {{ a.cantidad }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div class="p-3 text-muted small">
+            Todavía no hay gastos asociados a áreas.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <span class="small text-uppercase text-muted fw-semibold">
+          Programas de ayuda con más gasto
+        </span>
+        <span class="badge bg-light text-muted border small">
+          Top {{ top_programas|length }}
+        </span>
+      </div>
+      <div class="card-body p-0">
+        {% if top_programas %}
+          <table class="table table-sm mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Programa</th>
+                <th class="text-end">Total gastado</th>
+                <th class="text-end">Mov.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in top_programas %}
+                <tr>
+                  <td>{{ p.programa_ayuda_texto }}</td>
+                  <td class="text-end">
+                    ${{ p.total|default:0|formato_pesos }}
+                  </td>
+                  <td class="text-end">
+                    {{ p.cantidad }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div class="p-3 text-muted small">
+            No hay programas de ayuda registrados todavía.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ================== BARRIOS Y BENEFICIARIOS ================== #}
+<div class="row g-3 mt-3">
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <span class="small text-uppercase text-muted fw-semibold">
+          Barrios con más ayudas sociales
+        </span>
+        <span class="badge bg-light text-muted border small">
+          Top {{ top_barrios|length }}
+        </span>
+      </div>
+      <div class="card-body p-0">
+        {% if top_barrios %}
+          <table class="table table-sm mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Barrio</th>
+                <th class="text-end">Total ayudas</th>
+                <th class="text-end">Mov.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for b in top_barrios %}
+                <tr>
+                  <td>{{ b.barrio }}</td>
+                  <td class="text-end">
+                    ${{ b.total|default:0|formato_pesos }}
+                  </td>
+                  <td class="text-end">
+                    {{ b.cantidad }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div class="p-3 text-muted small">
+            Todavía no hay ayudas sociales asociadas a barrios.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <span class="small text-uppercase text-muted fw-semibold">
+          Beneficiarios con más ayudas
+        </span>
+        <span class="badge bg-light text-muted border small">
+          Top {{ top_beneficiarios|length }}
+        </span>
+      </div>
+      <div class="card-body p-0">
+        {% if top_beneficiarios %}
+          <table class="table table-sm mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>DNI</th>
+                <th>Apellido y nombre</th>
+                <th class="text-end">Total ayudas</th>
+                <th class="text-end">Mov.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ben in top_beneficiarios %}
+                <tr>
+                  <td>{{ ben.beneficiario__dni }}</td>
+                  <td>{{ ben.apellido }} {{ ben.nombre }}</td>
+                  <td class="text-end">
+                    ${{ ben.total|default:0|formato_pesos }}
+                  </td>
+                  <td class="text-end">
+                    {{ ben.cantidad }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <div class="p-3 text-muted small">
+            Aún no hay beneficiarios con ayudas registradas.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if top_contribuyentes_servicios %}
+  <div class="row g-3 mt-3">
+    <div class="col-12">
+      <div class="card shadow-sm h-100">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <span class="small text-uppercase text-muted fw-semibold">
+            Contribuyentes con más pagos de servicios
+          </span>
+          <span class="badge bg-light text-muted border small">
+            Top {{ top_contribuyentes_servicios|length }}
+          </span>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>DNI</th>
+                <th>Apellido y nombre</th>
+                <th class="text-end">Total servicios</th>
+                <th class="text-end">Pagos</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in top_contribuyentes_servicios %}
+                <tr>
+                  <td>{{ c.beneficiario__dni }}</td>
+                  <td>{{ c.apellido }} {{ c.nombre }}</td>
+                  <td class="text-end">
+                    ${{ c.total|default:0|formato_pesos }}
+                  </td>
+                  <td class="text-end">
+                    {{ c.cantidad }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{# ================== ÚLTIMOS MOVIMIENTOS ================== #}
+<div class="card shadow-sm mt-4">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <span class="small text-uppercase text-muted fw-semibold">
+      Últimos movimientos registrados
+    </span>
+    <a href="{% url 'finanzas:movimiento_list' %}" class="small">
+      Ver todos
+    </a>
+  </div>
+  <div class="card-body p-0">
+    {% if ultimos_movimientos %}
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th style="width:90px;">Fecha</th>
+              <th>Tipo</th>
+              <th>Categoría</th>
+              <th>Área</th>
+              <th class="text-end">Monto</th>
+              <th>Detalle</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in ultimos_movimientos %}
+              <tr>
+                <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
+                <td>
+                  {% if m.tipo == m.TIPO_INGRESO %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle">
+                      Ingreso
+                    </span>
+                  {% elif m.tipo == m.TIPO_GASTO %}
+                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+                      Gasto
+                    </span>
+                  {% else %}
+                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                      Transferencia
+                    </span>
+                  {% endif %}
+                </td>
+                <td>{{ m.categoria }}</td>
+                <td>{{ m.area|default:"-" }}</td>
+                <td class="text-end">
+                  ${{ m.monto|formato_pesos }}
+                </td>
+                <td>
+                  <a
+                    href="{% url 'finanzas:movimiento_detail' m.pk %}"
+                    class="text-decoration-none"
+                  >
+                    {{ m.descripcion|default:"(sin detalle)"|truncatechars:60 }}
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="p-3 text-muted small">
+        Todavía no hay movimientos cargados.
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

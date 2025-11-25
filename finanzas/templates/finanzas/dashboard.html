@@ -1,0 +1,491 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+{% load finanzas_extras %}
+
+{% block title %}Tablero de finanzas – Comuna de Tacuarendí{% endblock %}
+
+{% block content %}
+
+{# =============== HEADER =============== #}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h1 class="h4 mb-0">Tablero de finanzas</h1>
+    <div class="text-muted small">
+      Corte al día {{ hoy|date:"d/m/Y" }} · Tablero operativo.
+      Solo se contabilizan <strong>movimientos aprobados</strong> en saldos y métricas.
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2 justify-content-end">
+    <a href="{% url 'finanzas:movimiento_list' %}" class="btn btn-outline-secondary btn-sm">
+      Ver listado de movimientos
+    </a>
+    {% if request.user.is_staff %}
+      <a href="{% url 'finanzas:movimiento_create' %}" class="btn btn-success btn-sm">
+        + Nuevo movimiento
+      </a>
+    {% endif %}
+    <a href="{% url 'finanzas:balance_resumen' %}" class="btn btn-primary btn-sm">
+      Ir a balances analíticos
+    </a>
+  </div>
+</div>
+
+{# =============== TIRA RESUMEN RÁPIDO =============== #}
+<div class="card shadow-sm mb-3">
+  <div class="card-body py-2 d-flex flex-wrap gap-3 align-items-center">
+    <div class="small text-uppercase text-muted fw-semibold me-2">
+      Resumen rápido
+    </div>
+
+    <div class="badge bg-light text-muted border small">
+      Global:
+      <span class="fw-semibold {% if saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
+        ${{ saldo|default:0|formato_pesos }}
+      </span>
+      <span class="text-muted ms-1">
+        ({{ cantidad_movimientos|default:0 }} movs.)
+      </span>
+    </div>
+
+    <div class="badge bg-light text-muted border small">
+      Mes actual:
+      <span class="fw-semibold {% if saldo_mes >= 0 %}text-success{% else %}text-danger{% endif %}">
+        ${{ saldo_mes|default:0|formato_pesos }}
+      </span>
+      <span class="text-muted ms-1">
+        ({{ cantidad_movimientos_mes|default:0 }} movs.)
+      </span>
+    </div>
+
+    <div class="badge bg-light text-muted border small">
+      Estados:
+      <span class="text-warning">Borradores: <strong>{{ total_borradores }}</strong></span>
+      ·
+      <span class="text-success">Aprobados: <strong>{{ total_aprobados }}</strong></span>
+      ·
+      <span class="text-danger">Rechazados: <strong>{{ total_rechazados }}</strong></span>
+    </div>
+  </div>
+</div>
+
+{# =============== BLOQUE 1: VISIÓN GLOBAL + MES ACTUAL =============== #}
+<div class="row g-3 mb-3">
+  {# Global #}
+  <div class="col-12 col-lg-6">
+    <div class="card border-secondary-subtle shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-1">
+          <div class="small text-muted text-uppercase">
+            Visión global (histórico aprobado)
+          </div>
+          <span class="badge bg-light text-muted border small">
+            {{ cantidad_movimientos|default:0 }} movimientos
+          </span>
+        </div>
+        <div class="fs-3 fw-bold {% if saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
+          ${{ saldo|default:0|formato_pesos }}
+        </div>
+        <div class="row g-2 small text-muted mt-2">
+          <div class="col-6">
+            <div class="text-uppercase mb-1">Ingresos acumulados</div>
+            <div class="fw-semibold text-success">
+              ${{ total_ingresos|default:0|formato_pesos }}
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="text-uppercase mb-1">Gastos acumulados</div>
+            <div class="fw-semibold text-danger">
+              ${{ total_gastos|default:0|formato_pesos }}
+            </div>
+          </div>
+        </div>
+        <p class="small text-muted mt-2 mb-0">
+          Este saldo resume todo el historial de movimientos
+          <strong>aprobados</strong> registrados en el sistema.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {# Mes actual #}
+  <div class="col-12 col-lg-6">
+    <div class="card border-primary-subtle shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-1">
+          <div class="small text-muted text-uppercase">
+            Mes actual ({{ primer_dia_mes|date:"d/m" }} al {{ hoy|date:"d/m" }})
+          </div>
+          <span class="badge bg-light text-muted border small">
+            {{ cantidad_movimientos_mes|default:0 }} movimientos
+          </span>
+        </div>
+        <div class="fs-4 fw-bold {% if saldo_mes >= 0 %}text-success{% else %}text-danger{% endif %}">
+          ${{ saldo_mes|default:0|formato_pesos }}
+        </div>
+        <div class="row g-2 small text-muted mt-2">
+          <div class="col-4">
+            <div class="text-uppercase mb-1">Ingresos mes</div>
+            <div class="fw-semibold text-success">
+              ${{ total_ingresos_mes|default:0|formato_pesos }}
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="text-uppercase mb-1">Gastos mes</div>
+            <div class="fw-semibold text-danger">
+              ${{ total_gastos_mes|default:0|formato_pesos }}
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="text-uppercase mb-1">Tendencia</div>
+            <div class="fw-semibold {% if saldo_mes >= 0 %}text-success{% else %}text-danger{% endif %}">
+              {% if saldo_mes >= 0 %}Superávit{% else %}Déficit{% endif %}
+            </div>
+          </div>
+        </div>
+        <p class="small text-muted mt-2 mb-0">
+          Este bloque sirve como <strong>foto rápida del mes</strong> para el seguimiento político y operativo.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# =============== BLOQUE 2: SERVICIOS / AYUDAS / PERSONAL =============== #}
+<div class="row g-3 mb-4">
+  <div class="col-12 col-md-4">
+    <div class="card border-success-subtle shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase mb-1">
+          Ingresos por servicios
+        </div>
+        <div class="fs-5 fw-bold text-success">
+          ${{ total_servicios|default:0|formato_pesos }}
+        </div>
+        {% if total_ingresos %}
+          <div class="small text-muted mt-1">
+            {{ porcentaje_servicios_sobre_ingresos|default:0|floatformat:1 }}%
+            de los ingresos acumulados.
+          </div>
+        {% else %}
+          <div class="small text-muted mt-1">
+            Sin ingresos registrados aún para calcular proporción.
+          </div>
+        {% endif %}
+        {% if total_servicios_mes %}
+          <div class="small text-muted mt-2">
+            En el mes:
+            <strong>${{ total_servicios_mes|formato_pesos }}</strong>
+            por servicios municipales.
+          </div>
+        {% endif %}
+        <p class="small text-muted mt-2 mb-0">
+          Indicador clave de <strong>esfuerzo contributivo</strong> de vecinos y comercios.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-4">
+    <div class="card border-warning-subtle shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase mb-1">
+          Ayudas sociales
+        </div>
+        <div class="fw-bold text-warning fs-6 mb-1">
+          ${{ total_ayudas|default:0|formato_pesos }}
+        </div>
+        {% if total_gastos %}
+          <div class="small text-muted mb-2">
+            {{ porcentaje_ayudas_sobre_gastos|default:0|floatformat:1 }}%
+            del gasto acumulado.
+          </div>
+        {% else %}
+          <div class="small text-muted mb-2">
+            Aún no hay gastos cargados para calcular proporción.
+          </div>
+        {% endif %}
+        <p class="small text-muted mb-0">
+          Resume el <strong>esfuerzo social</strong> de la Comuna
+          (alimentos, materiales, apoyos puntuales, etc.).
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-4">
+    <div class="card border-info-subtle shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase mb-1">
+          Personal · sueldos / jornales / changas
+        </div>
+        <div class="fw-bold text-info fs-6 mb-1">
+          ${{ total_personal|default:0|formato_pesos }}
+        </div>
+        {% if total_gastos %}
+          <div class="small text-muted mb-2">
+            {{ porcentaje_personal_sobre_gastos|default:0|floatformat:1 }}%
+            del gasto acumulado.
+          </div>
+        {% else %}
+          <div class="small text-muted mb-2">
+            Aún no hay gastos cargados para calcular proporción.
+          </div>
+        {% endif %}
+        <p class="small text-muted mb-0">
+          Mide el costo de <strong>recursos humanos</strong>:
+          planta, contratados y trabajo eventual.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# =============== BLOQUE 3: ESTADO DE LOS MOVIMIENTOS =============== #}
+<div class="row g-3 mb-3">
+  <div class="col-12 col-lg-6">
+    <div class="card border-light shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase mb-1">
+          Estado de los movimientos
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mb-2">
+          <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+            Borradores: <strong>{{ total_borradores }}</strong>
+          </span>
+          <span class="badge bg-success-subtle text-success border border-success-subtle">
+            Aprobados: <strong>{{ total_aprobados }}</strong>
+          </span>
+          <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+            Rechazados: <strong>{{ total_rechazados }}</strong>
+          </span>
+        </div>
+
+        {% if total_borradores %}
+          <div class="small text-muted mb-2">
+            Hay <strong>{{ total_borradores }}</strong> movimiento{{ total_borradores|pluralize:"s" }}
+            en <strong>BORRADOR</strong> que todavía no impactan en balances.
+          </div>
+          <a
+            href="{% url 'finanzas:movimiento_list' %}?estado=BORRADOR"
+            class="btn btn-outline-warning btn-sm"
+          >
+            Revisar borradores en el listado
+          </a>
+        {% else %}
+          <div class="small text-muted">
+            No hay borradores pendientes: todos los movimientos están aprobados o rechazados.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# Rechazados recientes #}
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <span class="small text-uppercase text-muted fw-semibold">
+          Movimientos rechazados recientes
+        </span>
+        <span class="badge bg-light text-muted border small">
+          {{ rechazados_recientes|length }} mostrados
+        </span>
+      </div>
+      <div class="card-body p-0">
+        {% if rechazados_recientes %}
+          <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 90px;">Fecha</th>
+                  <th>Tipo</th>
+                  <th class="text-end" style="width: 120px;">Monto</th>
+                  <th>Detalle</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for m in rechazados_recientes %}
+                  <tr>
+                    <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
+                    <td>
+                      {% if m.tipo == m.TIPO_INGRESO %}
+                        <span class="badge bg-success-subtle text-success border border-success-subtle">
+                          Ingreso
+                        </span>
+                      {% elif m.tipo == m.TIPO_GASTO %}
+                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+                          Gasto
+                        </span>
+                      {% else %}
+                        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                          Transferencia
+                        </span>
+                      {% endif %}
+                    </td>
+                    <td class="text-end">
+                      ${{ m.monto|formato_pesos }}
+                    </td>
+                    <td>
+                      <a
+                        href="{% url 'finanzas:movimiento_detail' m.pk %}"
+                        class="text-decoration-none"
+                      >
+                        {{ m.descripcion|default:"(sin detalle)"|truncatechars:50 }}
+                      </a>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="p-3 text-muted small">
+            No hay movimientos rechazados recientes.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{# =============== BLOQUE 4: BORRADORES PENDIENTES =============== #}
+<div class="card shadow-sm mb-3">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <span class="small text-uppercase text-muted fw-semibold">
+      Borradores pendientes de revisión
+    </span>
+    <span class="badge bg-light text-muted border small">
+      {{ borradores_recientes|length }} mostrados
+    </span>
+  </div>
+  <div class="card-body p-0">
+    {% if borradores_recientes %}
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th style="width: 90px;">Fecha</th>
+              <th>Tipo</th>
+              <th>Categoría</th>
+              <th>Área</th>
+              <th class="text-end" style="width: 120px;">Monto</th>
+              <th>Detalle</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in borradores_recientes %}
+              <tr>
+                <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
+                <td>
+                  {% if m.tipo == m.TIPO_INGRESO %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle">
+                      Ingreso
+                    </span>
+                  {% elif m.tipo == m.TIPO_GASTO %}
+                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+                      Gasto
+                    </span>
+                  {% else %}
+                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                      Transferencia
+                    </span>
+                  {% endif %}
+                </td>
+                <td>{{ m.categoria }}</td>
+                <td>{{ m.area|default:"-" }}</td>
+                <td class="text-end">
+                  ${{ m.monto|formato_pesos }}
+                </td>
+                <td>
+                  <a
+                    href="{% url 'finanzas:movimiento_detail' m.pk %}"
+                    class="text-decoration-none"
+                  >
+                    {{ m.descripcion|default:"(sin detalle)"|truncatechars:60 }}
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="p-3 text-muted small">
+        No hay movimientos en estado borrador. El tablero está al día ✅.
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{# =============== BLOQUE 5: ÚLTIMOS MOVIMIENTOS APROBADOS =============== #}
+<div class="card shadow-sm mt-3">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <span class="small text-uppercase text-muted fw-semibold">
+      Últimos movimientos aprobados
+    </span>
+    <a href="{% url 'finanzas:movimiento_list' %}" class="small">
+      Ver listado completo
+    </a>
+  </div>
+  <div class="card-body p-0">
+    {% if ultimos_movimientos %}
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th style="width: 90px;">Fecha</th>
+              <th>Tipo</th>
+              <th>Categoría</th>
+              <th>Área</th>
+              <th class="text-end" style="width: 120px;">Monto</th>
+              <th>Detalle</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in ultimos_movimientos %}
+              <tr>
+                <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
+                <td>
+                  {% if m.tipo == m.TIPO_INGRESO %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle">
+                      Ingreso
+                    </span>
+                  {% elif m.tipo == m.TIPO_GASTO %}
+                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+                      Gasto
+                    </span>
+                  {% else %}
+                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                      Transferencia
+                    </span>
+                  {% endif %}
+                </td>
+                <td>{{ m.categoria }}</td>
+                <td>{{ m.area|default:"-" }}</td>
+                <td class="text-end">
+                  ${{ m.monto|formato_pesos }}
+                </td>
+                <td>
+                  <a
+                    href="{% url 'finanzas:movimiento_detail' m.pk %}"
+                    class="text-decoration-none"
+                  >
+                    {{ m.descripcion|default:"(sin detalle)"|truncatechars:60 }}
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="p-3 text-muted small">
+        Todavía no hay movimientos aprobados cargados.
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

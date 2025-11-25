@@ -1,0 +1,382 @@
+{% extends "finanzas/base.html" %}
+
+{% block title %}
+  {% if tarea %}Editar{% else %}Nueva{% endif %} tarea – Agenda
+{% endblock %}
+
+{% block content %}
+
+<style>
+  /* ================================  
+   * AGENDA FORM – CAPA VISUAL PRO
+   * ================================ */
+  .agenda-form .agenda-card { border-radius: var(--mv-radius-xl); }
+  .agenda-form .agenda-card .card-header{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:.75rem;
+  }
+  .agenda-form .agenda-section-title{
+    font-size:.7rem; font-weight:800; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--mv-gray-600);
+  }
+
+  .agenda-form .agenda-field input,
+  .agenda-form .agenda-field select,
+  .agenda-form .agenda-field textarea{
+    width:100%;
+    font-size:.9rem;
+    border:1.5px solid var(--mv-border-color);
+    border-radius: var(--mv-radius-md);
+    padding: .65rem .9rem;
+    background: var(--mv-surface-bg);
+    box-shadow: var(--mv-shadow-xs);
+    transition: all var(--mv-transition-base);
+  }
+  .agenda-form .agenda-field textarea{
+    min-height: 140px;
+    resize: vertical;
+  }
+  .agenda-form .agenda-field input:hover,
+  .agenda-form .agenda-field select:hover,
+  .agenda-form .agenda-field textarea:hover{
+    border-color: var(--mv-border-hover);
+  }
+  .agenda-form .agenda-field input:focus,
+  .agenda-form .agenda-field select:focus,
+  .agenda-form .agenda-field textarea:focus{
+    outline: none;
+    border-color: var(--mv-primary);
+    box-shadow: 0 0 0 4px rgba(13,110,253,.12), var(--mv-shadow-sm);
+    background: var(--mv-surface-elevated);
+  }
+
+  .agenda-form .agenda-help{ color:var(--mv-gray-500); font-size:.8rem; }
+  .agenda-form .agenda-error{ color:var(--mv-danger); font-size:.8rem; margin-top:.25rem; }
+
+  .agenda-form .agenda-grid-2{
+    display:grid; grid-template-columns:1fr 1fr; gap:1rem;
+  }
+  @media (max-width: 768px){ .agenda-form .agenda-grid-2{ grid-template-columns:1fr; } }
+
+  .agenda-side{
+    border-radius: var(--mv-radius-xl);
+  }
+  .agenda-side .tip-box{
+    background: linear-gradient(135deg, var(--mv-primary-ghost) 0%, var(--mv-surface-bg) 100%);
+    border: 1px dashed var(--mv-border-color);
+  }
+</style>
+
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <h1 class="h4 mb-1">
+      {% if tarea %}Editar tarea{% else %}Nueva tarea{% endif %}
+    </h1>
+    <div class="text-muted small">
+      Cargá la info clave. <strong>El vencimiento es obligatorio</strong> para que la tarea entre en agenda.
+    </div>
+  </div>
+
+  <a href="{% url 'agenda:agenda_list' %}" class="btn btn-outline-secondary btn-sm">
+    Volver al listado
+  </a>
+</div>
+
+<form method="post" class="agenda-form" role="form">
+  {% csrf_token %}
+  {{ form.media }}
+
+  {# ************ CAMPO OCULTO OBLIGATORIO ************ #}
+  {{ form.origen }}  
+
+  {# ================== DEBUG DE ERRORES ================== #}
+  {% if form.errors %}
+    <div style="border:3px solid red; padding:1rem; margin-bottom:1rem; background:#ffecec;">
+      <h4 class="mb-2">ERRORES DEL FORMULARIO:</h4>
+      <pre class="small">{{ form.errors }}</pre>
+    </div>
+  {% endif %}
+
+  {% if form.non_field_errors %}
+    <div class="alert alert-danger py-2 mb-3">
+      {{ form.non_field_errors }}
+    </div>
+  {% endif %}
+
+  <div class="row g-3">
+    <!-- ================== COLUMNA PRINCIPAL ================== -->
+    <div class="col-12 col-lg-8">
+
+      <!-- ===== DATOS PRINCIPALES ===== -->
+      <div class="card shadow-sm mb-3 agenda-card">
+        <div class="card-header">
+          <div class="agenda-section-title">Datos principales</div>
+          <span class="badge text-bg-light border small">Campos obligatorios marcados con *</span>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+
+            <div class="col-12 agenda-field">
+              <label class="form-label mb-1 small fw-semibold" for="{{ form.titulo.id_for_label }}">
+                {{ form.titulo.label }} <span class="text-danger">*</span>
+              </label>
+              {{ form.titulo }}
+              {% if form.titulo.errors %}
+                <div class="agenda-error">{{ form.titulo.errors|join:", " }}</div>
+              {% endif %}
+              <div class="agenda-help">
+                {{ form.titulo.help_text }}
+              </div>
+            </div>
+
+            <div class="col-12 col-md-6 agenda-field">
+              <label class="form-label mb-1 small fw-semibold" for="{{ form.responsable.id_for_label }}">
+                {{ form.responsable.label }}
+              </label>
+              {{ form.responsable }}
+              {% if form.responsable.errors %}
+                <div class="agenda-error">{{ form.responsable.errors|join:", " }}</div>
+              {% endif %}
+              <div class="agenda-help">Podés asignarla a alguien o dejarla sin responsable.</div>
+            </div>
+
+            <div class="col-12 col-md-6 agenda-field">
+              <label class="form-label mb-1 small fw-semibold" for="{{ form.tipo.id_for_label }}">
+                {{ form.tipo.label }}
+              </label>
+              {{ form.tipo }}
+              {% if form.tipo.errors %}
+                <div class="agenda-error">{{ form.tipo.errors|join:", " }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12 agenda-field">
+              <label class="form-label mb-1 small fw-semibold" for="{{ form.descripcion.id_for_label }}">
+                {{ form.descripcion.label }}
+              </label>
+              {{ form.descripcion }}
+              {% if form.descripcion.errors %}
+                <div class="agenda-error">{{ form.descripcion.errors|join:", " }}</div>
+              {% endif %}
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== CLASIFICACIÓN ===== -->
+      <div class="card shadow-sm mb-3 agenda-card">
+        <div class="card-header">
+          <div class="agenda-section-title">Clasificación</div>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+
+            <div class="col-12 col-md-4 agenda-field">
+              <label class="form-label mb-1 small fw-semibold" for="{{ form.prioridad.id_for_label }}">
+                {{ form.prioridad.label }}
+              </label>
+              {{ form.prioridad }}
+              {% if form.prioridad.errors %}
+                <div class="agenda-error">{{ form.prioridad.errors|join:", " }}</div>
+              {% endif %}
+              <div class="agenda-help">Define el orden de trabajo.</div>
+            </div>
+
+            <div class="col-12 col-md-4 agenda-field">
+              <label class="form-label mb-1 small fw-semibold" for="{{ form.estado.id_for_label }}">
+                {{ form.estado.label }}
+              </label>
+              {{ form.estado }}
+              {% if form.estado.errors %}
+                <div class="agenda-error">{{ form.estado.errors|join:", " }}</div>
+              {% endif %}
+              <div class="agenda-help">
+                Usá Pendiente, En proceso, Completada o Cancelada.
+              </div>
+            </div>
+
+            <div class="col-12 col-md-4 agenda-field">
+              <label class="form-label mb-1 small fw-semibold" for="{{ form.ambito.id_for_label }}">
+                {{ form.ambito.label }}
+              </label>
+              {{ form.ambito }}
+              {% if form.ambito.errors %}
+                <div class="agenda-error">{{ form.ambito.errors|join:", " }}</div>
+              {% endif %}
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== FECHAS ===== -->
+      <div class="card shadow-sm mb-3 agenda-card">
+        <div class="card-header">
+          <div class="agenda-section-title">Fechas</div>
+          <span class="badge text-bg-warning-subtle text-warning border small">
+            Marca la urgencia
+          </span>
+        </div>
+        <div class="card-body">
+          <div class="row g-3 align-items-end">
+
+            <div class="col-12 col-md-6 agenda-field">
+              <label class="form-label mb-1 small fw-semibold" for="{{ form.fecha_vencimiento.id_for_label }}">
+                {{ form.fecha_vencimiento.label }} <span class="text-danger">*</span>
+              </label>
+              {{ form.fecha_vencimiento }}
+              {% if form.fecha_vencimiento.errors %}
+                <div class="agenda-error">{{ form.fecha_vencimiento.errors|join:", " }}</div>
+              {% endif %}
+              <div class="agenda-help">{{ form.fecha_vencimiento.help_text }}</div>
+            </div>
+
+            <div class="col-12 col-md-6 agenda-field">
+              <label class="form-label mb-1 small fw-semibold" for="{{ form.fecha_recordatorio.id_for_label }}">
+                {{ form.fecha_recordatorio.label }}
+              </label>
+              {{ form.fecha_recordatorio }}
+              {% if form.fecha_recordatorio.errors %}
+                <div class="agenda-error">{{ form.fecha_recordatorio.errors|join:", " }}</div>
+              {% endif %}
+              <div class="agenda-help">{{ form.fecha_recordatorio.help_text }}</div>
+            </div>
+
+            <div class="col-12">
+              <div class="alert alert-light border py-2 mb-0 small">
+                📌 Consejo: evitá recordatorios posteriores al vencimiento.
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== VÍNCULOS OPCIONALES ===== -->
+      <div class="card shadow-sm agenda-card">
+        <div class="card-header">
+          <div class="agenda-section-title">Vínculos opcionales</div>
+        </div>
+        <div class="card-body">
+          <div class="text-muted small mb-3">
+            Usá estos campos si la tarea depende de un movimiento, orden de pago,
+            persona o proveedor.
+          </div>
+
+          <div class="row g-3">
+
+            <div class="col-12 col-md-6 agenda-field">
+              <label class="form-label mb-1 small fw-semibold" for="{{ form.orden_pago.id_for_label }}">
+                {{ form.orden_pago.label }}
+              </label>
+              {{ form.orden_pago }}
+              {% if form.orden_pago.errors %}
+                <div class="agenda-error">{{ form.orden_pago.errors|join:", " }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12 col-md-6 agenda-field">
+              <label class="form-label mb-1 small fw-semibold" for="{{ form.movimiento.id_for_label }}">
+                {{ form.movimiento.label }}
+              </label>
+              {{ form.movimiento }}
+              {% if form.movimiento.errors %}
+                <div class="agenda-error">{{ form.movimiento.errors|join:", " }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12 col-md-6 agenda-field">
+              <label class="form-label mb-1 small fw-semibold" for="{{ form.persona.id_for_label }}">
+                {{ form.persona.label }}
+              </label>
+              {{ form.persona }}
+              {% if form.persona.errors %}
+                <div class="agenda-error">{{ form.persona.errors|join:", " }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12 col-md-6 agenda-field">
+              <label class="form-label mb-1 small fw-semibold" for="{{ form.proveedor.id_for_label }}">
+                {{ form.proveedor.label }}
+              </label>
+              {{ form.proveedor }}
+              {% if form.proveedor.errors %}
+                <div class="agenda-error">{{ form.proveedor.errors|join:", " }}</div>
+              {% endif %}
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ================== COLUMNA LATERAL ================== -->
+    <div class="col-12 col-lg-4">
+      <div class="card shadow-sm agenda-side sticky-top" style="top: 1rem;">
+        <div class="card-body">
+          <h3 class="h6 mb-2">Guía rápida</h3>
+
+          {% if tarea %}
+            <div class="mb-3 small">
+              <div class="text-muted text-uppercase mb-1">Resumen actual</div>
+              <div>Estado: <strong>{{ tarea.get_estado_display }}</strong></div>
+              <div>Prioridad: <strong>{{ tarea.get_prioridad_display }}</strong></div>
+              {% if tarea.fecha_vencimiento %}
+                <div>Vence: <strong>{{ tarea.fecha_vencimiento|date:"d/m/Y" }}</strong></div>
+              {% endif %}
+            </div>
+            <hr class="my-2">
+          {% endif %}
+
+          <ul class="small text-muted mb-3 ps-3">
+            <li>El vencimiento define la prioridad en el tablero.</li>
+            <li>Usá “En proceso” cuando alguien ya está trabajando.</li>
+            <li>“Crítica” sube la tarea al tope de la agenda.</li>
+          </ul>
+
+          <div class="p-2 rounded tip-box small">
+            Tip: usá títulos tipo <strong>Acción + objeto + periodo</strong>.<br>
+            Ej: <strong>“Pagar OP 124 – Proveedor López (Mayo)”</strong>.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================== FOOTER ACCIONES ================== -->
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+    <a href="{% url 'agenda:agenda_list' %}" class="btn btn-outline-secondary">Cancelar</a>
+    <button type="submit" class="btn btn-primary">
+      {% if tarea %}Guardar cambios{% else %}Crear tarea{% endif %}
+    </button>
+  </div>
+</form>
+
+<script>
+  (function () {
+    const hoy = new Date().toISOString().slice(0, 10);
+    const venc = document.getElementById("id_fecha_vencimiento");
+    const rec  = document.getElementById("id_fecha_recordatorio");
+
+    if (venc && (venc.type === "date" || venc.type === "datetime-local")) {
+      if (!venc.min) venc.min = hoy;
+    }
+    if (rec && (rec.type === "date" || rec.type === "datetime-local")) {
+      if (!rec.min) rec.min = hoy;
+    }
+
+    if (venc) {
+      venc.addEventListener("change", function () {
+        if (!venc.value || !rec) return;
+        if (rec.type === "date") {
+          rec.max = venc.value;
+          if (rec.value && rec.value > venc.value) rec.value = venc.value;
+        }
+      });
+    }
+  })();
+</script>
+
+{% endblock %}

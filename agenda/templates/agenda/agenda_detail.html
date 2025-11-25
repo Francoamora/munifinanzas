@@ -1,0 +1,142 @@
+{% extends "finanzas/base.html" %}
+{% block title %}Tarea #{{ tarea.id }} – Agenda{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start my-3">
+  <div>
+    <h3 class="mb-1">Tarea #{{ tarea.id }}</h3>
+    <div class="text-muted small">
+      {{ tarea.get_tipo_display }} · {{ tarea.get_ambito_display }}
+    </div>
+  </div>
+
+  <div class="d-flex gap-2">
+    {% if rol_staff_finanzas or rol_operador_finanzas or rol_operador_social %}
+      <a href="{% url 'agenda:agenda_update' tarea.id %}" class="btn btn-outline-primary btn-sm">
+        Editar
+      </a>
+      {% if tarea.estado != 'COMPLETADA' %}
+        <form method="post" action="{% url 'agenda:agenda_completar' tarea.id %}">
+          {% csrf_token %}
+          <button class="btn btn-success btn-sm">Marcar completada</button>
+        </form>
+      {% endif %}
+    {% endif %}
+    <a href="{% url 'agenda:agenda_list' %}" class="btn btn-outline-secondary btn-sm">Volver</a>
+  </div>
+</div>
+
+<div class="card card-body">
+  <h5 class="mb-2">{{ tarea.titulo }}</h5>
+
+  {% if tarea.descripcion %}
+    <p class="mb-3">{{ tarea.descripcion|linebreaksbr }}</p>
+  {% endif %}
+
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    <span class="badge bg-info-subtle text-info border">{{ tarea.get_tipo_display }}</span>
+
+    {% if tarea.prioridad == 'CRITICA' %}
+      <span class="badge bg-danger">Crítica</span>
+    {% elif tarea.prioridad == 'ALTA' %}
+      <span class="badge bg-warning text-dark">Alta</span>
+    {% elif tarea.prioridad == 'MEDIA' %}
+      <span class="badge bg-secondary">Media</span>
+    {% else %}
+      <span class="badge bg-light text-dark border">Baja</span>
+    {% endif %}
+
+    {% if tarea.estado == 'PENDIENTE' %}
+      <span class="badge bg-secondary">Pendiente</span>
+    {% elif tarea.estado == 'EN_PROCESO' %}
+      <span class="badge bg-primary">En proceso</span>
+    {% elif tarea.estado == 'COMPLETADA' %}
+      <span class="badge bg-success">Completada</span>
+    {% else %}
+      <span class="badge bg-dark">Cancelada</span>
+    {% endif %}
+
+    {% if tarea.esta_vencida %}
+      <span class="badge bg-danger-subtle text-danger border">Vencida</span>
+    {% endif %}
+  </div>
+
+  <div class="row g-3">
+    <div class="col-12 col-md-4">
+      <div class="small text-muted">Vencimiento</div>
+      <div class="fw-semibold">{{ tarea.fecha_vencimiento|date:"d/m/Y" }}</div>
+    </div>
+
+    <div class="col-12 col-md-4">
+      <div class="small text-muted">Responsable</div>
+      <div class="fw-semibold">{{ tarea.responsable.get_full_name|default:tarea.responsable.username }}</div>
+    </div>
+
+    <div class="col-12 col-md-4">
+      <div class="small text-muted">Origen</div>
+      <div class="fw-semibold">{{ tarea.get_origen_display }}</div>
+    </div>
+
+    {% if tarea.fecha_recordatorio %}
+      <div class="col-12 col-md-4">
+        <div class="small text-muted">Recordatorio</div>
+        <div class="fw-semibold">{{ tarea.fecha_recordatorio|date:"d/m/Y" }}</div>
+      </div>
+    {% endif %}
+
+    {% if tarea.fecha_completada %}
+      <div class="col-12 col-md-4">
+        <div class="small text-muted">Completada</div>
+        <div class="fw-semibold">{{ tarea.fecha_completada|date:"d/m/Y H:i" }}</div>
+      </div>
+    {% endif %}
+  </div>
+
+  <hr>
+
+  <div class="row g-2 small">
+    <div class="col-12">
+      <strong>Vínculos:</strong>
+      <ul class="mb-0">
+        {% if tarea.orden_pago %}
+          <li>Orden de pago:
+            <a href="{% url 'finanzas:orden_pago_detail' tarea.orden_pago.id %}">
+              {{ tarea.orden_pago.numero|default:tarea.orden_pago.id }}
+            </a>
+          </li>
+        {% endif %}
+        {% if tarea.movimiento %}
+          <li>Movimiento:
+            <a href="{% url 'finanzas:movimiento_detail' tarea.movimiento.id %}">
+              #{{ tarea.movimiento.id }}
+            </a>
+          </li>
+        {% endif %}
+        {% if tarea.persona %}
+          <li>Persona:
+            <a href="{% url 'finanzas:persona_detail' tarea.persona.id %}">
+              {{ tarea.persona }}
+            </a>
+          </li>
+        {% endif %}
+        {% if tarea.proveedor %}
+          <li>Proveedor: {{ tarea.proveedor }}</li>
+        {% endif %}
+        {% if not tarea.orden_pago and not tarea.movimiento and not tarea.persona and not tarea.proveedor %}
+          <li>Sin vínculos.</li>
+        {% endif %}
+      </ul>
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="small text-muted">
+    Creada: {{ tarea.fecha_creacion|date:"d/m/Y H:i" }}
+    {% if tarea.creado_por %} · por {{ tarea.creado_por.get_full_name|default:tarea.creado_por.username }}{% endif %}
+    <br>
+    Última actualización: {{ tarea.actualizado_en|date:"d/m/Y H:i" }}
+    {% if tarea.actualizado_por %} · por {{ tarea.actualizado_por.get_full_name|default:tarea.actualizado_por.username }}{% endif %}
+  </div>
+</div>
+{% endblock %}

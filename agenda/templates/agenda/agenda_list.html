@@ -1,0 +1,273 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+{% block title %}Agenda / Pendientes – Comuna de Tacuarendí{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 my-3">
+  <div>
+    <h3 class="mb-0">Agenda / Pendientes</h3>
+    <small class="text-muted">Gestión de tareas internas con vencimientos</small>
+  </div>
+
+  {% if rol_staff_finanzas or rol_operador_finanzas or rol_operador_social %}
+    <a href="{% url 'agenda:agenda_create' %}" class="btn btn-primary btn-sm">
+      + Nueva tarea
+    </a>
+  {% endif %}
+</div>
+
+{# ===== Tabs / chips ===== #}
+<ul class="nav nav-pills mb-3">
+  <li class="nav-item">
+    <a class="nav-link {% if tab == 'hoy' %}active{% endif %}"
+       href="?tab=hoy">Hoy</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {% if tab == '7dias' %}active{% endif %}"
+       href="?tab=7dias">Próximos 7 días</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {% if tab == 'vencidas' %}active{% endif %}"
+       href="?tab=vencidas">Vencidas</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {% if tab == 'todas' %}active{% endif %}"
+       href="?tab=todas">Todas</a>
+  </li>
+</ul>
+
+{# ===== Filtros ===== #}
+<form method="get" class="card card-body mb-3">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <div class="row g-2 align-items-end">
+
+    <div class="col-12 col-md-3">
+      <label class="form-label small mb-1">Buscador</label>
+      <input type="text" name="q" class="form-control form-control-sm"
+             placeholder="Título, descripción, persona, proveedor..."
+             value="{{ filtros.q }}">
+    </div>
+
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">Tipo</label>
+      <select name="tipo" class="form-select form-select-sm">
+        <option value="">Todos</option>
+        {% for val, label in TIPO_CHOICES %}
+          <option value="{{ val }}" {% if filtros.tipo == val %}selected{% endif %}>
+            {{ label }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">Estado</label>
+      <select name="estado" class="form-select form-select-sm">
+        <option value="">Todos</option>
+        {% for val, label in ESTADO_CHOICES %}
+          <option value="{{ val }}" {% if filtros.estado == val %}selected{% endif %}>
+            {{ label }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">Prioridad</label>
+      <select name="prioridad" class="form-select form-select-sm">
+        <option value="">Todas</option>
+        {% for val, label in PRIORIDAD_CHOICES %}
+          <option value="{{ val }}" {% if filtros.prioridad == val %}selected{% endif %}>
+            {{ label }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">Ámbito</label>
+      <select name="ambito" class="form-select form-select-sm">
+        <option value="">Todos</option>
+        {% for val, label in AMBITO_CHOICES %}
+          <option value="{{ val }}" {% if filtros.ambito == val %}selected{% endif %}>
+            {{ label }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">Vence desde</label>
+      <input type="date" name="desde" class="form-control form-control-sm"
+             value="{{ filtros.desde }}">
+    </div>
+
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">Hasta</label>
+      <input type="date" name="hasta" class="form-control form-control-sm"
+             value="{{ filtros.hasta }}">
+    </div>
+
+    <div class="col-12 col-md-2 d-flex gap-2">
+      <button class="btn btn-outline-primary btn-sm w-100">Filtrar</button>
+      <a href="{% url 'agenda:agenda_list' %}" class="btn btn-outline-secondary btn-sm w-100">
+        Limpiar
+      </a>
+    </div>
+
+  </div>
+</form>
+
+{# ===== Listado ===== #}
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Título</th>
+          <th class="text-nowrap">Tipo</th>
+          <th class="text-nowrap">Prioridad</th>
+          <th class="text-nowrap">Estado</th>
+          <th class="text-nowrap">Vencimiento</th>
+          <th>Vínculos</th>
+          <th class="text-end">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tareas %}
+          {% with vencida=t.esta_vencida vence_hoy=t.vence_hoy %}
+          <tr>
+            <td>
+              <a href="{% url 'agenda:agenda_detail' t.id %}" class="fw-semibold text-decoration-none">
+                {{ t.titulo }}
+              </a>
+              {% if t.descripcion %}
+                <div class="small text-muted text-truncate" style="max-width:420px;">
+                  {{ t.descripcion }}
+                </div>
+              {% endif %}
+            </td>
+
+            <td><span class="badge bg-info-subtle text-info border">{{ t.get_tipo_display }}</span></td>
+
+            <td>
+              {% if t.prioridad == 'CRITICA' %}
+                <span class="badge bg-danger">Crítica</span>
+              {% elif t.prioridad == 'ALTA' %}
+                <span class="badge bg-warning text-dark">Alta</span>
+              {% elif t.prioridad == 'MEDIA' %}
+                <span class="badge bg-secondary">Media</span>
+              {% else %}
+                <span class="badge bg-light text-dark border">Baja</span>
+              {% endif %}
+            </td>
+
+            <td>
+              {% if t.estado == 'PENDIENTE' %}
+                <span class="badge bg-secondary">Pendiente</span>
+              {% elif t.estado == 'EN_PROCESO' %}
+                <span class="badge bg-primary">En proceso</span>
+              {% elif t.estado == 'COMPLETADA' %}
+                <span class="badge bg-success">Completada</span>
+              {% else %}
+                <span class="badge bg-dark">Cancelada</span>
+              {% endif %}
+            </td>
+
+            <td class="text-nowrap">
+              {% if vencida %}
+                <span class="badge bg-danger-subtle text-danger border">
+                  {{ t.fecha_vencimiento|date:"d/m/Y" }} (vencida)
+                </span>
+              {% elif vence_hoy %}
+                <span class="badge bg-warning-subtle text-warning border">
+                  {{ t.fecha_vencimiento|date:"d/m/Y" }} (hoy)
+                </span>
+              {% else %}
+                <span class="badge bg-light text-dark border">
+                  {{ t.fecha_vencimiento|date:"d/m/Y" }}
+                </span>
+              {% endif %}
+            </td>
+
+            <td class="small">
+              {% if t.orden_pago %}
+                OP:
+                <a href="{% url 'finanzas:orden_pago_detail' t.orden_pago.id %}">
+                  {{ t.orden_pago.numero|default:t.orden_pago.id }}
+                </a><br>
+              {% endif %}
+              {% if t.movimiento %}
+                Mov:
+                <a href="{% url 'finanzas:movimiento_detail' t.movimiento.id %}">
+                  #{{ t.movimiento.id }}
+                </a><br>
+              {% endif %}
+              {% if t.persona %}
+                Persona:
+                <a href="{% url 'finanzas:persona_detail' t.persona.id %}">
+                  {{ t.persona }}
+                </a><br>
+              {% endif %}
+              {% if t.proveedor %}
+                Prov:
+                <a href="{% url 'finanzas:movimiento_list' %}?q={{ t.proveedor.nombre }}">
+                  {{ t.proveedor.nombre }}
+                </a>
+              {% endif %}
+              {% if not t.orden_pago and not t.movimiento and not t.persona and not t.proveedor %}
+                —
+              {% endif %}
+            </td>
+
+            <td class="text-end text-nowrap">
+              <a href="{% url 'agenda:agenda_detail' t.id %}" class="btn btn-outline-secondary btn-sm">
+                Ver
+              </a>
+              {% if rol_staff_finanzas or rol_operador_finanzas or rol_operador_social %}
+                <a href="{% url 'agenda:agenda_update' t.id %}" class="btn btn-outline-primary btn-sm">
+                  Editar
+                </a>
+                {% if t.estado != 'COMPLETADA' %}
+                  <form method="post" action="{% url 'agenda:agenda_completar' t.id %}" class="d-inline">
+                    {% csrf_token %}
+                    <button class="btn btn-success btn-sm">Completar</button>
+                  </form>
+                {% endif %}
+              {% endif %}
+            </td>
+          </tr>
+          {% endwith %}
+        {% empty %}
+          <tr>
+            <td colspan="7" class="text-center text-muted py-4">
+              No hay tareas para mostrar con estos filtros.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ===== Paginación ===== #}
+{% if is_paginated %}
+<nav class="mt-3">
+  <ul class="pagination pagination-sm mb-0">
+    {% if page_obj.has_previous %}
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Anterior</a>
+      </li>
+    {% endif %}
+    <li class="page-item active">
+      <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+    </li>
+    {% if page_obj.has_next %}
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.next_page_number }}">Siguiente</a>
+      </li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}
+{% endblock %}
