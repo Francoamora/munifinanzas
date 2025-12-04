@@ -6,17 +6,37 @@
 
 {% block content %}
 
-{# =============== HEADER =============== #}
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+{# ================= CABECERA DEL TABLERO ================= #}
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
   <div>
-    <h1 class="h4 mb-0">Tablero de finanzas</h1>
+    <h1 class="h4 mb-1">Tablero de finanzas</h1>
     <div class="text-muted small">
-      Corte al día {{ hoy|date:"d/m/Y" }} · Tablero operativo.
-      Solo se contabilizan <strong>movimientos aprobados</strong> en saldos y métricas.
+      Corte al día <strong>{{ hoy|date:"d/m/Y" }}</strong>. Los saldos usan solo
+      <strong>movimientos aprobados</strong>.
+    </div>
+    <div class="mt-1 small text-muted">
+      Tu rol en el sistema:
+      <span class="badge bg-light text-secondary border rounded-pill">
+        {% if rol_staff_finanzas %}
+          Staff de finanzas
+        {% elif rol_operador_finanzas %}
+          Operador de finanzas
+        {% elif rol_operador_social %}
+          Operador social
+        {% elif rol_consulta_politica %}
+          Consulta política
+        {% else %}
+          Usuario
+        {% endif %}
+      </span>
     </div>
   </div>
 
-  <div class="d-flex flex-wrap gap-2 justify-content-end">
+  <div class="d-flex flex-wrap gap-2 justify-content-end align-items-center">
+    <span class="badge bg-light text-secondary border rounded-pill px-3 py-2 small">
+      <i class="bi bi-calendar2-week me-1"></i>
+      Mes en análisis: {{ primer_dia_mes|date:"d/m/Y" }} – {{ hoy|date:"d/m/Y" }}
+    </span>
     <a href="{% url 'finanzas:movimiento_list' %}" class="btn btn-outline-secondary btn-sm">
       Ver listado de movimientos
     </a>
@@ -31,15 +51,17 @@
   </div>
 </div>
 
-{# =============== TIRA RESUMEN RÁPIDO =============== #}
-<div class="card shadow-sm mb-3">
+{# ================= TIRA RESUMEN RÁPIDO ================= #}
+<div class="card shadow-sm mb-3 border-0">
   <div class="card-body py-2 d-flex flex-wrap gap-3 align-items-center">
     <div class="small text-uppercase text-muted fw-semibold me-2">
       Resumen rápido
     </div>
 
-    <div class="badge bg-light text-muted border small">
-      Global:
+    {# Global #}
+    <div class="badge bg-light text-muted border small d-flex align-items-center gap-1">
+      <i class="bi bi-bank2"></i>
+      <span>Global:</span>
       <span class="fw-semibold {% if saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
         ${{ saldo|default:0|formato_pesos }}
       </span>
@@ -48,8 +70,10 @@
       </span>
     </div>
 
-    <div class="badge bg-light text-muted border small">
-      Mes actual:
+    {# Mes actual #}
+    <div class="badge bg-light text-muted border small d-flex align-items-center gap-1">
+      <i class="bi bi-calendar2-check"></i>
+      <span>Mes actual:</span>
       <span class="fw-semibold {% if saldo_mes >= 0 %}text-success{% else %}text-danger{% endif %}">
         ${{ saldo_mes|default:0|formato_pesos }}
       </span>
@@ -58,18 +82,37 @@
       </span>
     </div>
 
-    <div class="badge bg-light text-muted border small">
-      Estados:
-      <span class="text-warning">Borradores: <strong>{{ total_borradores }}</strong></span>
-      ·
-      <span class="text-success">Aprobados: <strong>{{ total_aprobados }}</strong></span>
-      ·
-      <span class="text-danger">Rechazados: <strong>{{ total_rechazados }}</strong></span>
+    {# Estados #}
+    <div class="badge bg-light text-muted border small d-flex align-items-center gap-1">
+      <i class="bi bi-journal-check"></i>
+      <span>Estados:</span>
+      <span class="text-warning">
+        Borradores: <strong>{{ total_borradores|default:0 }}</strong>
+      </span>
+      <span>·</span>
+      <span class="text-success">
+        Aprobados: <strong>{{ total_aprobados|default:0 }}</strong>
+      </span>
+      <span>·</span>
+      <span class="text-danger">
+        Rechazados: <strong>{{ total_rechazados|default:0 }}</strong>
+      </span>
+    </div>
+
+    {# Flota / combustible rápido #}
+    <div class="badge bg-light text-muted border small d-flex align-items-center gap-1">
+      <i class="bi bi-truck"></i>
+      <span>Flota mes:</span>
+      <span class="fw-semibold">
+        {{ viajes_mes|default:0|intcomma }} viajes ·
+        {{ total_km_mes|default_if_none:0|floatformat:1|intcomma }} km ·
+        ${{ combustible_mes|default_if_none:0|formato_pesos }} en combustible
+      </span>
     </div>
   </div>
 </div>
 
-{# =============== BLOQUE 1: VISIÓN GLOBAL + MES ACTUAL =============== #}
+{# ========== BLOQUE 1: VISIÓN GLOBAL VS MES ACTUAL ========== #}
 <div class="row g-3 mb-3">
   {# Global #}
   <div class="col-12 col-lg-6">
@@ -101,8 +144,7 @@
           </div>
         </div>
         <p class="small text-muted mt-2 mb-0">
-          Este saldo resume todo el historial de movimientos
-          <strong>aprobados</strong> registrados en el sistema.
+          Resume todo el historial de movimientos <strong>aprobados</strong> registrados.
         </p>
       </div>
     </div>
@@ -144,14 +186,14 @@
           </div>
         </div>
         <p class="small text-muted mt-2 mb-0">
-          Este bloque sirve como <strong>foto rápida del mes</strong> para el seguimiento político y operativo.
+          Foto rápida del mes para seguimiento <strong>político</strong> y <strong>operativo</strong>.
         </p>
       </div>
     </div>
   </div>
 </div>
 
-{# =============== BLOQUE 2: SERVICIOS / AYUDAS / PERSONAL =============== #}
+{# ========== BLOQUE 2: MATRIZ SERVICIOS / AYUDAS / PERSONAL ========== #}
 <div class="row g-3 mb-4">
   <div class="col-12 col-md-4">
     <div class="card border-success-subtle shadow-sm h-100">
@@ -180,7 +222,7 @@
           </div>
         {% endif %}
         <p class="small text-muted mt-2 mb-0">
-          Indicador clave de <strong>esfuerzo contributivo</strong> de vecinos y comercios.
+          Indicador clave del <strong>esfuerzo contributivo</strong> de vecinos y comercios.
         </p>
       </div>
     </div>
@@ -241,7 +283,107 @@
   </div>
 </div>
 
-{# =============== BLOQUE 3: ESTADO DE LOS MOVIMIENTOS =============== #}
+{# ========== BLOQUE 3: FLOTA / ÓRDENES / AGENDA ========== #}
+<div class="row g-3 mb-4">
+  {# Flota y movilidad #}
+  <div class="col-12 col-lg-4">
+    <div class="card border-info-subtle shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase mb-1">
+          Flota y movilidad (mes actual)
+        </div>
+        <p class="small text-muted mb-1">
+          Datos tomados de <strong>viajes de vehículos</strong> registrados.
+        </p>
+        <p class="small mb-1">
+          <span class="text-muted">Viajes registrados:</span>
+          <span class="fw-bold">{{ viajes_mes|default:0|intcomma }}</span>
+        </p>
+        <p class="small mb-1">
+          <span class="text-muted">Kilómetros cargados:</span>
+          <span class="fw-bold">
+            {{ total_km_mes|default_if_none:0|floatformat:1|intcomma }} km
+          </span>
+        </p>
+        <p class="small mb-0">
+          <span class="text-muted">Combustible mes:</span>
+          <span class="fw-bold text-primary">
+            ${{ combustible_mes|default_if_none:0|formato_pesos }}
+          </span>
+        </p>
+        <div class="mt-2">
+          <a href="{% url 'finanzas:viaje_vehiculo_list' %}" class="small text-decoration-none">
+            Ver detalle de viajes →
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Órdenes de pago y compras #}
+  <div class="col-12 col-lg-4">
+    <div class="card border-primary-subtle shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase mb-1">
+          Órdenes de pago y compras
+        </div>
+        <p class="small mb-1">
+          <span class="text-muted">Órdenes de pago pendientes:</span>
+          <span class="fw-bold">
+            {{ cantidad_ordenes_pendientes|default:0 }}
+          </span>
+        </p>
+        <p class="small mb-2">
+          <span class="text-muted">Monto comprometido:</span>
+          <span class="fw-bold text-primary">
+            ${{ total_ordenes_pendientes|default:0|formato_pesos }}
+          </span>
+        </p>
+        <p class="small text-muted mb-0">
+          Las OP solo impactan en caja cuando se cargan como
+          <strong>movimientos pagados</strong>.
+        </p>
+        <div class="mt-2 d-flex flex-wrap gap-2 small">
+          <a href="{% url 'finanzas:orden_pago_list' %}" class="text-decoration-none">
+            Ver órdenes de pago →
+          </a>
+          <span class="text-muted">|</span>
+          <a href="{% url 'finanzas:oc_list' %}" class="text-decoration-none">
+            Ver órdenes de compra →
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Agenda y tareas #}
+  <div class="col-12 col-lg-4">
+    <div class="card border-danger-subtle shadow-sm h-100">
+      <div class="card-body">
+        <div class="small text-muted text-uppercase mb-1">
+          Agenda y vencimientos
+        </div>
+        <p class="small mb-1">
+          <span class="text-muted">Tareas pendientes asignadas a vos:</span>
+          <span class="fw-bold text-danger">
+            {{ tareas_pendientes_usuario|default:0 }}
+          </span>
+        </p>
+        <p class="small text-muted mb-0">
+          Usá la agenda para seguir vencimientos de <strong>impuestos, órdenes,
+          ayudas y gestiones</strong> que pegan en la caja de la comuna.
+        </p>
+        <div class="mt-2">
+          <a href="{% url 'agenda:agenda_list' %}" class="small text-decoration-none">
+            Ir a la agenda completa →
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ========== BLOQUE 4: ESTADO Y CALIDAD DE LA CARGA ========== #}
 <div class="row g-3 mb-3">
   <div class="col-12 col-lg-6">
     <div class="card border-light shadow-sm h-100">
@@ -252,13 +394,13 @@
 
         <div class="d-flex flex-wrap gap-2 mb-2">
           <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
-            Borradores: <strong>{{ total_borradores }}</strong>
+            Borradores: <strong>{{ total_borradores|default:0 }}</strong>
           </span>
           <span class="badge bg-success-subtle text-success border border-success-subtle">
-            Aprobados: <strong>{{ total_aprobados }}</strong>
+            Aprobados: <strong>{{ total_aprobados|default:0 }}</strong>
           </span>
           <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
-            Rechazados: <strong>{{ total_rechazados }}</strong>
+            Rechazados: <strong>{{ total_rechazados|default:0 }}</strong>
           </span>
         </div>
 
@@ -296,8 +438,8 @@
       <div class="card-body p-0">
         {% if rechazados_recientes %}
           <div class="table-responsive">
-            <table class="table table-sm mb-0 align-middle">
-              <thead class="table-light">
+            <table class="table table-sm table-hover mb-0 align-middle">
+              <thead class="table-light small">
                 <tr>
                   <th style="width: 90px;">Fecha</th>
                   <th>Tipo</th>
@@ -350,7 +492,7 @@
   </div>
 </div>
 
-{# =============== BLOQUE 4: BORRADORES PENDIENTES =============== #}
+{# ========== BLOQUE 5: BORRADORES PENDIENTES ========== #}
 <div class="card shadow-sm mb-3">
   <div class="card-header py-2 d-flex justify-content-between align-items-center">
     <span class="small text-uppercase text-muted fw-semibold">
@@ -363,8 +505,8 @@
   <div class="card-body p-0">
     {% if borradores_recientes %}
       <div class="table-responsive">
-        <table class="table table-sm mb-0 align-middle">
-          <thead class="table-light">
+        <table class="table table-sm table-hover mb-0 align-middle">
+          <thead class="table-light small">
             <tr>
               <th style="width: 90px;">Fecha</th>
               <th>Tipo</th>
@@ -419,21 +561,24 @@
   </div>
 </div>
 
-{# =============== BLOQUE 5: ÚLTIMOS MOVIMIENTOS APROBADOS =============== #}
+{# ========== BLOQUE 6: ÚLTIMOS APROBADOS ========== #}
 <div class="card shadow-sm mt-3">
   <div class="card-header py-2 d-flex justify-content-between align-items-center">
     <span class="small text-uppercase text-muted fw-semibold">
       Últimos movimientos aprobados
     </span>
-    <a href="{% url 'finanzas:movimiento_list' %}" class="small">
-      Ver listado completo
-    </a>
+    <div class="small text-muted">
+      Mostrando {{ ultimos_movimientos|length }} ·
+      <a href="{% url 'finanzas:movimiento_list' %}" class="text-decoration-none">
+        Ver listado completo →
+      </a>
+    </div>
   </div>
   <div class="card-body p-0">
     {% if ultimos_movimientos %}
       <div class="table-responsive">
-        <table class="table table-sm mb-0 align-middle">
-          <thead class="table-light">
+        <table class="table table-sm table-hover mb-0 align-middle">
+          <thead class="table-light small">
             <tr>
               <th style="width: 90px;">Fecha</th>
               <th>Tipo</th>

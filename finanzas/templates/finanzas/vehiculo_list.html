@@ -1,0 +1,224 @@
+{% extends "finanzas/base.html" %}
+
+{% block title %}Vehículos – Flota{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <p class="text-muted small mb-1 d-flex flex-wrap align-items-center gap-2">
+      <span>Flota y vehículos</span>
+      <span>·</span>
+      <span>Catálogo de vehículos municipales</span>
+    </p>
+    <h1 class="h4 mb-1">Vehículos</h1>
+    <div class="small text-muted">
+      Alta, baja y seguimiento de vehículos usados por la comuna.
+    </div>
+  </div>
+
+  <div class="d-flex flex-column align-items-end gap-2">
+    <a href="{% url 'finanzas:vehiculo_create' %}" class="btn btn-primary btn-sm">
+      + Nuevo vehículo
+    </a>
+    <span class="small text-muted">
+      {% if page_obj %}
+        Mostrando {{ page_obj.object_list|length }} de {{ page_obj.paginator.count }} vehículos
+      {% else %}
+        Total: {{ vehiculos|length }} vehículo{{ vehiculos|length|pluralize:"s" }}
+      {% endif %}
+    </span>
+  </div>
+</div>
+
+<form method="get" class="card card-body mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-12 col-md-4">
+      <label class="form-label form-label-sm mb-1" for="id_q">Buscar</label>
+      <input
+        type="text"
+        id="id_q"
+        name="q"
+        value="{{ request.GET.q }}"
+        class="form-control form-control-sm"
+        placeholder="Patente, descripción, área…"
+      >
+    </div>
+    <div class="col-12 col-md-4">
+      <label class="form-label form-label-sm mb-1" for="id_area">Área</label>
+      <select
+        id="id_area"
+        name="area"
+        class="form-select form-select-sm"
+      >
+        <option value="">Todas</option>
+        {% for a in areas %}
+          <option value="{{ a.id }}"
+                  {% if request.GET.area|default:'' == a.id|stringformat:"s" %}selected{% endif %}>
+            {{ a.nombre }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-2">
+      <label class="form-label form-label-sm mb-1" for="id_estado">Estado</label>
+      <select
+        id="id_estado"
+        name="estado"
+        class="form-select form-select-sm"
+      >
+        {# estado: 'activos', 'todos', 'inactivos' (lo manejamos en la vista) #}
+        {% with est=request.GET.estado|default:'activos' %}
+          <option value="activos" {% if est == 'activos' %}selected{% endif %}>Solo activos</option>
+          <option value="todos" {% if est == 'todos' %}selected{% endif %}>Todos</option>
+          <option value="inactivos" {% if est == 'inactivos' %}selected{% endif %}>Solo inactivos</option>
+        {% endwith %}
+      </select>
+    </div>
+    <div class="col-12 col-md-2 d-flex gap-2">
+      <button type="submit" class="btn btn-primary btn-sm flex-fill">
+        Aplicar filtros
+      </button>
+      <a href="{% url 'finanzas:vehiculo_list' %}" class="btn btn-outline-secondary btn-sm">
+        Limpiar
+      </a>
+    </div>
+  </div>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-sm align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>Patente / ID</th>
+        <th>Descripción</th>
+        <th>Área</th>
+        <th class="text-end">Km ref.</th>
+        <th class="text-end">Horas ref.</th>
+        <th class="text-end">Km registrados (viajes)</th>
+        <th class="text-center">Estado</th>
+        <th class="text-end">Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if vehiculos %}
+        {% for v in vehiculos %}
+          <tr>
+            <td>
+              <a href="{% url 'finanzas:vehiculo_detail' v.pk %}">
+                {{ v.patente }}
+              </a>
+            </td>
+            <td>
+              {{ v.descripcion|default:"—" }}
+            </td>
+            <td>
+              {{ v.area.nombre|default:"—" }}
+            </td>
+            <td class="text-end">
+              {% if v.kilometraje_referencia %}
+                {{ v.kilometraje_referencia }} km
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if v.horometro_referencia %}
+                {{ v.horometro_referencia }} h
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% with km=v.km_acumulados_viajes %}
+                {% if km %}
+                  {{ km }} km
+                {% else %}
+                  —
+                {% endif %}
+              {% endwith %}
+            </td>
+            <td class="text-center">
+              {% if v.activo %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle">
+                  Activo
+                </span>
+              {% else %}
+                <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                  Inactivo
+                </span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <div class="btn-group btn-group-sm" role="group">
+                <a href="{% url 'finanzas:vehiculo_detail' v.pk %}" class="btn btn-outline-secondary">
+                  Ver
+                </a>
+                <a href="{% url 'finanzas:vehiculo_update' v.pk %}" class="btn btn-outline-secondary">
+                  Editar
+                </a>
+                <a href="{% url 'finanzas:viaje_vehiculo_list' %}?vehiculo={{ v.pk }}" class="btn btn-outline-secondary d-none d-md-inline-block">
+                  Viajes
+                </a>
+                <a href="{% url 'finanzas:flota_combustible_resumen' %}?vehiculo={{ v.pk }}" class="btn btn-outline-secondary d-none d-lg-inline-block">
+                  Consumo
+                </a>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      {% else %}
+        <tr>
+          <td colspan="8" class="text-center text-muted py-4">
+            No hay vehículos cargados. Usá el botón
+            <strong>“Nuevo vehículo”</strong> para dar de alta el primero.
+          </td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{% if is_paginated %}
+  <nav aria-label="Paginación de vehículos">
+    <ul class="pagination pagination-sm justify-content-center">
+      {% if page_obj.has_previous %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ page_obj.previous_page_number }}&{{ request.GET.urlencode|cut:'page='|cut:'page=' }}">
+            Anterior
+          </a>
+        </li>
+      {% else %}
+        <li class="page-item disabled">
+          <span class="page-link">Anterior</span>
+        </li>
+      {% endif %}
+
+      {% for num in page_obj.paginator.page_range %}
+        {% if num == page_obj.number %}
+          <li class="page-item active">
+            <span class="page-link">{{ num }}</span>
+          </li>
+        {% elif num > page_obj.number|add:-3 and num < page_obj.number|add:3 %}
+          <li class="page-item">
+            <a class="page-link" href="?page={{ num }}&{{ request.GET.urlencode|cut:'page='|cut:'page=' }}">{{ num }}</a>
+          </li>
+        {% endif %}
+      {% endfor %}
+
+      {% if page_obj.has_next %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ page_obj.next_page_number }}&{{ request.GET.urlencode|cut:'page='|cut:'page=' }}">
+            Siguiente
+          </a>
+        </li>
+      {% else %}
+        <li class="page-item disabled">
+          <span class="page-link">Siguiente</span>
+        </li>
+      {% endif %}
+    </ul>
+  </nav>
+{% endif %}
+
+{% endblock %}

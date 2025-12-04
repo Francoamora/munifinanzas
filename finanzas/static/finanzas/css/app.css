@@ -1048,4 +1048,9 @@ html {
   }
 }
 
+.atencion-form textarea {
+  min-height: 140px;
+  max-height: 260px;
+  resize: vertical;
+}
 

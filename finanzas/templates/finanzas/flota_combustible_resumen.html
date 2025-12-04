@@ -1,0 +1,305 @@
+{% extends "finanzas/base.html" %}
+{% load humanize finanzas_extras %}
+
+{% block title %}Consumo de combustible – Flota{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <p class="text-muted small mb-1 d-flex flex-wrap align-items-center gap-2">
+      <span>Flota y combustible</span>
+      <span>·</span>
+      <span>Control de consumo y uso de vehículos</span>
+    </p>
+    <h1 class="h4 mb-0">Consumo de combustible</h1>
+    <div class="text-muted small">
+      Resumen por vehículo, con km recorridos, costo por km e indicadores clave para el período seleccionado.
+    </div>
+  </div>
+
+  <div class="text-end small text-muted">
+    <div>Período analizado</div>
+    <div class="fw-semibold">
+      {{ fecha_desde|date:"d/m/Y" }} – {{ fecha_hasta|date:"d/m/Y" }}
+    </div>
+  </div>
+</div>
+
+<!-- ===============  FILTROS  =============== -->
+<form method="get" class="card card-body mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-12 col-md-4 col-lg-3">
+      <label class="form-label form-label-sm mb-1">Vehículo</label>
+      <select name="vehiculo" class="form-select form-select-sm">
+        <option value="">Todos los vehículos</option>
+        {% for v in vehiculos %}
+          <option value="{{ v.id }}" {% if vehiculo_actual|default:'' == v.id|stringformat:"s" %}selected{% endif %}>
+            {% if v.patente %}{{ v.patente }}{% else %}ID {{ v.id }}{% endif %}
+            {% if v.descripcion %} – {{ v.descripcion }}{% endif %}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-4 col-lg-3">
+      <label class="form-label form-label-sm mb-1">Desde</label>
+      <input
+        type="date"
+        name="desde"
+        value="{{ fecha_desde|date:'Y-m-d' }}"
+        class="form-control form-control-sm"
+      >
+    </div>
+    <div class="col-6 col-md-4 col-lg-3">
+      <label class="form-label form-label-sm mb-1">Hasta</label>
+      <input
+        type="date"
+        name="hasta"
+        value="{{ fecha_hasta|date:'Y-m-d' }}"
+        class="form-control form-control-sm"
+      >
+    </div>
+    <div class="col-12 col-lg-3 d-flex gap-2 justify-content-lg-end">
+      <button class="btn btn-primary btn-sm flex-fill flex-lg-grow-0" type="submit">
+        Aplicar filtros
+      </button>
+      <a href="{% url 'finanzas:flota_combustible_resumen' %}" class="btn btn-outline-secondary btn-sm flex-fill flex-lg-grow-0">
+        Limpiar
+      </a>
+    </div>
+  </div>
+
+  <div class="mt-2 small text-muted d-flex flex-wrap gap-2">
+    {% if vehiculo_actual %}
+      {% for v in vehiculos %}
+        {% if v.id|stringformat:"s" == vehiculo_actual %}
+          <span class="badge rounded-pill text-bg-light border">
+            Vehículo seleccionado:
+            <strong>
+              {% if v.patente %}{{ v.patente }}{% else %}ID {{ v.id }}{% endif %}
+              {% if v.descripcion %} – {{ v.descripcion }}{% endif %}
+            </strong>
+          </span>
+        {% endif %}
+      {% endfor %}
+    {% else %}
+      <span class="badge rounded-pill text-bg-light border">
+        Mostrando <strong>todos los vehículos activos</strong>.
+      </span>
+    {% endif %}
+  </div>
+</form>
+
+<!-- ===============  KPIs GENERALES DEL PERÍODO  =============== -->
+<div class="row g-3 mb-3">
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card card-body py-2 h-100">
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <span class="text-muted small text-uppercase">Combustible cargado</span>
+        <i class="bi bi-fuel-pump text-muted"></i>
+      </div>
+      <div class="h5 mb-0">
+        $ {{ total_combustible|pesos_ar }}
+      </div>
+      <div class="small text-muted">
+        Monto total de movimientos de combustible del período.
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card card-body py-2 h-100">
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <span class="text-muted small text-uppercase">Km recorridos</span>
+        <i class="bi bi-speedometer2 text-muted"></i>
+      </div>
+      <div class="h5 mb-0">
+        {% if total_km %}
+          {{ total_km|floatformat:1|intcomma }} km
+        {% else %}
+          — 
+        {% endif %}
+      </div>
+      <div class="small text-muted">
+        {{ viajes_con_km }} viaje{{ viajes_con_km|pluralize:"s" }} con odómetro cargado.
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card card-body py-2 h-100">
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <span class="text-muted small text-uppercase">Viajes</span>
+        <i class="bi bi-truck-front text-muted"></i>
+      </div>
+      <div class="h5 mb-0">
+        {{ total_viajes|default:0|intcomma }}
+      </div>
+      <div class="small text-muted">
+        Viajes registrados en el rango de fechas.
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card card-body py-2 h-100">
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <span class="text-muted small text-uppercase">Costo promedio por km</span>
+        <i class="bi bi-graph-down-arrow text-muted"></i>
+      </div>
+      <div class="h5 mb-0">
+        {% if costo_promedio_km %}
+          $ {{ costo_promedio_km|pesos_ar }}
+        {% else %}
+          — 
+        {% endif %}
+      </div>
+      <div class="small text-muted">
+        Relación entre combustible y km recorridos en el período.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===============  INSIGHTS RÁPIDOS  =============== -->
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h2 class="h6 mb-0">Insights rápidos</h2>
+      <span class="text-muted small">
+        Período: {{ fecha_desde|date:"d/m/Y" }} – {{ fecha_hasta|date:"d/m/Y" }}
+      </span>
+    </div>
+
+    <div class="row g-3 small">
+      <div class="col-12 col-md-4">
+        <div class="fw-semibold mb-1">Destino más frecuente</div>
+        {% if top_destino %}
+          <p class="mb-0">
+            <strong>{{ top_destino.destino }}</strong><br>
+            <span class="text-muted">
+              {{ top_destino.cantidad }} viaje{{ top_destino.cantidad|pluralize:"s" }}
+              ({{ top_destino.porcentaje|floatformat:1 }}% del total)
+            </span>
+          </p>
+        {% else %}
+          <p class="text-muted mb-0">Sin suficientes datos de destinos para este período.</p>
+        {% endif %}
+      </div>
+
+      <div class="col-12 col-md-4">
+        <div class="fw-semibold mb-1">Choferes con más viajes</div>
+        {% if top_choferes %}
+          <ul class="list-unstyled mb-0">
+            {% for c in top_choferes %}
+              <li class="d-flex justify-content-between gap-2">
+                <span class="text-truncate">{{ c.nombre }}</span>
+                <span class="text-muted">
+                  {{ c.cantidad }} · {{ c.porcentaje|floatformat:1 }}%
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted mb-0">No hay choferes registrados en los viajes del período.</p>
+        {% endif %}
+      </div>
+
+      <div class="col-12 col-md-4">
+        <div class="fw-semibold mb-1">Beneficiarios más trasladados</div>
+        {% if top_beneficiarios %}
+          <ul class="list-unstyled mb-0">
+            {% for b in top_beneficiarios %}
+              <li class="d-flex justify-content-between gap-2">
+                <span class="text-truncate">{{ b.nombre }}</span>
+                <span class="text-muted">
+                  {{ b.cantidad }} viaje{{ b.cantidad|pluralize:"s" }}
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+          <p class="text-muted mb-0 mt-1">
+            (Solo se consideran beneficiarios del censo; los textos libres no se rankean.)
+          </p>
+        {% else %}
+          <p class="text-muted mb-0">No hay beneficiarios cargados en los viajes del período.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===============  TABLA POR VEHÍCULO  =============== -->
+<div class="card">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <h2 class="h6 mb-0">Resumen por vehículo</h2>
+    <span class="small text-muted">
+      {% if resumen_vehiculos %}
+        {{ resumen_vehiculos|length }} vehículo{{ resumen_vehiculos|length|pluralize:"s" }} en el período.
+      {% else %}
+        Sin datos para el período seleccionado.
+      {% endif %}
+    </span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Vehículo</th>
+            <th class="text-end">Combustible ($)</th>
+            <th class="text-end">Km recorridos</th>
+            <th class="text-end">Costo por km ($)</th>
+            <th class="text-end">Viajes</th>
+            <th class="text-end">Viajes con km</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if resumen_vehiculos %}
+            {% for item in resumen_vehiculos %}
+              <tr class="{% if vehiculo_actual and vehiculo_actual == item.vehiculo.id|stringformat:'s' %}table-active{% endif %}">
+                <td>
+                  <a href="{% url 'finanzas:vehiculo_detail' item.vehiculo.pk %}">
+                    {% if item.vehiculo.patente %}
+                      {{ item.vehiculo.patente }}
+                    {% else %}
+                      ID {{ item.vehiculo.id }}
+                    {% endif %}
+                    {% if item.vehiculo.descripcion %}
+                      – {{ item.vehiculo.descripcion }}
+                    {% endif %}
+                  </a>
+                </td>
+                <td class="text-end">
+                  {{ item.total_combustible|pesos_ar }}
+                </td>
+                <td class="text-end">
+                  {{ item.total_km|floatformat:1|intcomma }}
+                </td>
+                <td class="text-end">
+                  {% if item.costo_por_km %}
+                    {{ item.costo_por_km|pesos_ar }}
+                  {% else %}
+                    — 
+                  {% endif %}
+                </td>
+                <td class="text-end">
+                  {{ item.total_viajes|intcomma }}
+                </td>
+                <td class="text-end">
+                  {{ item.viajes_con_km|intcomma }}
+                </td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="6" class="text-center text-muted py-4">
+                No hay datos de combustible ni viajes para el período seleccionado.
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

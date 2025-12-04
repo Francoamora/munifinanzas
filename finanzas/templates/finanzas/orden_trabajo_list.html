@@ -1,0 +1,359 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+
+{# 
+  LISTADO DE ÓRDENES DE TRABAJO
+
+  Contexto desde la vista:
+    - ordenes_trabajo: queryset paginado (context_object_name="ordenes_trabajo")
+    - page_obj, is_paginated
+    - estado_actual: str ("PENDIENTES", "BORRADOR", "EN_PROCESO", "FINALIZADA", "ENTREGADA", "ANULADA", "TODAS")
+    - prioridad_actual: str o None ("BAJA", "MEDIA", "ALTA", "URGENTE")
+    - hay_filtros: bool
+    - hoy: date
+    - q: texto de búsqueda
+#}
+
+{% block title %}Órdenes de trabajo – Comuna de Tacuarendí{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h1 class="h4 mb-0">Órdenes de trabajo</h1>
+    <div class="text-muted small">
+      Registro de trabajos, mantenimientos y reparaciones del taller / comuna.
+      Por defecto se muestran las órdenes pendientes (no entregadas ni anuladas).
+    </div>
+  </div>
+
+  <a href="{% url 'finanzas:orden_trabajo_create' %}" class="btn btn-success btn-sm">
+    + Nueva orden de trabajo
+  </a>
+</div>
+
+{# ================== ATAJOS RÁPIDOS DE ESTADO ================== #}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2 small">
+  <span class="text-muted">Atajos rápidos:</span>
+
+  <a
+    href="?estado=PENDIENTES"
+    class="badge rounded-pill px-2 py-1 text-decoration-none
+      {% if estado_actual == 'PENDIENTES' or not estado_actual %}bg-primary-subtle text-primary border border-primary-subtle{% else %}bg-light text-muted border{% endif %}
+    "
+  >
+    Pendientes
+  </a>
+
+  <a
+    href="?estado=BORRADOR"
+    class="badge rounded-pill px-2 py-1 text-decoration-none
+      {% if estado_actual == 'BORRADOR' %}bg-secondary-subtle text-secondary border border-secondary-subtle{% else %}bg-light text-muted border{% endif %}
+    "
+  >
+    Solo borradores
+  </a>
+
+  <a
+    href="?estado=EN_PROCESO"
+    class="badge rounded-pill px-2 py-1 text-decoration-none
+      {% if estado_actual == 'EN_PROCESO' %}bg-warning-subtle text-warning border border-warning-subtle{% else %}bg-light text-muted border{% endif %}
+    "
+  >
+    En proceso
+  </a>
+
+  <a
+    href="?estado=FINALIZADA"
+    class="badge rounded-pill px-2 py-1 text-decoration-none
+      {% if estado_actual == 'FINALIZADA' %}bg-success-subtle text-success border border-success-subtle{% else %}bg-light text-muted border{% endif %}
+    "
+  >
+    Finalizadas
+  </a>
+
+  <a
+    href="?estado=ENTREGADA"
+    class="badge rounded-pill px-2 py-1 text-decoration-none
+      {% if estado_actual == 'ENTREGADA' %}bg-info-subtle text-info border border-info-subtle{% else %}bg-light text-muted border{% endif %}
+    "
+  >
+    Entregadas
+  </a>
+
+  <a
+    href="?estado=ANULADA"
+    class="badge rounded-pill px-2 py-1 text-decoration-none
+      {% if estado_actual == 'ANULADA' %}bg-danger-subtle text-danger border border-danger-subtle{% else %}bg-light text-muted border{% endif %}
+    "
+  >
+    Anuladas
+  </a>
+
+  <a
+    href="?estado=TODAS"
+    class="badge rounded-pill px-2 py-1 text-decoration-none
+      {% if estado_actual == 'TODAS' %}bg-secondary-subtle text-secondary border border-secondary-subtle{% else %}bg-light text-muted border{% endif %}
+    "
+  >
+    Todos los estados
+  </a>
+</div>
+
+{# ================== FILTROS AVANZADOS ================== #}
+<form method="get" class="card shadow-sm mb-3" role="search" aria-label="Filtros de órdenes de trabajo">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-3">
+        <label class="form-label mb-1">Estado</label>
+        <select name="estado" class="form-select form-select-sm">
+          <option value="PENDIENTES" {% if estado_actual == "PENDIENTES" or not estado_actual %}selected{% endif %}>
+            Pendientes
+          </option>
+          <option value="BORRADOR" {% if estado_actual == "BORRADOR" %}selected{% endif %}>Borrador</option>
+          <option value="EN_PROCESO" {% if estado_actual == "EN_PROCESO" %}selected{% endif %}>En proceso</option>
+          <option value="FINALIZADA" {% if estado_actual == "FINALIZADA" %}selected{% endif %}>Finalizada</option>
+          <option value="ENTREGADA" {% if estado_actual == "ENTREGADA" %}selected{% endif %}>Entregada</option>
+          <option value="ANULADA" {% if estado_actual == "ANULADA" %}selected{% endif %}>Anulada</option>
+          <option value="TODAS" {% if estado_actual == "TODAS" %}selected{% endif %}>Todos los estados</option>
+        </select>
+      </div>
+
+      <div class="col-6 col-md-2">
+        <label class="form-label mb-1">Desde</label>
+        <input
+          type="date"
+          name="desde"
+          value="{{ request.GET.desde }}"
+          class="form-control form-control-sm"
+        >
+      </div>
+
+      <div class="col-6 col-md-2">
+        <label class="form-label mb-1">Hasta</label>
+        <input
+          type="date"
+          name="hasta"
+          value="{{ request.GET.hasta }}"
+          class="form-control form-control-sm"
+        >
+      </div>
+
+      <div class="col-12 col-md-3">
+        <label class="form-label mb-1">Prioridad</label>
+        <select name="prioridad" class="form-select form-select-sm">
+          <option value="" {% if not prioridad_actual %}selected{% endif %}>Todas</option>
+          <option value="BAJA" {% if prioridad_actual == "BAJA" %}selected{% endif %}>Baja</option>
+          <option value="MEDIA" {% if prioridad_actual == "MEDIA" %}selected{% endif %}>Media</option>
+          <option value="ALTA" {% if prioridad_actual == "ALTA" %}selected{% endif %}>Alta</option>
+          <option value="URGENTE" {% if prioridad_actual == "URGENTE" %}selected{% endif %}>Urgente</option>
+        </select>
+      </div>
+
+      <div class="col-12 col-md-4">
+        <label class="form-label mb-1">Buscar</label>
+        <input
+          type="text"
+          name="q"
+          value="{{ q }}"
+          class="form-control form-control-sm"
+          placeholder="Descripción, vehículo, responsable..."
+        >
+      </div>
+
+      <div class="col-12 col-md-2 mt-1 mt-md-0">
+        <div class="d-flex gap-2">
+          <button class="btn btn-primary btn-sm w-100">
+            Aplicar filtros
+          </button>
+          <a href="?" class="btn btn-outline-secondary btn-sm d-none d-md-inline-flex">
+            Limpiar
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
+{# ================== RESUMEN DEL LISTADO ================== #}
+<div class="d-flex justify-content-between align-items-center mb-2 small text-muted">
+  <div>
+    {% if page_obj %}
+      {% if hay_filtros %}
+        Mostrando {{ page_obj.paginator.count }} orden{{ page_obj.paginator.count|pluralize:"es" }}
+        para el filtro aplicado.
+      {% else %}
+        Mostrando {{ page_obj.paginator.count }} orden{{ page_obj.paginator.count|pluralize:"es" }}
+        pendientes.
+      {% endif %}
+    {% endif %}
+  </div>
+  <div class="text-end d-none d-md-block">
+    <span class="badge bg-light text-muted border">
+      Fecha de hoy: {{ hoy|date:"d/m/Y" }}
+    </span>
+  </div>
+</div>
+
+{# ================== TABLA PRINCIPAL ================== #}
+<div class="table-responsive shadow-sm bg-white rounded">
+  <table class="table table-sm align-middle mb-0 table-hover">
+    <thead class="table-light">
+      <tr>
+        <th style="width:80px;">N° OT</th>
+        <th style="width:90px;">Fecha</th>
+        <th style="width:130px;">Estado</th>
+        <th style="width:110px;">Prioridad</th>
+        <th>Vehículo / Equipo</th>
+        <th style="width:170px;">Responsable</th>
+        <th>Resumen / acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ot in ordenes_trabajo %}
+        <tr>
+          <td>
+            <span class="fw-semibold">
+              {{ ot.numero|default:ot.id }}
+            </span>
+          </td>
+          <td>
+            {% if ot.fecha_ot %}
+              {{ ot.fecha_ot|date:"d/m/Y" }}
+            {% else %}
+              <span class="text-muted small">-</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if ot.estado == "BORRADOR" %}
+              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                Borrador
+              </span>
+            {% elif ot.estado == "EN_PROCESO" %}
+              <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                En proceso
+              </span>
+            {% elif ot.estado == "FINALIZADA" %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle">
+                Finalizada
+              </span>
+            {% elif ot.estado == "ENTREGADA" %}
+              <span class="badge bg-info-subtle text-info border border-info-subtle">
+                Entregada
+              </span>
+            {% elif ot.estado == "ANULADA" %}
+              <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+                Anulada
+              </span>
+            {% else %}
+              <span class="badge bg-light text-muted border">Sin estado</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if ot.prioridad == "BAJA" %}
+              <span class="badge bg-light text-muted border">Baja</span>
+            {% elif ot.prioridad == "MEDIA" %}
+              <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                Media
+              </span>
+            {% elif ot.prioridad == "ALTA" %}
+              <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                Alta
+              </span>
+            {% elif ot.prioridad == "URGENTE" %}
+              <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+                Urgente
+              </span>
+            {% else %}
+              <span class="badge bg-light text-muted border">-</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if ot.vehiculo %}
+              {{ ot.vehiculo }}
+            {% else %}
+              <span class="text-muted small">Sin vehículo / equipo</span>
+            {% endif %}
+          </td>
+          <td>
+            {# 👇 Prioridad al responsable_texto, igual que en el detalle #}
+            {% if ot.responsable_texto %}
+              {{ ot.responsable_texto }}
+            {% elif ot.responsable %}
+              {{ ot.responsable }}
+            {% else %}
+              <span class="text-muted small">Sin responsable asignado</span>
+            {% endif %}
+            {% if ot.area %}
+              <div class="text-muted small">
+                Área: {{ ot.area }}
+              </div>
+            {% endif %}
+          </td>
+          <td>
+            <div class="d-flex flex-column">
+              <a
+                href="{% url 'finanzas:orden_trabajo_detail' ot.pk %}"
+                class="text-decoration-none"
+              >
+                {{ ot.descripcion|default:"(sin descripción)"|truncatechars:70 }}
+              </a>
+              <div class="mt-1 d-flex flex-wrap gap-1 small">
+                {% if ot.prioridad == "URGENTE" %}
+                  <span class="badge rounded-pill bg-danger-subtle text-danger border border-danger-subtle">
+                    Urgente
+                  </span>
+                {% endif %}
+                {% if ot.movimiento_ingreso %}
+                  <span class="badge rounded-pill bg-success-subtle text-success border border-success-subtle">
+                    Cobro generado
+                  </span>
+                {% endif %}
+              </div>
+            </div>
+          </td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="7" class="text-center py-3 text-muted">
+            No se encontraron órdenes de trabajo para el filtro aplicado.
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if is_paginated %}
+  <nav class="mt-3" aria-label="Paginación de órdenes de trabajo">
+    <ul class="pagination pagination-sm">
+      {% if page_obj.has_previous %}
+        <li class="page-item">
+          <a
+            class="page-link"
+            href="?page={{ page_obj.previous_page_number }}&estado={{ estado_actual }}&prioridad={{ prioridad_actual }}&desde={{ request.GET.desde }}&hasta={{ request.GET.hasta }}&q={{ q }}"
+          >
+            Anterior
+          </a>
+        </li>
+      {% endif %}
+      <li class="page-item disabled">
+        <span class="page-link">
+          Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+        </span>
+      </li>
+      {% if page_obj.has_next %}
+        <li class="page-item">
+          <a
+            class="page-link"
+            href="?page={{ page_obj.next_page_number }}&estado={{ estado_actual }}&prioridad={{ prioridad_actual }}&desde={{ request.GET.desde }}&hasta={{ request.GET.hasta }}&q={{ q }}"
+          >
+            Siguiente
+          </a>
+        </li>
+      {% endif %}
+    </ul>
+  </nav>
+{% endif %}
+
+{% endblock %}

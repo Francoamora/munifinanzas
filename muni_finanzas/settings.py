@@ -63,6 +63,10 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+
+                # ✅ Context processors propios del proyecto
+                'finanzas.context_processors.roles_ctx',
+                'finanzas.context_processors.comuna_ctx',
             ],
         },
     },
@@ -124,7 +128,18 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # ============================
 #          LOGIN / LOGOUT
 # ============================
-
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "finanzas:home"
 LOGOUT_REDIRECT_URL = "login"
+
+
+# ============================
+#       DATOS DE LA COMUNA
+# ============================
+# Estos datos quedan disponibles vía context processor (COMUNA_*),
+# para usarlos en encabezados, impresiones, PDFs, etc.
+COMUNA_NOMBRE = "Comuna de Tacuarendí"
+COMUNA_CUIT = "30-67433889-5"
+COMUNA_DOMICILIO = "Calle 8 y 5"
+COMUNA_TELEFONO = "3482 - 452012"
+COMUNA_EMAIL = "comuna.tacuarendi@ltnet.com.ar"

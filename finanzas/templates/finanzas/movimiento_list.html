@@ -7,9 +7,14 @@
 
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
+<section class="mv-list" aria-labelledby="mv-list-title">
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <div>
-    <h1 class="h4 mb-0">Movimientos</h1>
+    <h1 class="h4 mb-0" id="mv-list-title">
+      <i class="bi bi-journal-text me-1"></i>
+      Movimientos
+    </h1>
     <div class="text-muted small">
       Listado general de ingresos, gastos y transferencias.
       Por defecto se muestran solo movimientos aprobados, ordenados desde los más recientes.
@@ -24,116 +29,144 @@
 </div>
 
 {# =============== FILTROS =============== #}
-<form id="movimiento-filter-form" method="get" class="card shadow-sm mb-3">
-  <div class="card-body py-2">
-    <div class="row g-2 align-items-end">
-      <div class="col-12 col-md-2">
-        <label class="form-label mb-1">Tipo</label>
-        <select name="tipo" class="form-select form-select-sm">
-          <option value="" {% if not request.GET.tipo %}selected{% endif %}>Todos</option>
-          {% for value,label in tipos %}
-            <option value="{{ value }}" {% if request.GET.tipo == value %}selected{% endif %}>
-              {{ label }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
+<form
+  id="movimiento-filter-form"
+  method="get"
+  class="card shadow-sm mb-3"
+  aria-label="Filtros de movimientos"
+>
+  <div class="card-body py-3">
+    <p id="mov-filters-help" class="visually-hidden">
+      Filtros para acotar el listado de movimientos por tipo, fechas, estado y texto de búsqueda.
+    </p>
 
-      <div class="col-6 col-md-2">
-        <label class="form-label mb-1">Desde</label>
-        <input
-          type="date"
-          name="desde"
-          value="{{ request.GET.desde }}"
-          class="form-control form-control-sm"
-        >
-      </div>
-      <div class="col-6 col-md-2">
-        <label class="form-label mb-1">Hasta</label>
-        <input
-          type="date"
-          name="hasta"
-          value="{{ request.GET.hasta }}"
-          class="form-control form-control-sm"
-        >
-      </div>
-
-      <div class="col-12 col-md-2">
-        <label class="form-label mb-1">Estado</label>
-
-        {% if rol_consulta_politica %}
-          <select class="form-select form-select-sm" disabled>
-            <option value="APROBADO" selected>Solo aprobados</option>
-          </select>
-          <input type="hidden" name="estado" value="APROBADO">
-          <div class="form-text small">
-            Como usuario de consulta siempre ves solo movimientos aprobados.
+    <div class="row g-3 align-items-stretch">
+      {# Columna izquierda: campos de filtro #}
+      <div class="col-12 col-lg-9">
+        <div class="row g-2">
+          <div class="col-12 col-md-3">
+            <label class="form-label mb-1" for="filtro-tipo">Tipo</label>
+            <select name="tipo" id="filtro-tipo" class="form-select form-select-sm" aria-describedby="mov-filters-help">
+              <option value="" {% if not request.GET.tipo %}selected{% endif %}>Todos</option>
+              {% for value,label in tipos %}
+                <option value="{{ value }}" {% if request.GET.tipo == value %}selected{% endif %}>
+                  {{ label }}
+                </option>
+              {% endfor %}
+            </select>
           </div>
-        {% else %}
-          <select name="estado" class="form-select form-select-sm">
-            <option value="APROBADO"
-              {% if estado_actual == "APROBADO" or not estado_actual %}selected{% endif %}
+
+          <div class="col-6 col-md-3">
+            <label class="form-label mb-1" for="filtro-desde">Desde</label>
+            <input
+              type="date"
+              id="filtro-desde"
+              name="desde"
+              value="{{ request.GET.desde }}"
+              class="form-control form-control-sm"
             >
-              Solo aprobados
-            </option>
-            <option value="BORRADOR" {% if estado_actual == "BORRADOR" %}selected{% endif %}>
-              Borradores
-            </option>
-            <option value="RECHAZADO" {% if estado_actual == "RECHAZADO" %}selected{% endif %}>
-              Rechazados
-            </option>
-            <option value="TODOS" {% if estado_actual == "TODOS" %}selected{% endif %}>
-              Todos los estados
-            </option>
-          </select>
-        {% endif %}
-      </div>
+          </div>
 
-      <div class="col-12 col-md-2">
-        <label class="form-label mb-1">Buscar</label>
-        <input
-          type="text"
-          name="q"
-          value="{{ request.GET.q }}"
-          class="form-control form-control-sm"
-          placeholder="Descripción, persona, proveedor..."
-        >
-      </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label mb-1" for="filtro-hasta">Hasta</label>
+            <input
+              type="date"
+              id="filtro-hasta"
+              name="hasta"
+              value="{{ request.GET.hasta }}"
+              class="form-control form-control-sm"
+            >
+          </div>
 
-      <div class="col-12 col-md-2 d-flex flex-column gap-1">
-        <button class="btn btn-primary btn-sm w-100">
-          Aplicar filtros
-        </button>
-        <div class="d-flex flex-wrap gap-1">
-          <button
-            type="button"
-            class="btn btn-outline-secondary btn-xs flex-fill"
-            data-quick-range="last30"
-          >
-            Últimos 30 días
-          </button>
-          <button
-            type="button"
-            class="btn btn-outline-secondary btn-xs flex-fill"
-            data-quick-range="this_month"
-          >
-            Este mes
-          </button>
-          <button
-            type="button"
-            class="btn btn-outline-secondary btn-xs flex-fill"
-            data-quick-range="this_year"
-          >
-            Este año
-          </button>
+          <div class="col-12 col-md-3">
+            <label class="form-label mb-1" for="filtro-estado">Estado</label>
+
+            {% if rol_consulta_politica %}
+              <select class="form-select form-select-sm" id="filtro-estado" disabled>
+                <option value="APROBADO" selected>Solo aprobados</option>
+              </select>
+              <input type="hidden" name="estado" value="APROBADO">
+              <div class="form-text small">
+                Como usuario de consulta siempre ves solo movimientos aprobados.
+              </div>
+            {% else %}
+              <select name="estado" id="filtro-estado" class="form-select form-select-sm">
+                <option value="APROBADO"
+                  {% if estado_actual == "APROBADO" or not estado_actual %}selected{% endif %}
+                >
+                  Solo aprobados
+                </option>
+                <option value="BORRADOR" {% if estado_actual == "BORRADOR" %}selected{% endif %}>
+                  Borradores
+                </option>
+                <option value="RECHAZADO" {% if estado_actual == "RECHAZADO" %}selected{% endif %}>
+                  Rechazados
+                </option>
+                <option value="TODOS" {% if estado_actual == "TODOS" %}selected{% endif %}>
+                  Todos los estados
+                </option>
+              </select>
+            {% endif %}
+          </div>
+
+          <div class="col-12">
+            <label class="form-label mb-1" for="filtro-buscar">Buscar</label>
+            <input
+              type="text"
+              id="filtro-buscar"
+              name="q"
+              value="{{ request.GET.q }}"
+              class="form-control form-control-sm"
+              placeholder="Descripción, persona, proveedor..."
+            >
+          </div>
         </div>
       </div>
+
+      {# Columna derecha: aplicar filtros + rangos rápidos #}
+      <div class="col-12 col-lg-3">
+        <div class="d-flex flex-column h-100 justify-content-between gap-2">
+          <div>
+            <button class="btn btn-primary btn-sm w-100" type="submit">
+              Aplicar filtros
+            </button>
+          </div>
+
+          <div class="d-flex flex-column gap-1">
+            <span class="small text-muted">Rangos rápidos</span>
+            <div class="btn-group w-100" role="group" aria-label="Rangos de fechas rápidos">
+              <button
+                type="button"
+                class="btn btn-outline-secondary btn-sm flex-fill"
+                data-quick-range="last30"
+              >
+                Últimos 30 días
+              </button>
+              <button
+                type="button"
+                class="btn btn-outline-secondary btn-sm flex-fill"
+                data-quick-range="this_month"
+              >
+                Este mes
+              </button>
+              <button
+                type="button"
+                class="btn btn-outline-secondary btn-sm flex-fill"
+                data-quick-range="this_year"
+              >
+                Este año
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </form>
 
 {# =============== RESUMEN DEL FILTRO + CONTEXTO =============== #}
-<div class="d-flex justify-content-between align-items-center mb-2 small text-muted">
+<div class="d-flex justify-content-between align-items-center mb-2 small text-muted flex-wrap gap-2">
   <div>
     {% if page_obj %}
       {% if hay_filtros %}
@@ -145,7 +178,7 @@
       {% endif %}
     {% endif %}
   </div>
-  <div class="text-end d-none d-md-block">
+  <div class="text-end">
     <span class="badge bg-light text-muted border">
       Fecha de hoy: {{ hoy|date:"d/m/Y" }}
     </span>
@@ -157,6 +190,7 @@
     <div class="card border-success-subtle shadow-sm h-100">
       <div class="card-body py-2">
         <div class="small text-muted text-uppercase mb-1">
+          <i class="bi bi-arrow-down-circle me-1"></i>
           Ingresos en el filtro
         </div>
         <div class="fw-bold text-success">
@@ -169,6 +203,7 @@
     <div class="card border-danger-subtle shadow-sm h-100">
       <div class="card-body py-2">
         <div class="small text-muted text-uppercase mb-1">
+          <i class="bi bi-arrow-up-circle me-1"></i>
           Gastos en el filtro
         </div>
         <div class="fw-bold text-danger">
@@ -181,6 +216,7 @@
     <div class="card border-secondary-subtle shadow-sm h-100">
       <div class="card-body py-2">
         <div class="small text-muted text-uppercase mb-1">
+          <i class="bi bi-balance-scale me-1"></i>
           Saldo del filtro
         </div>
         <div class="fw-bold {% if saldo_filtro >= 0 %}text-success{% else %}text-danger{% endif %}">
@@ -196,15 +232,15 @@
   <table class="table table-sm align-middle mb-0 table-hover">
     <thead class="table-light">
       <tr>
-        <th style="width: 90px;">Fecha</th>
-        <th style="width: 110px;">Tipo</th>
-        <th style="width: 120px;">Estado</th>
-        <th>Categoría</th>
-        <th>Área</th>
-        <th>Beneficiario</th>
-        <th class="text-end" style="width: 140px;">Monto</th>
-        <th style="width: 160px;">Orden de pago / Factura</th>
-        <th>Detalle / acciones</th>
+        <th scope="col" style="width: 90px;">Fecha</th>
+        <th scope="col" style="width: 110px;">Tipo</th>
+        <th scope="col" style="width: 120px;">Estado</th>
+        <th scope="col">Categoría</th>
+        <th scope="col">Área</th>
+        <th scope="col">Beneficiario</th>
+        <th scope="col" class="text-end" style="width: 140px;">Monto</th>
+        <th scope="col" style="width: 160px;">Orden de pago / Factura</th>
+        <th scope="col">Detalle / acciones</th>
       </tr>
     </thead>
     <tbody>
@@ -371,8 +407,8 @@
 </div>
 
 {% if is_paginated %}
-  <nav class="mt-3">
-    <ul class="pagination pagination-sm">
+  <nav class="mt-3" aria-label="Paginación de movimientos">
+    <ul class="pagination pagination-sm mb-0">
       {% if page_obj.has_previous %}
         <li class="page-item">
           <a
@@ -401,6 +437,8 @@
     </ul>
   </nav>
 {% endif %}
+
+</section>
 
 {% endblock %}
 

@@ -7,29 +7,32 @@
 
 {% block content %}
 
+{# CABECERA + CTA NUEVA PERSONA #}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
     <h1 class="h4 mb-1">Personas / Censo de beneficiarios</h1>
     <div class="text-muted small">
       Registro de personas vinculadas a ayudas sociales, servicios y situación social.
+      {% if rol_finanzas or rol_consulta_politica or user.is_superuser %}
+        <span class="ms-1">Ves montos de ayudas porque tenés rol de finanzas/consulta.</span>
+      {% elif rol_operador_social %}
+        <span class="ms-1">No se muestran montos de ayudas para este perfil.</span>
+      {% endif %}
     </div>
   </div>
 
-  <a href="{% url 'finanzas:persona_create' %}" class="btn btn-success btn-sm">
-    + Nueva persona
-  </a>
+  {% if rol_finanzas or rol_operador_social or user.is_superuser %}
+    <a href="{% url 'finanzas:persona_create' %}" class="btn btn-success btn-sm">
+      + Nueva persona
+    </a>
+  {% endif %}
 </div>
 
-{# ===== Atajos rápidos (filtro por flag) ===== #}
+{# ATAJOS RÁPIDOS (FLAGS) #}
 <div class="card shadow-sm mb-3">
   <div class="card-body py-2">
     <div class="d-flex flex-wrap gap-2 align-items-center">
       <span class="small text-muted me-1">Filtrar por:</span>
-
-      {% comment %}
-        Usamos "flag" del contexto para marcar activo y armar URLs.
-        Siempre preservamos q, y cambiamos solo flag.
-      {% endcomment %}
 
       <a
         class="btn btn-sm {% if flag == 'beneficio' %}btn-info text-white active{% else %}btn-outline-info{% endif %}"
@@ -77,7 +80,7 @@
   </div>
 </div>
 
-{# ===== Buscador ===== #}
+{# BUSCADOR #}
 <form method="get" class="card shadow-sm mb-3" role="search" aria-label="Buscar persona en el censo">
   <div class="card-body py-2">
     <div class="row g-2 align-items-end">
@@ -92,7 +95,6 @@
           placeholder="Nombre, apellido, DNI, barrio, domicilio..."
           autocomplete="off"
         >
-        {# preserva flag si viene #}
         {% if flag %}
           <input type="hidden" name="flag" value="{{ flag }}">
         {% endif %}
@@ -106,7 +108,7 @@
   </div>
 </form>
 
-{# ===== Resumen del resultado ===== #}
+{# RESUMEN DEL RESULTADO #}
 <div class="d-flex justify-content-between align-items-center mb-2 small text-muted">
   <div>
     {% if q %}
@@ -121,17 +123,39 @@
       <span class="ms-1">
         · Filtro activo:
         <strong>
-          {% if flag == "beneficio" %}Beneficio{% elif flag == "servicios" %}Servicios{% elif flag == "laboral" %}Laboral{% else %}Sin indicadores{% endif %}
+          {% if flag == "beneficio" %}
+            Beneficio
+          {% elif flag == "servicios" %}
+            Servicios
+          {% elif flag == "laboral" %}
+            Laboral
+          {% else %}
+            Sin indicadores
+          {% endif %}
         </strong>
+      </span>
+    {% endif %}
+  </div>
+
+  <div class="d-none d-md-flex align-items-center gap-2">
+    {% if rol_finanzas or rol_consulta_politica or user.is_superuser %}
+      <span class="badge bg-success-subtle text-success border border-success-subtle">
+        Montos visibles
+      </span>
+    {% elif rol_operador_social %}
+      <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+        Sin montos
       </span>
     {% endif %}
   </div>
 </div>
 
+{# TABLA PRINCIPAL #}
 <div class="table-responsive shadow-sm bg-white rounded">
   <table class="table table-sm align-middle mb-0 table-hover">
     <caption class="visually-hidden">
-      Listado de personas y beneficiarios con indicadores sociales y totales de ayudas
+      Listado de personas y beneficiarios con indicadores sociales
+      {% if rol_finanzas or rol_consulta_politica or user.is_superuser %}y totales de ayudas{% endif %}
     </caption>
     <thead class="table-light">
       <tr>
@@ -141,7 +165,11 @@
         <th scope="col" style="width: 160px;">Barrio</th>
         <th scope="col">Domicilio</th>
         <th scope="col" class="text-end" style="width: 120px;">Cant. ayudas</th>
-        <th scope="col" class="text-end" style="width: 150px;">Total ayudas ($)</th>
+
+        {% if rol_finanzas or rol_consulta_politica or user.is_superuser %}
+          <th scope="col" class="text-end" style="width: 150px;">Total ayudas ($)</th>
+        {% endif %}
+
         <th scope="col" style="width: 110px;"></th>
       </tr>
     </thead>
@@ -172,7 +200,6 @@
             </a>
           </td>
 
-          {# ===== Indicadores claros ===== #}
           <td>
             <div class="d-flex flex-wrap gap-1">
               {% if p.percibe_beneficio %}
@@ -180,19 +207,16 @@
                   Recibe beneficio
                 </span>
               {% endif %}
-
               {% if p.paga_servicios %}
                 <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
                   Paga servicios
                 </span>
               {% endif %}
-
               {% if p.tiene_vinculo_laboral %}
                 <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
                   Vínculo laboral
                 </span>
               {% endif %}
-
               {% if not p.percibe_beneficio and not p.paga_servicios and not p.tiene_vinculo_laboral %}
                 <span class="text-muted small">Sin indicadores</span>
               {% endif %}
@@ -219,15 +243,17 @@
             </span>
           </td>
 
-          <td class="text-end">
-            {% if p.total_ayudas %}
-              <span class="fw-semibold text-success">
-                ${{ p.total_ayudas|default:0|formato_pesos }}
-              </span>
-            {% else %}
-              <span class="text-muted">-</span>
-            {% endif %}
-          </td>
+          {% if rol_finanzas or rol_consulta_politica or user.is_superuser %}
+            <td class="text-end">
+              {% if p.total_ayudas %}
+                <span class="fw-semibold text-success">
+                  ${{ p.total_ayudas|default:0|formato_pesos }}
+                </span>
+              {% else %}
+                <span class="text-muted">-</span>
+              {% endif %}
+            </td>
+          {% endif %}
 
           <td class="text-end">
             <a
@@ -240,7 +266,10 @@
         </tr>
       {% empty %}
         <tr>
-          <td colspan="8" class="text-center py-3 text-muted">
+          <td
+            colspan="{% if rol_finanzas or rol_consulta_politica or user.is_superuser %}8{% else %}7{% endif %}"
+            class="text-center py-3 text-muted"
+          >
             No se encontraron personas para el criterio de búsqueda.
           </td>
         </tr>
@@ -249,6 +278,7 @@
   </table>
 </div>
 
+{# PAGINACIÓN #}
 {% if is_paginated %}
   <nav class="mt-3" aria-label="Paginación de personas">
     <ul class="pagination pagination-sm">

@@ -7,28 +7,66 @@
 
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
+{# CABECERA + ACCIONES #}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <div>
     <p class="text-muted small mb-1">Persona / beneficiario</p>
     <h1 class="h4 mb-1">
       {{ persona.apellido }}, {{ persona.nombre }}
     </h1>
     <div class="text-muted small">
-      Histórico de ayudas sociales, sueldos/changas y relación con la comuna (servicios, si corresponde).
+      Histórico de ayudas sociales, sueldos/changas, servicios y otros vínculos con la comuna.
+      {% if rol_finanzas or rol_consulta_politica or user.is_superuser %}
+        <span class="ms-1">Ves montos porque tenés rol de finanzas/consulta.</span>
+      {% elif rol_operador_social %}
+        <span class="ms-1">Este perfil no muestra montos económicos.</span>
+      {% endif %}
     </div>
   </div>
-  <div class="d-flex gap-2">
-    <a href="{% url 'finanzas:persona_update' persona.pk %}" class="btn btn-primary btn-sm">
-      Editar datos
-    </a>
+  <div class="d-flex flex-wrap gap-2">
+    {% if rol_finanzas or rol_operador_social or user.is_superuser %}
+      <a href="{% url 'finanzas:persona_update' persona.pk %}" class="btn btn-primary btn-sm">
+        Editar datos
+      </a>
+    {% endif %}
     <a href="{% url 'finanzas:persona_list' %}" class="btn btn-outline-secondary btn-sm">
       Volver al listado
     </a>
   </div>
 </div>
 
+{# BADGES RÁPIDOS BAJO EL TÍTULO #}
+<div class="d-flex flex-wrap gap-2 mb-3 small">
+  {% if persona.dni %}
+    <span class="badge bg-light text-muted border">
+      DNI: <strong>{{ persona.dni }}</strong>
+    </span>
+  {% endif %}
+  {% if persona.barrio %}
+    <span class="badge bg-light text-muted border">
+      Barrio: <strong>{{ persona.barrio }}</strong>
+    </span>
+  {% endif %}
+  {% if persona.tiene_vinculo_laboral %}
+    <span class="badge bg-success-subtle text-success border border-success-subtle">
+      Vínculo laboral: {{ persona.get_tipo_vinculo_display }}
+    </span>
+  {% endif %}
+  {% if persona.paga_servicios %}
+    <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+      Contribuyente de servicios
+    </span>
+  {% endif %}
+  {% if persona.percibe_beneficio %}
+    <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+      Percibe beneficio social
+    </span>
+  {% endif %}
+</div>
+
 <div class="row g-3 mb-3">
-  <div class="col-12 col-lg-5">
+  {# COLUMNA 1: DATOS BÁSICOS #}
+  <div class="col-12 col-lg-4">
     <div class="card shadow-sm h-100">
       <div class="card-header py-2 d-flex justify-content-between align-items-center">
         <span class="small text-uppercase text-muted fw-semibold">
@@ -56,6 +94,8 @@
           <div class="text-muted text-uppercase mb-1">Teléfono</div>
           <div>{{ persona.telefono|default:"-" }}</div>
         </div>
+
+        <hr class="my-3">
 
         {% if persona.percibe_beneficio %}
           <div class="mb-2">
@@ -124,133 +164,198 @@
     </div>
   </div>
 
-  <div class="col-12 col-lg-7">
-    <div class="card shadow-sm h-100">
-      <div class="card-header py-2 d-flex justify-content-between align-items-center">
-        <span class="small text-uppercase text-muted fw-semibold">
-          Resumen de relación económica con la comuna
-        </span>
-        <div class="d-flex align-items-center gap-1">
-          <span class="badge bg-light text-muted border small">
-            {{ ayudas|length }} ayuda{{ ayudas|length|pluralize:"s" }}
+  {# COLUMNA 2: RESUMEN ECONÓMICO (SOLO ROLES CON MONTOS) #}
+  {% if rol_finanzas or rol_consulta_politica or user.is_superuser %}
+    <div class="col-12 col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <span class="small text-uppercase text-muted fw-semibold">
+            Resumen de relación económica
           </span>
-          {% if cantidad_sueldos_changas %}
+          <div class="d-flex align-items-center gap-1 flex-wrap">
             <span class="badge bg-light text-muted border small">
-              {{ cantidad_sueldos_changas }} pago{{ cantidad_sueldos_changas|pluralize:"s" }} de sueldos/changas
+              {{ ayudas|length }} ayuda{{ ayudas|length|pluralize:"s" }}
             </span>
-          {% endif %}
-          {% if cantidad_servicios_persona %}
-            <span class="badge bg-light text-muted border small">
-              {{ cantidad_servicios_persona }} pago{{ cantidad_servicios_persona|pluralize:"s" }} de servicios
-            </span>
-          {% endif %}
-        </div>
-      </div>
-
-      <div class="card-body small">
-        <div class="row g-3">
-          <div class="col-12 col-md-4">
-            <div class="text-muted text-uppercase mb-1">Total otorgado en ayudas</div>
-            <div class="fs-5 fw-bold text-success">
-              ${{ total_ayudas|default:0|formato_pesos }}
-            </div>
+            {% if cantidad_sueldos_changas %}
+              <span class="badge bg-light text-muted border small">
+                {{ cantidad_sueldos_changas }} pago{{ cantidad_sueldos_changas|pluralize:"s" }} de sueldos/changas
+              </span>
+            {% endif %}
+            {% if cantidad_servicios_persona %}
+              <span class="badge bg-light text-muted border small">
+                {{ cantidad_servicios_persona }} pago{{ cantidad_servicios_persona|pluralize:"s" }} de servicios
+              </span>
+            {% endif %}
           </div>
+        </div>
 
-          <div class="col-12 col-md-4">
-            <div class="text-muted text-uppercase mb-1">Total sueldos / changas</div>
-            <div class="fs-5 fw-bold text-warning">
-              {% if total_sueldos_changas %}
-                ${{ total_sueldos_changas|formato_pesos }}
-              {% else %}
-                -
+        <div class="card-body small">
+          <div class="row g-3">
+            <div class="col-12 col-md-6">
+              <div class="text-muted text-uppercase mb-1 small">Total otorgado en ayudas</div>
+              <div class="fs-5 fw-bold text-success">
+                ${{ total_ayudas|default:0|formato_pesos }}
+              </div>
+              <div class="small text-muted mt-1">
+                {{ ayudas|length }} registro{{ ayudas|length|pluralize:"s" }} aprobados.
+              </div>
+            </div>
+
+            <div class="col-12 col-md-6">
+              <div class="text-muted text-uppercase mb-1 small">Total sueldos / changas</div>
+              <div class="fs-5 fw-bold text-warning">
+                {% if total_sueldos_changas %}
+                  ${{ total_sueldos_changas|formato_pesos }}
+                {% else %}
+                  -
+                {% endif %}
+              </div>
+              {% if cantidad_sueldos_changas %}
+                <div class="small text-muted mt-1">
+                  {{ cantidad_sueldos_changas }} pago{{ cantidad_sueldos_changas|pluralize:"s" }} registrados.
+                </div>
               {% endif %}
             </div>
-            {% if cantidad_sueldos_changas %}
-              <div class="small text-muted mt-1">
-                {{ cantidad_sueldos_changas }} pago{{ cantidad_sueldos_changas|pluralize:"s" }} registrados.
+
+            {% if persona.paga_servicios %}
+              <div class="col-12 mt-2">
+                <div class="text-muted text-uppercase mb-1 small">Pagos de servicios</div>
+                <div class="fs-6 fw-bold text-primary">
+                  {% if total_servicios_persona %}
+                    ${{ total_servicios_persona|formato_pesos }}
+                  {% else %}
+                    Contribuyente con servicios activos
+                  {% endif %}
+                </div>
+                {% if cantidad_servicios_persona %}
+                  <div class="small text-muted mt-1">
+                    {{ cantidad_servicios_persona }} pago{{ cantidad_servicios_persona|pluralize:"s" }} registrados.
+                  </div>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {# COLUMNA 3: RESUMEN DE VIAJES / FLOTA (VISIBLE PARA TODOS) #}
+  {% if viajes_persona %}
+    <div class="col-12 col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <span class="small text-uppercase text-muted fw-semibold">
+            Traslados y uso de vehículos
+          </span>
+          <span class="badge bg-light text-muted border small">
+            {{ viajes_persona|length }} viaje{{ viajes_persona|length|pluralize:"s" }}
+          </span>
+        </div>
+        <div class="card-body small">
+          <p class="text-muted mb-3">
+            Viajes registrados en el módulo de flota donde esta persona figura como beneficiaria/destino.
+          </p>
+
+          <div class="row g-2 mb-2">
+            {% if total_km_persona %}
+              <div class="col-12 col-sm-6">
+                <div class="text-muted text-uppercase mb-1 small">Km estimados recorridos</div>
+                <div class="fw-semibold">{{ total_km_persona|floatformat:0 }} km</div>
+              </div>
+            {% endif %}
+
+            {% if viajes_por_vehiculo %}
+              <div class="col-12 col-sm-6">
+                <div class="text-muted text-uppercase mb-1 small">Vehículos utilizados</div>
+                <div class="fw-semibold">
+                  {{ viajes_por_vehiculo|length }} vehículo{{ viajes_por_vehiculo|length|pluralize:"s" }}
+                </div>
               </div>
             {% endif %}
           </div>
 
-          <div class="col-12 col-md-4">
-            <div class="text-muted text-uppercase mb-1">Cantidad de ayudas</div>
-            <div class="fs-5 fw-bold">
-              {{ ayudas|length }}
-            </div>
-          </div>
-
-          {% if persona.paga_servicios %}
-            <div class="col-12 col-md-6 mt-2">
-              <div class="text-muted text-uppercase mb-1">Pagos de servicios</div>
-              <div class="fs-6 fw-bold text-primary">
-                {% if total_servicios_persona %}
-                  ${{ total_servicios_persona|formato_pesos }}
-                {% else %}
-                  Contribuyente con servicios activos
-                {% endif %}
-              </div>
-              {% if cantidad_servicios_persona %}
-                <div class="small text-muted mt-1">
-                  {{ cantidad_servicios_persona }} pago{{ cantidad_servicios_persona|pluralize:"s" }} registrados.
-                </div>
-              {% endif %}
+          {% if viajes_por_vehiculo %}
+            <div class="mt-2">
+              <div class="text-muted text-uppercase mb-1 small">Vehículos más utilizados</div>
+              <ul class="list-unstyled mb-2">
+                {% for item in viajes_por_vehiculo %}
+                  <li class="d-flex justify-content-between">
+                    <span>{{ item.vehiculo }}</span>
+                    <span class="text-muted">{{ item.cantidad }} viaje{{ item.cantidad|pluralize:"s" }}</span>
+                  </li>
+                {% endfor %}
+              </ul>
             </div>
           {% endif %}
+
+          {% with ultimo_viaje=viajes_persona.0 %}
+            {% if ultimo_viaje %}
+              <div class="mt-3 pt-2 border-top">
+                <div class="text-muted text-uppercase mb-1 small">Último traslado registrado</div>
+                <div class="fw-semibold">
+                  {% if ultimo_viaje.destino_texto %}
+                    {{ ultimo_viaje.destino_texto }}
+                  {% elif ultimo_viaje.destino %}
+                    {{ ultimo_viaje.destino }}
+                  {% elif ultimo_viaje.destino_principal %}
+                    {{ ultimo_viaje.destino_principal }}
+                  {% else %}
+                    Destino sin detalle
+                  {% endif %}
+                </div>
+                <div class="text-muted">
+                  {% if ultimo_viaje.fecha_salida %}
+                    {{ ultimo_viaje.fecha_salida|date:"d/m/Y" }}
+                  {% elif ultimo_viaje.fecha_viaje %}
+                    {{ ultimo_viaje.fecha_viaje|date:"d/m/Y" }}
+                  {% endif %}
+                  {% if ultimo_viaje.vehiculo %}
+                    · {{ ultimo_viaje.vehiculo }}
+                  {% endif %}
+                  {% if ultimo_viaje.chofer_texto or ultimo_viaje.chofer %}
+                    · Chofer:
+                    {% if ultimo_viaje.chofer_texto %}
+                      {{ ultimo_viaje.chofer_texto }}
+                    {% else %}
+                      {{ ultimo_viaje.chofer }}
+                    {% endif %}
+                  {% endif %}
+                </div>
+              </div>
+            {% endif %}
+          {% endwith %}
         </div>
       </div>
     </div>
+  {% endif %}
+</div>
+
+{# MENSAJE PARA OPERADOR SOCIAL SIN MONTOS #}
+{% if rol_operador_social and not rol_finanzas and not rol_consulta_politica and not user.is_superuser %}
+  <div class="alert alert-info small mb-3">
+    Los detalles económicos (montos de ayudas, sueldos y servicios) están disponibles solo para el área de finanzas.
+    Desde acá podés ver y actualizar los datos de la persona y sus traslados en vehículos.
   </div>
-</div>
+{% endif %}
 
-<h2 class="h6 mb-2">Detalle de ayudas sociales</h2>
+{# BLOQUE ECONÓMICO COMPLETO: SOLO ROLES CON MONTOS #}
+{% if rol_finanzas or rol_consulta_politica or user.is_superuser %}
 
-<div class="table-responsive shadow-sm bg-white rounded mb-4">
-  <table class="table table-sm align-middle mb-0 table-hover">
-    <caption class="visually-hidden">
-      Detalle de ayudas sociales otorgadas a {{ persona.apellido }}, {{ persona.nombre }}
-    </caption>
-    <thead class="table-light">
-      <tr>
-        <th scope="col" style="width: 90px;">Fecha</th>
-        <th scope="col">Categoría</th>
-        <th scope="col">Área</th>
-        <th scope="col" class="text-end" style="width: 140px;">Monto</th>
-        <th scope="col">Programa / Descripción</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% if ayudas %}
-        {% for m in ayudas %}
-          <tr>
-            <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
-            <td>{{ m.categoria }}</td>
-            <td>{{ m.area|default:"-" }}</td>
-            <td class="text-end">
-              ${{ m.monto|formato_pesos }}
-            </td>
-            <td>
-              {{ m.programa_ayuda_texto|default:m.descripcion|default:"-" }}
-            </td>
-          </tr>
-        {% endfor %}
-      {% else %}
-        <tr>
-          <td colspan="5" class="text-center py-3 text-muted">
-            Esta persona aún no tiene ayudas sociales registradas.
-          </td>
-        </tr>
-      {% endif %}
-    </tbody>
-  </table>
-</div>
-
-{% if sueldos_changas %}
-  <h2 class="h6 mb-2">Detalle de sueldos / jornales / changas</h2>
+  {# AYUDAS SOCIALES #}
+  <h2 class="h6 mb-2 d-flex align-items-center gap-2">
+    <span>Detalle de ayudas sociales</span>
+    {% if ayudas %}
+      <span class="badge bg-light text-muted border small">
+        {{ ayudas|length }} registro{{ ayudas|length|pluralize:"s" }}
+      </span>
+    {% endif %}
+  </h2>
 
   <div class="table-responsive shadow-sm bg-white rounded mb-4">
     <table class="table table-sm align-middle mb-0 table-hover">
       <caption class="visually-hidden">
-        Detalle de pagos de sueldos, jornales y changas de {{ persona.apellido }}, {{ persona.nombre }}
+        Detalle de ayudas sociales otorgadas a {{ persona.apellido }}, {{ persona.nombre }}
       </caption>
       <thead class="table-light">
         <tr>
@@ -258,54 +363,204 @@
           <th scope="col">Categoría</th>
           <th scope="col">Área</th>
           <th scope="col" class="text-end" style="width: 140px;">Monto</th>
-          <th scope="col">Descripción</th>
+          <th scope="col">Programa / Descripción</th>
         </tr>
       </thead>
       <tbody>
-        {% for m in sueldos_changas %}
+        {% if ayudas %}
+          {% for m in ayudas %}
+            <tr>
+              <td>
+                <a href="{% url 'finanzas:movimiento_detail' m.pk %}" class="text-decoration-none">
+                  {{ m.fecha_operacion|date:"d/m/Y" }}
+                </a>
+              </td>
+              <td>
+                <a href="{% url 'finanzas:movimiento_detail' m.pk %}" class="text-decoration-none">
+                  {{ m.categoria }}
+                </a>
+              </td>
+              <td>{{ m.area|default:"-" }}</td>
+              <td class="text-end">
+                ${{ m.monto|formato_pesos }}
+              </td>
+              <td>
+                {{ m.programa_ayuda_texto|default:m.descripcion|default:"-" }}
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
           <tr>
-            <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
-            <td>{{ m.categoria }}</td>
-            <td>{{ m.area|default:"-" }}</td>
-            <td class="text-end">
-              ${{ m.monto|formato_pesos }}
-            </td>
-            <td>
-              {{ m.descripcion|default:"(sin detalle)"|truncatechars:80 }}
+            <td colspan="5" class="text-center py-3 text-muted">
+              Esta persona aún no tiene ayudas sociales registradas.
             </td>
           </tr>
-        {% endfor %}
+        {% endif %}
       </tbody>
     </table>
   </div>
+
+  {# SUELDOS / JORNALES / CHANGAS #}
+  {% if sueldos_changas %}
+    <h2 class="h6 mb-2 d-flex align-items-center gap-2">
+      <span>Detalle de sueldos / jornales / changas</span>
+      <span class="badge bg-light text-muted border small">
+        {{ cantidad_sueldos_changas }} pago{{ cantidad_sueldos_changas|pluralize:"s" }}
+      </span>
+    </h2>
+
+    <div class="table-responsive shadow-sm bg-white rounded mb-4">
+      <table class="table table-sm align-middle mb-0 table-hover">
+        <caption class="visually-hidden">
+          Detalle de pagos de sueldos, jornales y changas de {{ persona.apellido }}, {{ persona.nombre }}
+        </caption>
+        <thead class="table-light">
+          <tr>
+            <th scope="col" style="width: 90px;">Fecha</th>
+            <th scope="col">Categoría</th>
+            <th scope="col">Área</th>
+            <th scope="col" class="text-end" style="width: 140px;">Monto</th>
+            <th scope="col">Descripción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in sueldos_changas %}
+            <tr>
+              <td>
+                <a href="{% url 'finanzas:movimiento_detail' m.pk %}" class="text-decoration-none">
+                  {{ m.fecha_operacion|date:"d/m/Y" }}
+                </a>
+              </td>
+              <td>
+                <a href="{% url 'finanzas:movimiento_detail' m.pk %}" class="text-decoration-none">
+                  {{ m.categoria }}
+                </a>
+              </td>
+              <td>{{ m.area|default:"-" }}</td>
+              <td class="text-end">
+                ${{ m.monto|formato_pesos }}
+              </td>
+              <td>
+                {{ m.descripcion|default:"(sin detalle)"|truncatechars:80 }}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  {# PAGOS DE SERVICIOS #}
+  {% if pagos_servicios %}
+    <h2 class="h6 mb-2 d-flex align-items-center gap-2">
+      <span>Detalle de pagos de servicios</span>
+      <span class="badge bg-light text-muted border small">
+        {{ cantidad_servicios_persona }} pago{{ cantidad_servicios_persona|pluralize:"s" }}
+      </span>
+    </h2>
+
+    <div class="table-responsive shadow-sm bg-white rounded mb-4">
+      <table class="table table-sm align-middle mb-0 table-hover">
+        <caption class="visually-hidden">
+          Detalle de pagos de servicios realizados por {{ persona.apellido }}, {{ persona.nombre }}
+        </caption>
+        <thead class="table-light">
+          <tr>
+            <th scope="col" style="width: 90px;">Fecha</th>
+            <th scope="col">Categoría</th>
+            <th scope="col" class="text-end" style="width: 140px;">Monto</th>
+            <th scope="col">Descripción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in pagos_servicios %}
+            <tr>
+              <td>
+                <a href="{% url 'finanzas:movimiento_detail' m.pk %}" class="text-decoration-none">
+                  {{ m.fecha_operacion|date:"d/m/Y" }}
+                </a>
+              </td>
+              <td>
+                <a href="{% url 'finanzas:movimiento_detail' m.pk %}" class="text-decoration-none">
+                  {{ m.categoria }}
+                </a>
+              </td>
+              <td class="text-end">
+                ${{ m.monto|formato_pesos }}
+              </td>
+              <td>
+                {{ m.descripcion|default:"(sin detalle)"|truncatechars:80 }}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
 {% endif %}
 
-{% if pagos_servicios %}
-  <h2 class="h6 mb-2">Detalle de pagos de servicios</h2>
+{# DETALLE DE VIAJES / FLOTA (SIEMPRE VISIBLE SI HAY VIAJES) #}
+{% if viajes_persona %}
+  <h2 class="h6 mb-2">Detalle de viajes y traslados</h2>
 
-  <div class="table-responsive shadow-sm bg-white rounded">
+  <div class="table-responsive shadow-sm bg-white rounded mb-4">
     <table class="table table-sm align-middle mb-0 table-hover">
       <caption class="visually-hidden">
-        Detalle de pagos de servicios realizados por {{ persona.apellido }}, {{ persona.nombre }}
+        Detalle de viajes realizados por {{ persona.apellido }}, {{ persona.nombre }}
       </caption>
       <thead class="table-light">
         <tr>
-          <th scope="col" style="width: 90px;">Fecha</th>
-          <th scope="col">Categoría</th>
-          <th scope="col" class="text-end" style="width: 140px;">Monto</th>
-          <th scope="col">Descripción</th>
+          <th scope="col" style="width: 110px;">Fecha</th>
+          <th scope="col">Vehículo</th>
+          <th scope="col">Destino</th>
+          <th scope="col">Chofer</th>
         </tr>
       </thead>
       <tbody>
-        {% for m in pagos_servicios %}
+        {% for v in viajes_persona %}
           <tr>
-            <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
-            <td>{{ m.categoria }}</td>
-            <td class="text-end">
-              ${{ m.monto|formato_pesos }}
+            <td>
+              <a href="{% url 'finanzas:viaje_vehiculo_detail' v.pk %}" class="text-decoration-none">
+                {% if v.fecha_salida %}
+                  {{ v.fecha_salida|date:"d/m/Y" }}
+                {% elif v.fecha_viaje %}
+                  {{ v.fecha_viaje|date:"d/m/Y" }}
+                {% else %}
+                  -
+                {% endif %}
+              </a>
             </td>
             <td>
-              {{ m.descripcion|default:"(sin detalle)"|truncatechars:80 }}
+              <a href="{% url 'finanzas:viaje_vehiculo_detail' v.pk %}" class="text-decoration-none">
+                {{ v.vehiculo|default:"-" }}
+              </a>
+            </td>
+            <td>
+              {% if v.destino_texto %}
+                {{ v.destino_texto }}
+              {% elif v.destino %}
+                {{ v.destino }}
+              {% elif v.destino_principal %}
+                {{ v.destino_principal }}
+              {% else %}
+                <span class="text-muted">Sin destino cargado</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if v.chofer_texto %}
+                {{ v.chofer_texto }}
+              {% elif v.chofer %}
+                {{ v.chofer }}
+              {% else %}
+                <span class="text-muted">Sin chofer registrado</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-center py-3 text-muted">
+              No hay viajes cargados para esta persona en el módulo de flota.
             </td>
           </tr>
         {% endfor %}

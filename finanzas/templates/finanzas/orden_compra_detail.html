@@ -1,0 +1,569 @@
+{% extends "finanzas/base.html" %} 
+{% load humanize %}
+{% load finanzas_extras %}
+
+{% block title %}Orden de compra #{{ orden.numero|default:orden.id }} – {{ COMUNA_NOMBRE|default:"Comuna de Tacuarendí" }}{% endblock %}
+
+{% block content %}
+
+<style>
+/* ===== Layout de impresión tipo hoja A4 para Orden de compra ===== */
+@media print {
+  body {
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    font-size: 10pt;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 1.1cm;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  header,
+  nav,
+  .navbar,
+  .sidebar,
+  .footer,
+  .alert,
+  .btn {
+    display: none !important;
+  }
+
+  .oc-print-sheet {
+    box-shadow: none !important;
+    border: 1px solid #000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    page-break-inside: avoid;
+  }
+
+  .oc-print-sheet .card-body {
+    padding: 0.5rem 0.75rem 0.6rem 0.75rem !important;
+  }
+
+  .oc-print-inner {
+    padding: 0 !important;
+  }
+
+  .oc-print-sheet,
+  .oc-print-sheet * {
+    line-height: 1.25;
+  }
+
+  .oc-print-sheet h2,
+  .oc-print-sheet .h5 {
+    margin-bottom: 0.2rem !important;
+  }
+
+  .oc-print-sheet .small {
+    font-size: 0.8em;
+  }
+
+  .oc-print-sheet hr {
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  .oc-print-sheet .row.g-3 {
+    --bs-gutter-y: 0.4rem;
+    --bs-gutter-x: 0.5rem;
+  }
+
+  .oc-print-table th,
+  .oc-print-table td {
+    padding: 0.15rem 0.25rem !important;
+  }
+
+  .oc-observaciones-wrap {
+    margin-top: 0.3rem !important;
+    margin-bottom: 0.3rem !important;
+  }
+
+  .oc-observaciones {
+    padding: 0.25rem 0.4rem !important;
+    font-size: 0.8em !important;
+    margin: 0 !important;
+  }
+
+  .oc-firmas-row {
+    margin-top: 1.2rem !important;
+  }
+
+  .oc-firma-linea {
+    margin-top: 1.5rem !important;
+    height: 2rem !important;
+  }
+}
+</style>
+
+{# ===== Barra superior de acciones (solo pantalla) ===== #}
+<div class="d-flex justify-content-between align-items-center mb-3 no-print">
+  <div>
+    <p class="text-muted small mb-1 d-flex flex-wrap align-items-center gap-2">
+      <span>Orden de compra #{{ orden.numero|default:orden.id }}</span>
+      <span>·</span>
+      <span
+        class="badge
+          {% if orden.estado == orden.ESTADO_BORRADOR %}
+            bg-secondary-subtle text-secondary border border-secondary-subtle
+          {% elif orden.estado == orden.ESTADO_AUTORIZADA %}
+            bg-primary-subtle text-primary border border-primary-subtle
+          {% elif orden.estado == orden.ESTADO_CERRADA %}
+            bg-success-subtle text-success border border-success-subtle
+          {% elif orden.estado == orden.ESTADO_ANULADA %}
+            bg-danger-subtle text-danger border border-danger-subtle
+          {% else %}
+            bg-light text-muted border
+          {% endif %}
+        "
+      >
+        {{ orden.get_estado_display }}
+      </span>
+    </p>
+    <h1 class="h4 mb-0">
+      {% if orden.proveedor %}
+        {{ orden.proveedor.nombre }}
+      {% elif orden.proveedor_nombre %}
+        {{ orden.proveedor_nombre }}
+      {% else %}
+        Orden sin proveedor
+      {% endif %}
+      {% if total_monto %}
+        · ${{ total_monto|formato_pesos }}
+      {% endif %}
+    </h1>
+  </div>
+
+  <div class="d-flex flex-column align-items-end gap-2">
+    {% if rol_staff_finanzas %}
+      <div class="d-flex flex-wrap justify-content-end gap-1">
+        {% if orden.estado == orden.ESTADO_BORRADOR %}
+          <form
+            method="post"
+            action="{% url 'finanzas:oc_cambiar_estado' orden.pk 'autorizar' %}"
+            onsubmit="return confirm('¿Autorizar esta orden de compra?');"
+          >
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success btn-sm">
+              Autorizar
+            </button>
+          </form>
+          <form
+            method="post"
+            action="{% url 'finanzas:oc_cambiar_estado' orden.pk 'anular' %}"
+            onsubmit="return confirm('¿Anular esta orden de compra?');"
+          >
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger btn-sm">
+              Anular
+            </button>
+          </form>
+        {% elif orden.estado == orden.ESTADO_AUTORIZADA %}
+          <form
+            method="post"
+            action="{% url 'finanzas:oc_cambiar_estado' orden.pk 'cerrar' %}"
+            onsubmit="return confirm('¿Marcar esta orden como CERRADA?');"
+          >
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-primary btn-sm">
+              Marcar cerrada
+            </button>
+          </form>
+          <form
+            method="post"
+            action="{% url 'finanzas:oc_cambiar_estado' orden.pk 'anular' %}"
+            onsubmit="return confirm('¿Anular esta orden de compra?');"
+          >
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger btn-sm">
+              Anular
+            </button>
+          </form>
+        {% elif orden.estado == orden.ESTADO_CERRADA %}
+          <form
+            method="post"
+            action="{% url 'finanzas:oc_cambiar_estado' orden.pk 'borrador' %}"
+            onsubmit="return confirm('¿Reabrir esta orden como BORRADOR? Esto es poco habitual.');"
+          >
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-secondary btn-sm">
+              Reabrir como borrador
+            </button>
+          </form>
+        {% elif orden.estado == orden.ESTADO_ANULADA %}
+          <form
+            method="post"
+            action="{% url 'finanzas:oc_cambiar_estado' orden.pk 'borrador' %}"
+            onsubmit="return confirm('¿Reabrir esta orden anulada como BORRADOR?');"
+          >
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-secondary btn-sm">
+              Reabrir como borrador
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()">
+        Imprimir / PDF
+      </button>
+      <a href="{% url 'finanzas:oc_list' %}" class="btn btn-outline-secondary btn-sm">
+        Volver a órdenes
+      </a>
+      {% if rol_staff_finanzas or rol_operador_finanzas %}
+        <a href="{% url 'finanzas:oc_update' orden.pk %}" class="btn btn-primary btn-sm">
+          Editar orden
+        </a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ===== Hoja A4 de orden de compra ===== #}
+<div class="card shadow-sm oc-print-sheet mb-3">
+  <div class="card-body oc-print-inner">
+    <div class="mb-3">
+      <div class="row align-items-start">
+        <div class="col-8">
+          <h2 class="h5 mb-1">{{ COMUNA_NOMBRE|default:"Comuna de Tacuarendí" }}</h2>
+          <div class="small text-muted">
+            {{ COMUNA_DOMICILIO|default:"Calle 8 y 5" }} – Tacuarendí – Departamento General Obligado – Provincia de Santa Fe
+          </div>
+          <div class="small text-muted">
+            CUIT: {{ COMUNA_CUIT|default:"30-67433889-5" }}
+            · Tel.: {{ COMUNA_TELEFONO|default:"3482 - 452012" }}
+            · Correo: {{ COMUNA_EMAIL|default:"comuna.tacuarendi@ltnet.com.ar" }}
+          </div>
+        </div>
+        <div class="col-4 text-end">
+          <div class="small text-uppercase text-muted fw-semibold">
+            Orden de compra
+          </div>
+          <div class="fs-5 fw-bold">
+            N° {{ orden.numero|default:orden.id }}
+          </div>
+          <div class="small">
+            Fecha: {{ orden.fecha_oc|date:"d/m/Y" }}
+          </div>
+          <div class="small text-muted">
+            Estado: {{ orden.get_estado_display }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="my-2">
+
+    <div class="row g-3 mb-2">
+      <div class="col-12">
+        <div class="fw-semibold text-uppercase small mb-1">
+          Datos del proveedor / imputación
+        </div>
+        <table class="table table-sm mb-0 oc-print-table">
+          <tbody>
+            <tr>
+              <th style="width: 110px;">Proveedor</th>
+              <td>
+                {% if orden.proveedor %}
+                  {{ orden.proveedor.nombre }}
+                {% elif orden.proveedor_nombre %}
+                  {{ orden.proveedor_nombre }}
+                {% else %}
+                  (sin proveedor)
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th>CUIT</th>
+              <td>{{ orden.proveedor_cuit|default:"(sin CUIT)" }}</td>
+            </tr>
+            <tr>
+              <th>Área</th>
+              <td>{{ orden.area|default:"(sin área)" }}</td>
+            </tr>
+            <tr>
+              <th>Rubro</th>
+              <td>
+                {% if orden.get_rubro_principal_display %}
+                  {% if orden.rubro_principal %}
+                    <span class="badge bg-light text-muted border me-1">
+                      {{ orden.rubro_principal }}
+                    </span>
+                  {% endif %}
+                  {{ orden.get_rubro_principal_display }}
+                {% else %}
+                  (sin rubro)
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th>Total OC</th>
+              <td>
+                {% if total_monto %}
+                  ${{ total_monto|formato_pesos }}
+                {% else %}
+                  (sin líneas aún)
+                {% endif %}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {% if orden.observaciones %}
+      <div class="mt-2 mb-1 oc-observaciones-wrap">
+        <div class="fw-semibold text-uppercase small mb-1">
+          Observaciones
+        </div>
+        <div class="border rounded-1 p-2 small bg-light oc-observaciones">
+          {{ orden.observaciones|linebreaksbr }}
+        </div>
+      </div>
+    {% endif %}
+
+    <hr class="my-3">
+
+    <div class="fw-semibold text-uppercase small mb-1">
+      Detalle de conceptos
+    </div>
+    <div class="table-responsive mb-0">
+      <table class="table table-sm align-middle mb-0 oc-print-table">
+        <thead class="table-light">
+          <tr>
+            <th style="width: 20%;">Categoría</th>
+            <th style="width: 20%;">Área</th>
+            <th>Descripción</th>
+            <th style="width: 15%;" class="text-end">Monto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for linea in lineas %}
+            <tr>
+              <td>{{ linea.categoria|default:"-" }}</td>
+              <td>{{ linea.area|default:"-" }}</td>
+              <td>{{ linea.descripcion }}</td>
+              <td class="text-end">
+                ${{ linea.monto|formato_pesos }}
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="4" class="text-center py-3 text-muted">
+                La orden todavía no tiene líneas de detalle.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="row justify-content-end mt-2">
+      <div class="col-12 col-md-5">
+        <table class="table table-sm mb-0 oc-print-table">
+          <tbody>
+            <tr>
+              <th>Total de la orden</th>
+              <td class="text-end fw-semibold">
+                {% if total_monto %}
+                  ${{ total_monto|formato_pesos }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {% if facturas %}
+      <hr class="my-3">
+      <div class="fw-semibold text-uppercase small mb-1">
+        Comprobantes / facturas asociadas
+      </div>
+      <div class="table-responsive mb-0">
+        <table class="table table-sm align-middle mb-0 oc-print-table">
+          <thead class="table-light">
+            <tr>
+              <th style="width: 90px;">Fecha</th>
+              <th style="width: 120px;">Tipo</th>
+              <th>Número</th>
+              <th style="width: 18%;" class="text-end">Monto</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in facturas %}
+              <tr>
+                <td>
+                  {% if f.fecha %}
+                    {{ f.fecha|date:"d/m/Y" }}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+                <td>{{ f.get_tipo_display|default:"-" }}</td>
+                <td>{{ f.numero|default:"-" }}</td>
+                <td class="text-end">
+                  {% if f.monto %}
+                    ${{ f.monto|formato_pesos }}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th colspan="3" class="text-end">Total facturas</th>
+              <th class="text-end">
+                {% if total_facturas %}
+                  ${{ total_facturas|formato_pesos }}
+                {% else %}
+                  -
+                {% endif %}
+              </th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    {% endif %}
+
+    <div class="row g-3 mb-2 mt-3">
+      <div class="col-12 col-md-6">
+        <div class="fw-semibold text-uppercase small mb-1">
+          Auditoría interna
+        </div>
+        <table class="table table-sm mb-0 oc-print-table">
+          <tbody>
+            <tr>
+              <th style="width: 140px;">ID interno</th>
+              <td>#{{ orden.id }}</td>
+            </tr>
+            <tr>
+              <th>Fecha creación</th>
+              <td>{{ orden.fecha_creacion|date:"d/m/Y H:i" }}</td>
+            </tr>
+            <tr>
+              <th>Última actualización</th>
+              <td>{{ orden.actualizado_en|date:"d/m/Y H:i" }}</td>
+            </tr>
+            {% if orden.creado_por %}
+              <tr>
+                <th>Creada por</th>
+                <td>{{ orden.creado_por }}</td>
+              </tr>
+            {% endif %}
+            {% if orden.actualizado_por %}
+              <tr>
+                <th>Última modificación</th>
+                <td>{{ orden.actualizado_por }}</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="row mt-4 oc-firmas-row">
+      <div class="col-6 text-center">
+        <div class="oc-firma-linea border-top border-dark mx-auto" style="width: 70%; height: 2.5rem;"></div>
+        <div class="small mt-1">
+          Autorizado por
+        </div>
+      </div>
+      <div class="col-6 text-center">
+        <div class="oc-firma-linea border-top border-dark mx-auto" style="width: 70%; height: 2.5rem;"></div>
+        <div class="small mt-1">
+          Proveedor
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ===== Movimientos vinculados (no se imprimen) ===== #}
+<div class="card shadow-sm no-print">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <span class="small text-uppercase text-muted fw-semibold">
+      Movimientos asociados
+    </span>
+    <div class="d-flex align-items-center gap-2">
+      {% if total_movimientos and total_movimientos > 0 %}
+        <span class="small text-muted">
+          Total movimientos: ${{ total_movimientos|formato_pesos }}
+        </span>
+      {% endif %}
+
+      {% if puede_generar_movimiento %}
+        <form
+          method="post"
+          action="{% url 'finanzas:oc_generar_movimiento' orden.pk %}"
+          onsubmit="return confirm('Se generará un movimiento de GASTO aprobado por el total de la orden. ¿Continuar?');"
+        >
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-outline-success">
+            Generar movimiento de gasto
+          </button>
+        </form>
+      {% elif tiene_movimientos %}
+        <span class="badge bg-success-subtle text-success border border-success-subtle small">
+          Movimiento generado
+        </span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-body small p-0">
+    {% if movimientos %}
+      <div class="table-responsive mb-0">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="width: 90px;">Fecha</th>
+              <th>Categoría</th>
+              <th>Área</th>
+              <th style="width: 130px;" class="text-end">Monto</th>
+              <th style="width: 120px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in movimientos %}
+              <tr>
+                <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
+                <td>{{ m.categoria|default:"-" }}</td>
+                <td>{{ m.area|default:"-" }}</td>
+                <td class="text-end">
+                  ${{ m.monto|formato_pesos }}
+                </td>
+                <td>
+                  <a
+                    href="{% url 'finanzas:movimiento_detail' m.pk %}"
+                    class="small text-decoration-none"
+                  >
+                    Ver movimiento →
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="p-3 text-muted">
+        No hay movimientos vinculados a esta orden. Una vez que la orden esté CERRADA,
+        podés generar el movimiento contable desde aquí (si corresponde).
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

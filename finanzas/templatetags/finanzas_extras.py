@@ -2,36 +2,90 @@ from decimal import Decimal, InvalidOperation
 
 from django import template
 from django.utils import formats
-from django.contrib.auth.models import Group
 
 register = template.Library()
 
 
+# ============================================================
+#   NÚMEROS / PESOS
+# ============================================================
+
 @register.filter
-def formato_pesos(value):
+def formato_pesos(value, decimals=2):
     """
-    Formatea números como pesos argentinos usando la localización (es-ar):
-    - Separador de miles: punto
-    - Separador decimal: coma
-    - Siempre 2 decimales
-    Ejemplo: 570050000 -> '570.050.000,00'
+    Formatea números como pesos argentinos aprovechando la localización
+    de Django (por ejemplo es-ar si está configurado):
+
+    - Separador de miles según locale (en es-ar: punto)
+    - Separador decimal según locale (en es-ar: coma)
+    - `decimals` decimales (por defecto, 2)
+
+    Ejemplo (con locale es-ar):
+      570050000 -> '570.050.000,00'
     """
     if value is None or value == "":
+        # Mantengo el comportamiento anterior
         return "0,00"
 
     try:
-        value = Decimal(value)
+        value = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError):
         # Si no se puede convertir, lo devolvemos tal cual (evita romper la template)
         return value
 
+    # Permite sobreescribir la cantidad de decimales desde la template:
+    # {{ monto|formato_pesos:"0" }}
+    try:
+        decimals = int(decimals)
+    except (TypeError, ValueError):
+        decimals = 2
+
     return formats.number_format(
         value,
-        decimal_pos=2,
+        decimal_pos=decimals,
         use_l10n=True,
         force_grouping=True,
     )
 
+
+@register.filter
+def pesos_ar(value, decimals=2):
+    """
+    Formato de número estilo AR fijo, independiente del locale de Django.
+
+    - Separador de miles: punto
+    - Separador decimal: coma
+    - `decimals` decimales (por defecto, 2)
+
+    Ejemplos:
+      41000        -> '41.000,00'
+      1234.5       -> '1.234,50'
+      {{ monto|pesos_ar }}         # 2 decimales
+      {{ km|pesos_ar:"1" }}        # 1 decimal
+    """
+    if value is None or value == "":
+        value = 0
+
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        # Si no es número, lo devolvemos tal cual
+        return value
+
+    try:
+        decimals = int(decimals)
+    except (TypeError, ValueError):
+        decimals = 2
+
+    # Primero formateo en estilo US: 41,000.00
+    base = f"{num:,.{decimals}f}"
+    # Después intercambio separadores: 41.000,00
+    return base.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+# ============================================================
+#   ROLES / GRUPOS
+# ============================================================
 
 def _user_in_groups(user, group_names):
     """

@@ -1,0 +1,564 @@
+{% extends "finanzas/base.html" %} 
+{% load humanize %}
+{% load finanzas_extras %}
+
+{# 
+  DETALLE + IMPRESIÓN DE ORDEN DE TRABAJO
+
+  Contexto:
+    - orden: OrdenTrabajo
+    - hoy: date (opcional)
+    - rol_staff_finanzas / rol_operador_finanzas / rol_taller: bool (opcionales)
+#}
+
+{% block title %}Orden de trabajo #{{ orden.numero|default:orden.id }} – Comuna de Tacuarendí{% endblock %}
+
+{% block content %}
+
+<style>
+/* ===== Layout de impresión tipo hoja A4 para Orden de trabajo ===== */
+@media print {
+  body {
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    font-size: 10pt;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 1.1cm;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  header,
+  nav,
+  .navbar,
+  .sidebar,
+  .footer,
+  .alert,
+  .btn {
+    display: none !important;
+  }
+
+  .ot-print-sheet {
+    box-shadow: none !important;
+    border: 1px solid #000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    page-break-inside: avoid;
+  }
+
+  .ot-print-sheet .card-body {
+    padding: 0.5rem 0.75rem 0.6rem 0.75rem !important;
+  }
+
+  .ot-print-inner {
+    padding: 0 !important;
+  }
+
+  .ot-print-sheet,
+  .ot-print-sheet * {
+    line-height: 1.25;
+  }
+
+  .ot-print-sheet h2,
+  .ot-print-sheet .h5 {
+    margin-bottom: 0.2rem !important;
+  }
+
+  .ot-print-sheet .small {
+    font-size: 0.8em;
+  }
+
+  .ot-print-sheet hr {
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  .ot-print-sheet .row.g-3 {
+    --bs-gutter-y: 0.4rem;
+    --bs-gutter-x: 0.5rem;
+  }
+
+  .ot-print-table th,
+  .ot-print-table td {
+    padding: 0.15rem 0.25rem !important;
+  }
+
+  .ot-observaciones-wrap {
+    margin-top: 0.3rem !important;
+    margin-bottom: 0.3rem !important;
+  }
+
+  .ot-observaciones {
+    padding: 0.25rem 0.4rem !important;
+    font-size: 0.8em !important;
+    margin: 0 !important;
+  }
+
+  .ot-firmas-row {
+    margin-top: 1.2rem !important;
+  }
+
+  .ot-firma-linea {
+    margin-top: 1.5rem !important;
+    height: 2rem !important;
+  }
+}
+</style>
+
+{# ===== Barra superior de acciones (solo pantalla) ===== #}
+<div class="d-flex justify-content-between align-items-center mb-3 no-print">
+  <div>
+    <p class="text-muted small mb-1 d-flex flex-wrap align-items-center gap-2">
+      <span>Orden de trabajo #{{ orden.numero|default:orden.id }}</span>
+      <span>·</span>
+      <span
+        class="badge
+          {% if orden.estado == orden.ESTADO_BORRADOR %}
+            bg-secondary-subtle text-secondary border border-secondary-subtle
+          {% elif orden.estado == orden.ESTADO_EN_PROCESO %}
+            bg-info-subtle text-info border border-info-subtle
+          {% elif orden.estado == orden.ESTADO_FINALIZADA %}
+            bg-success-subtle text-success border border-success-subtle
+          {% elif orden.estado == orden.ESTADO_ENTREGADA %}
+            bg-primary-subtle text-primary border border-primary-subtle
+          {% elif orden.estado == orden.ESTADO_ANULADA %}
+            bg-danger-subtle text-danger border border-danger-subtle
+          {% else %}
+            bg-light text-muted border
+          {% endif %}
+        "
+      >
+        {{ orden.get_estado_display|default:orden.estado }}
+      </span>
+
+      {% if orden.prioridad %}
+        <span>·</span>
+        <span class="badge
+          {% if orden.prioridad == orden.PRIORIDAD_BAJA %}
+            bg-light text-muted border
+          {% elif orden.prioridad == orden.PRIORIDAD_MEDIA %}
+            bg-primary-subtle text-primary border border-primary-subtle
+          {% elif orden.prioridad == orden.PRIORIDAD_ALTA %}
+            bg-warning-subtle text-warning border border-warning-subtle
+          {% elif orden.prioridad == orden.PRIORIDAD_URGENTE %}
+            bg-danger-subtle text-danger border border-danger-subtle
+          {% else %}
+            bg-light text-muted border
+          {% endif %}
+        ">
+          Prioridad: {{ orden.get_prioridad_display }}
+        </span>
+      {% endif %}
+
+      {% if orden.vehiculo %}
+        <span>·</span>
+        <span class="badge bg-light text-muted border">
+          Vehículo / equipo asignado
+        </span>
+      {% endif %}
+
+      {% if orden.esta_cobrada %}
+        <span>·</span>
+        <span class="badge bg-success-subtle text-success border border-success-subtle">
+          Cobro generado
+        </span>
+      {% endif %}
+    </p>
+
+    <h1 class="h4 mb-0">
+      {% if orden.solicitante %}
+        {{ orden.solicitante.apellido }}, {{ orden.solicitante.nombre }}
+      {% elif orden.solicitante_texto %}
+        {{ orden.solicitante_texto }}
+      {% else %}
+        {{ orden.descripcion|default:"Orden de trabajo sin solicitante"|truncatechars:90 }}
+      {% endif %}
+      {% if orden.importe_estimado %}
+        · Estimado ${{ orden.importe_estimado|formato_pesos }}
+      {% endif %}
+      {% if orden.importe_final %}
+        · Final ${{ orden.importe_final|formato_pesos }}
+      {% endif %}
+    </h1>
+
+    {% if orden.descripcion %}
+      <p class="small text-muted mb-0 mt-1">
+        {{ orden.descripcion|truncatechars:120 }}
+      </p>
+    {% endif %}
+  </div>
+
+  <div class="d-flex flex-column align-items-end gap-2">
+    <div class="d-flex gap-2 flex-wrap justify-content-end">
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()">
+        Imprimir / PDF
+      </button>
+      <a href="{% url 'finanzas:orden_trabajo_list' %}" class="btn btn-outline-secondary btn-sm">
+        Volver a órdenes
+      </a>
+      {% if rol_staff_finanzas or rol_operador_finanzas or rol_taller %}
+        <a href="{% url 'finanzas:orden_trabajo_update' orden.pk %}" class="btn btn-primary btn-sm">
+          Editar orden
+        </a>
+      {% endif %}
+    </div>
+    {% if hoy %}
+      <span class="badge bg-light text-muted border small d-none d-md-inline-block">
+        Fecha de hoy: {{ hoy|date:"d/m/Y" }}
+      </span>
+    {% endif %}
+  </div>
+</div>
+
+{# ===== Hoja A4 de orden de trabajo ===== #}
+<div class="card shadow-sm ot-print-sheet mb-3">
+  <div class="card-body ot-print-inner">
+    <div class="mb-3">
+      <div class="row align-items-start">
+        <div class="col-8">
+          <h2 class="h5 mb-1">Comuna de Tacuarendí</h2>
+          <div class="small text-muted">
+            Localidad de Tacuarendí – Departamento General Obligado – Provincia de Santa Fe
+          </div>
+          <div class="small text-muted">
+            CUIT: 30-67433889-5 · Tel.:3482 - 452012 · Correo: comuna.tacuarendi@ltnet.com.ar
+          </div>
+        </div>
+        <div class="col-4 text-end">
+          <div class="small text-uppercase text-muted fw-semibold">
+            Orden de trabajo
+          </div>
+          <div class="fs-5 fw-bold">
+            N° {{ orden.numero|default:orden.id }}
+          </div>
+          <div class="small">
+            Fecha: {% if orden.fecha_ot %}{{ orden.fecha_ot|date:"d/m/Y" }}{% else %}(sin fecha){% endif %}
+          </div>
+          <div class="small text-muted">
+            Estado: {{ orden.get_estado_display }}
+            {% if orden.prioridad %} · Prioridad: {{ orden.get_prioridad_display }}{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="my-2">
+
+    <div class="row g-3 mb-2">
+      <div class="col-12 col-md-6">
+        <div class="fw-semibold text-uppercase small mb-1">
+          Datos del solicitante
+        </div>
+        <table class="table table-sm mb-0 ot-print-table">
+          <tbody>
+            <tr>
+              <th style="width: 110px;">Nombre</th>
+              <td>
+                {% if orden.solicitante %}
+                  {{ orden.solicitante.apellido }}, {{ orden.solicitante.nombre }}
+                {% elif orden.solicitante_texto %}
+                  {{ orden.solicitante_texto }}
+                {% else %}
+                  (sin solicitante)
+                {% endif %}
+              </td>
+            </tr>
+            {% if orden.solicitante %}
+              <tr>
+                <th>DNI</th>
+                <td>{{ orden.solicitante.dni|default:"(sin DNI)" }}</td>
+              </tr>
+              <tr>
+                <th>Domicilio</th>
+                <td>{{ orden.solicitante.direccion|default:"(sin domicilio)" }}</td>
+              </tr>
+              <tr>
+                <th>Barrio</th>
+                <td>{{ orden.solicitante.barrio|default:"(sin barrio)" }}</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="col-12 col-md-6">
+        <div class="fw-semibold text-uppercase small mb-1">
+          Datos del trabajo
+        </div>
+        <table class="table table-sm mb-0 ot-print-table">
+          <tbody>
+            <tr>
+              <th style="width: 110px;">Tipo</th>
+              <td>{{ orden.get_tipo_trabajo_display|default:orden.tipo_trabajo }}</td>
+            </tr>
+            <tr>
+              <th>Área</th>
+              <td>{{ orden.area|default:"(sin área)" }}</td>
+            </tr>
+            <tr>
+              <th>Vehículo</th>
+              <td>{{ orden.vehiculo|default:"(sin vehículo)" }}</td>
+            </tr>
+            <tr>
+              <th>Responsable</th>
+              <td>
+                {# 👇 Ahora priorizamos siempre el texto libre #}
+                {% if orden.responsable_texto %}
+                  {{ orden.responsable_texto }}
+                {% elif orden.responsable %}
+                  {{ orden.responsable.apellido }}, {{ orden.responsable.nombre }}
+                {% else %}
+                  (sin responsable definido)
+                {% endif %}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <hr class="my-2">
+
+    <div class="row g-3 mb-2">
+      <div class="col-12 col-md-6">
+        <div class="fw-semibold text-uppercase small mb-1">
+          Descripción del trabajo solicitado
+        </div>
+        <div class="border rounded-1 p-2 small bg-light">
+          {{ orden.descripcion|default:"(sin descripción cargada)"|linebreaksbr }}
+        </div>
+      </div>
+      <div class="col-12 col-md-6">
+        <div class="fw-semibold text-uppercase small mb-1">
+          Trabajos realizados
+        </div>
+        <div class="border rounded-1 p-2 small bg-light">
+          {% if orden.trabajos_realizados %}
+            {{ orden.trabajos_realizados|linebreaksbr }}
+          {% else %}
+            <span class="text-muted">(a completar cuando se finalice el trabajo)</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {# Materiales / insumos utilizados #}
+    {% with mats=orden.materiales.all %}
+      {% if mats %}
+        <hr class="my-2">
+        <div class="fw-semibold text-uppercase small mb-1">
+          Materiales / insumos utilizados
+        </div>
+        <div class="table-responsive mb-0">
+          <table class="table table-sm align-middle mb-0 ot-print-table">
+            <thead class="table-light">
+              <tr>
+                <th>Descripción</th>
+                <th style="width: 12%;" class="text-end">Cant.</th>
+                <th style="width: 12%;">Unidad</th>
+                <th style="width: 14%;" class="text-end">Costo unit.</th>
+                <th style="width: 14%;" class="text-end">Costo total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for m in mats %}
+                <tr>
+                  <td>{{ m.descripcion }}</td>
+                  <td class="text-end">{{ m.cantidad }}</td>
+                  <td>{{ m.unidad|default:"-" }}</td>
+                  <td class="text-end">
+                    {% if m.costo_unitario %}
+                      ${{ m.costo_unitario|formato_pesos }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    {% if m.costo_total %}
+                      ${{ m.costo_total|formato_pesos }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="5" class="text-center py-2 text-muted">
+                    No se cargaron materiales para esta orden.
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <hr class="my-2">
+
+    <div class="row g-3 mb-2">
+      <div class="col-12 col-md-6">
+        <div class="fw-semibold text-uppercase small mb-1">
+          Montos de referencia
+        </div>
+        <table class="table table-sm mb-0 ot-print-table">
+          <tbody>
+            <tr>
+              <th style="width: 150px;">Importe estimado</th>
+              <td class="text-end">
+                {% if orden.importe_estimado %}
+                  ${{ orden.importe_estimado|formato_pesos }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th>Importe final</th>
+              <td class="text-end">
+                {% if orden.importe_final %}
+                  ${{ orden.importe_final|formato_pesos }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th>Categoría ingreso</th>
+              <td>{{ orden.categoria_ingreso|default:"(sin categoría)" }}</td>
+            </tr>
+            <tr>
+              <th>Movimiento ingreso</th>
+              <td>
+                {% if orden.movimiento_ingreso %}
+                  Generado (ID {{ orden.movimiento_ingreso.id }})
+                {% else %}
+                  (sin movimiento generado)
+                {% endif %}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {% if orden.observaciones %}
+        <div class="col-12 col-md-6 ot-observaciones-wrap">
+          <div class="fw-semibold text-uppercase small mb-1">
+            Observaciones internas
+          </div>
+          <div class="border rounded-1 p-2 small bg-light ot-observaciones">
+            {{ orden.observaciones|linebreaksbr }}
+          </div>
+        </div>
+      {% endif %}
+    </div>
+
+    <hr class="my-2">
+
+    <div class="row g-3 mb-2">
+      <div class="col-12 col-md-6">
+        <div class="fw-semibold text-uppercase small mb-1">
+          Auditoría interna
+        </div>
+        <table class="table table-sm mb-0 ot-print-table">
+          <tbody>
+            <tr>
+              <th style="width: 140px;">ID interno</th>
+              <td>#{{ orden.id }}</td>
+            </tr>
+            <tr>
+              <th>Fecha creación</th>
+              <td>
+                {% if orden.fecha_creacion %}
+                  {{ orden.fecha_creacion|date:"d/m/Y H:i" }}
+                {% else %}
+                  (sin dato)
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th>Última actualización</th>
+              <td>
+                {% if orden.actualizado_en %}
+                  {{ orden.actualizado_en|date:"d/m/Y H:i" }}
+                {% else %}
+                  (sin dato)
+                {% endif %}
+              </td>
+            </tr>
+            {% if orden.creado_por %}
+              <tr>
+                <th>Creada por</th>
+                <td>{{ orden.creado_por }}</td>
+              </tr>
+            {% endif %}
+            {% if orden.actualizado_por %}
+              <tr>
+                <th>Última modificación</th>
+                <td>{{ orden.actualizado_por }}</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="row mt-4 ot-firmas-row">
+      <div class="col-6 text-center">
+        <div class="ot-firma-linea border-top border-dark mx-auto" style="width: 70%; height: 2.5rem;"></div>
+        <div class="small mt-1">
+          Responsable de la comuna
+        </div>
+      </div>
+      <div class="col-6 text-center">
+        <div class="ot-firma-linea border-top border-dark mx-auto" style="width: 70%; height: 2.5rem;"></div>
+        <div class="small mt-1">
+          Solicitante / Conformidad
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ================== ADJUNTOS (solo pantalla) ================== #}
+{% with archivos=orden.adjuntos.all %}
+  {% if archivos %}
+    <div class="card shadow-sm mt-3 no-print">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <span class="small text-uppercase text-muted fw-semibold">
+          Adjuntos
+        </span>
+        <span class="badge bg-light text-muted border small">
+          {{ archivos|length }} archivo{{ archivos|length|pluralize:"s" }}
+        </span>
+      </div>
+      <div class="card-body small">
+        <ul class="mb-0 list-unstyled">
+          {% for adj in archivos %}
+            <li class="mb-1">
+              {% if adj.archivo.url %}
+                <a href="{{ adj.archivo.url }}" target="_blank" class="text-decoration-none">
+                  {{ adj.descripcion|default:adj.archivo.name }}
+                </a>
+              {% else %}
+                {{ adj.descripcion|default:adj }}
+              {% endif %}
+              <span class="text-muted">
+                · {{ adj.fecha_subida|date:"d/m/Y H:i" }}
+                {% if adj.subido_por %} · {{ adj.subido_por }}{% endif %}
+              </span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  {% endif %}
+{% endwith %}
+
+{% endblock %}

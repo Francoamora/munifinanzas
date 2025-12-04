@@ -45,6 +45,22 @@
           Estado: {{ form.instance.get_estado_display }}
         </span>
       {% endif %}
+
+      <div class="d-flex flex-wrap justify-content-end gap-1 small">
+        <span class="badge rounded-pill bg-light text-secondary border border-secondary-subtle">
+          Tipo: {{ form.instance.get_tipo_display }}
+        </span>
+        {% if form.instance.categoria %}
+          <span class="badge rounded-pill bg-light text-secondary border border-secondary-subtle">
+            Categoría: {{ form.instance.categoria }}
+          </span>
+        {% endif %}
+        {% if form.instance.area %}
+          <span class="badge rounded-pill bg-light text-secondary border border-secondary-subtle">
+            Área: {{ form.instance.area }}
+          </span>
+        {% endif %}
+      </div>
     {% else %}
       <span class="badge bg-light text-secondary border border-secondary-subtle">
         Estado inicial: Borrador (no impacta en saldos ni balances hasta que sea aprobado)
@@ -58,7 +74,7 @@
 </div>
 
 {% if form.instance.pk and form.instance.esta_aprobado %}
-  <div class="alert alert-warning py-2 small">
+  <div class="alert alert-warning py-2 small" role="alert">
     Este movimiento ya está <strong>aprobado</strong>.  
     Usá esta pantalla principalmente para corregir la <strong>clasificación contable</strong>, el <strong>área</strong>,
     los datos de <strong>persona / programa</strong> y las <strong>notas</strong>.
@@ -71,7 +87,7 @@
     {% csrf_token %}
 
     {% if form.non_field_errors %}
-      <div class="alert alert-danger py-2">
+      <div class="alert alert-danger py-2" role="alert">
         {{ form.non_field_errors }}
       </div>
     {% endif %}
@@ -128,7 +144,7 @@
       <strong>personal</strong> o <strong>combustible</strong> para que los reportes y la ficha de cada persona se armen solos.
     </p>
 
-    {# ========== BLOQUE 3: CUENTAS (usa *_texto) ========== #}
+    {# ========== BLOQUE 3: CUENTAS ========== #}
     <h2 class="h6 text-uppercase text-muted mb-2">Cuentas</h2>
     <div class="row g-3 mb-3">
       <div class="col-12 col-md-6">
@@ -172,7 +188,14 @@
     <div class="d-flex align-items-center justify-content-between mb-1">
       <h2 class="h6 text-uppercase text-muted mb-0">Proveedor / Comercio</h2>
       <div class="form-check form-switch small">
-        <input class="form-check-input" type="checkbox" id="toggle-proveedor">
+        <input
+          class="form-check-input"
+          type="checkbox"
+          id="toggle-proveedor"
+          {% if form.proveedor_cuit.value or form.proveedor_nombre.value or form.instance.proveedor %}
+            checked
+          {% endif %}
+        >
         <label class="form-check-label" for="toggle-proveedor">
           Compra / pago a proveedor
         </label>
@@ -182,28 +205,59 @@
       Activá si este movimiento es una compra o pago a un comercio/proveedor.
     </p>
 
-    <div id="proveedor-section" class="row g-3 mb-3">
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.proveedor_cuit.id_for_label }}">CUIT</label>
-        {{ form.proveedor_cuit }}
-        {% if form.proveedor_cuit.errors %}
-          <div class="text-danger small mt-1">{{ form.proveedor_cuit.errors|join:", " }}</div>
-        {% endif %}
+    {% with cuit=form.proveedor_cuit.value nombre=form.proveedor_nombre.value proveedor_inst=form.instance.proveedor %}
+      <div
+        id="proveedor-section"
+        class="mb-3 {% if not cuit and not nombre and not proveedor_inst %}d-none{% endif %}"
+        data-proveedor-cuit-url="{% url 'finanzas:oc_proveedor_por_cuit' %}"
+        data-proveedor-search-url="{% url 'finanzas:oc_proveedores_suggest' %}"
+      >
+        <div id="proveedor-alert" class="alert alert-info py-2 mb-2 d-none small" role="alert"></div>
+
+        <div class="row g-3">
+          <div class="col-12 col-md-4">
+            <label class="form-label mb-1" for="{{ form.proveedor_cuit.id_for_label }}">CUIT</label>
+            {{ form.proveedor_cuit }}
+            {% if form.proveedor_cuit.errors %}
+              <div class="text-danger small mt-1">{{ form.proveedor_cuit.errors|join:", " }}</div>
+            {% endif %}
+            <div class="form-text small">
+              Escribí el CUIT y el sistema intentará traer los datos desde el padrón de proveedores.
+            </div>
+          </div>
+          <div class="col-12 col-md-8">
+            <label class="form-label mb-1" for="{{ form.proveedor_nombre.id_for_label }}">Nombre / razón social</label>
+            <div class="position-relative">
+              {{ form.proveedor_nombre }}
+              <div
+                id="proveedor-suggestions"
+                class="mv-autocomplete-list list-group position-absolute w-100 d-none shadow-sm border bg-white"
+                style="z-index: 1050; max-height: 260px; overflow-y: auto;"
+              ></div>
+            </div>
+            {% if form.proveedor_nombre.errors %}
+              <div class="text-danger small mt-1">{{ form.proveedor_nombre.errors|join:", " }}</div>
+            {% endif %}
+            <div class="form-text small">
+              Escribí al menos 2 letras para buscar en el padrón de proveedores.
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="col-12 col-md-8">
-        <label class="form-label mb-1" for="{{ form.proveedor_nombre.id_for_label }}">Nombre / razón social</label>
-        {{ form.proveedor_nombre }}
-        {% if form.proveedor_nombre.errors %}
-          <div class="text-danger small mt-1">{{ form.proveedor_nombre.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-    </div>
+    {% endwith %}
 
     {# ========== BLOQUE 6: BENEFICIARIO / PERSONA (OPCIONAL) ========== #}
     <div class="d-flex align-items-center justify-content-between mb-1">
       <h2 class="h6 text-uppercase text-muted mb-0">Beneficiario / Persona</h2>
       <div class="form-check form-switch small">
-        <input class="form-check-input" type="checkbox" id="toggle-beneficiario">
+        <input
+          class="form-check-input"
+          type="checkbox"
+          id="toggle-beneficiario"
+          {% if form.beneficiario_dni.value or form.beneficiario_nombre.value or form.instance.beneficiario %}
+            checked
+          {% endif %}
+        >
         <label class="form-check-label" for="toggle-beneficiario">
           Este movimiento tiene persona vinculada (ayuda / trabajo / servicios)
         </label>
@@ -214,66 +268,83 @@
       vinculados a una persona. Se integra con el censo por DNI.
     </p>
 
-    <div
-      id="beneficiario-section"
-      class="mb-3"
-      data-persona-dni-url="{% url 'finanzas:persona_buscar_dni' %}"
-    >
-      <div id="beneficiario-alert" class="alert alert-info py-2 mb-2 d-none small"></div>
+    {% with dni=form.beneficiario_dni.value nombre=form.beneficiario_nombre.value persona_inst=form.instance.beneficiario %}
+      <div
+        id="beneficiario-section"
+        class="mb-3 {% if not dni and not nombre and not persona_inst %}d-none{% endif %}"
+        data-persona-dni-url="{% url 'finanzas:persona_buscar_dni' %}"
+        data-persona-search-url="{% url 'finanzas:persona_suggest' %}"
+      >
+        <div id="beneficiario-alert" class="alert alert-info py-2 mb-2 d-none small" role="alert"></div>
 
-      <div class="row g-3">
-        <div class="col-12 col-md-4">
-          <label class="form-label mb-1" for="{{ form.beneficiario_dni.id_for_label }}">DNI</label>
-          {{ form.beneficiario_dni }}
-          {% if form.beneficiario_dni.errors %}
-            <div class="text-danger small mt-1">{{ form.beneficiario_dni.errors|join:", " }}</div>
-          {% endif %}
-        </div>
-        <div class="col-12 col-md-8">
-          <label class="form-label mb-1" for="{{ form.beneficiario_nombre.id_for_label }}">Apellido y nombre</label>
-          {{ form.beneficiario_nombre }}
-          {% if form.beneficiario_nombre.errors %}
-            <div class="text-danger small mt-1">{{ form.beneficiario_nombre.errors|join:", " }}</div>
-          {% endif %}
-        </div>
-        <div class="col-12 col-md-6">
-          <label class="form-label mb-1" for="{{ form.beneficiario_direccion.id_for_label }}">Domicilio</label>
-          {{ form.beneficiario_direccion }}
-          {% if form.beneficiario_direccion.errors %}
-            <div class="text-danger small mt-1">{{ form.beneficiario_direccion.errors|join:", " }}</div>
-          {% endif %}
-        </div>
-        <div class="col-12 col-md-6">
-          <label class="form-label mb-1" for="{{ form.beneficiario_barrio.id_for_label }}">Barrio</label>
-          {{ form.beneficiario_barrio }}
-          {% if form.beneficiario_barrio.errors %}
-            <div class="text-danger small mt-1">{{ form.beneficiario_barrio.errors|join:", " }}</div>
-          {% endif %}
-        </div>
-
-        <div class="col-12 mt-2">
-          <label class="form-label mb-1" for="{{ form.tipo_pago_persona.id_for_label }}">
-            Tipo de pago a la persona (opcional)
-          </label>
-          {{ form.tipo_pago_persona }}
-          <div class="form-text small">
-            Elegí <strong>"Pago de sueldo (planta permanente)"</strong> para sueldos mensuales de personal
-            y <strong>"Pago de changa / jornal / eventual"</strong> para trabajos puntuales o semanales.
-            Dejá <strong>"Ninguno / genérico"</strong> si se trata de una ayuda social u otro movimiento
-            que solo vincula a la persona.
+        <div class="row g-3">
+          <div class="col-12 col-md-4">
+            <label class="form-label mb-1" for="{{ form.beneficiario_dni.id_for_label }}">DNI</label>
+            {{ form.beneficiario_dni }}
+            {% if form.beneficiario_dni.errors %}
+              <div class="text-danger small mt-1">{{ form.beneficiario_dni.errors|join:", " }}</div>
+            {% endif %}
           </div>
-          {% if form.tipo_pago_persona.errors %}
-            <div class="text-danger small mt-1">{{ form.tipo_pago_persona.errors|join:", " }}</div>
-          {% endif %}
+          <div class="col-12 col-md-8">
+            <label class="form-label mb-1" for="{{ form.beneficiario_nombre.id_for_label }}">Apellido y nombre</label>
+            <div class="position-relative">
+              {{ form.beneficiario_nombre }}
+              <div
+                id="beneficiario-suggestions"
+                class="mv-autocomplete-list list-group position-absolute w-100 d-none shadow-sm border bg-white"
+                style="z-index: 1050; max-height: 260px; overflow-y: auto;"
+              ></div>
+            </div>
+            {% if form.beneficiario_nombre.errors %}
+              <div class="text-danger small mt-1">{{ form.beneficiario_nombre.errors|join:", " }}</div>
+            {% endif %}
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label mb-1" for="{{ form.beneficiario_direccion.id_for_label }}">Domicilio</label>
+            {{ form.beneficiario_direccion }}
+            {% if form.beneficiario_direccion.errors %}
+              <div class="text-danger small mt-1">{{ form.beneficiario_direccion.errors|join:", " }}</div>
+            {% endif %}
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label mb-1" for="{{ form.beneficiario_barrio.id_for_label }}">Barrio</label>
+            {{ form.beneficiario_barrio }}
+            {% if form.beneficiario_barrio.errors %}
+              <div class="text-danger small mt-1">{{ form.beneficiario_barrio.errors|join:", " }}</div>
+            {% endif %}
+          </div>
+
+          <div class="col-12 mt-2">
+            <label class="form-label mb-1" for="{{ form.tipo_pago_persona.id_for_label }}">
+              Tipo de pago a la persona (opcional)
+            </label>
+            {{ form.tipo_pago_persona }}
+            <div class="form-text small">
+              Elegí <strong>"Pago de sueldo (planta permanente)"</strong> para sueldos mensuales de personal
+              y <strong>"Pago de changa / jornal / eventual"</strong> para trabajos puntuales o semanales.
+              Dejá <strong>"Ninguno / genérico"</strong> si se trata de una ayuda social u otro movimiento
+              que solo vincula a la persona.
+            </div>
+            {% if form.tipo_pago_persona.errors %}
+              <div class="text-danger small mt-1">{{ form.tipo_pago_persona.errors|join:", " }}</div>
+            {% endif %}
+          </div>
         </div>
       </div>
-    </div>
+    {% endwith %}
 
     {# ========== BLOQUE 7: COMBUSTIBLE / VEHÍCULO (OPCIONAL) ========== #}
     <div class="d-flex align-items-center justify-content-between mb-1">
       <h2 class="h6 text-uppercase text-muted mb-0">Combustible / Vehículo</h2>
       <div class="form-check form-switch small">
-        <input class="form-check-input" type="checkbox" id="toggle-combustible">
+        <input
+          class="form-check-input"
+          type="checkbox"
+          id="toggle-combustible"
+          {% if form.vehiculo_texto.value or form.litros.value or form.precio_unitario.value or form.tipo_combustible.value or form.instance.vehiculo %}
+            checked
+          {% endif %}
+        >
         <label class="form-check-label" for="toggle-combustible">
           Es un gasto de combustible / vehículo
         </label>
@@ -283,36 +354,51 @@
       Activá solo si el movimiento corresponde a carga de combustible o gasto del vehículo.
     </p>
 
-    <div id="combustible-section" class="row g-3 mb-3">
-      <div class="col-12 col-md-6">
-        <label class="form-label mb-1" for="{{ form.vehiculo_texto.id_for_label }}">Vehículo / detalle</label>
-        {{ form.vehiculo_texto }}
-        {% if form.vehiculo_texto.errors %}
-          <div class="text-danger small mt-1">{{ form.vehiculo_texto.errors|join:", " }}</div>
-        {% endif %}
+    {% with vehiculo_txt=form.vehiculo_texto.value litros=form.litros.value precio=form.precio_unitario.value tipo_comb=form.tipo_combustible.value vehiculo_inst=form.instance.vehiculo %}
+      <div
+        id="combustible-section"
+        class="row g-3 mb-3 {% if not vehiculo_txt and not litros and not precio and not tipo_comb and not vehiculo_inst %}d-none{% endif %}"
+        data-vehiculo-search-url="{% url 'finanzas:vehiculo_autocomplete' %}"
+      >
+        {{ form.vehiculo }}
+
+        <div class="col-12 col-md-6">
+          <label class="form-label mb-1" for="{{ form.vehiculo_texto.id_for_label }}">Vehículo / detalle</label>
+          <div class="position-relative">
+            {{ form.vehiculo_texto }}
+            <div
+              id="vehiculo-suggestions"
+              class="mv-autocomplete-list list-group position-absolute w-100 d-none shadow-sm border bg-white"
+              style="z-index: 1050; max-height: 260px; overflow-y: auto;"
+            ></div>
+          </div>
+          {% if form.vehiculo_texto.errors %}
+            <div class="text-danger small mt-1">{{ form.vehiculo_texto.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+        <div class="col-12 col-md-2">
+          <label class="form-label mb-1" for="{{ form.litros.id_for_label }}">Litros</label>
+          {{ form.litros }}
+          {% if form.litros.errors %}
+            <div class="text-danger small mt-1">{{ form.litros.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+        <div class="col-12 col-md-2">
+          <label class="form-label mb-1" for="{{ form.precio_unitario.id_for_label }}">Precio unit.</label>
+          {{ form.precio_unitario }}
+          {% if form.precio_unitario.errors %}
+            <div class="text-danger small mt-1">{{ form.precio_unitario.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+        <div class="col-12 col-md-2">
+          <label class="form-label mb-1" for="{{ form.tipo_combustible.id_for_label }}">Tipo comb.</label>
+          {{ form.tipo_combustible }}
+          {% if form.tipo_combustible.errors %}
+            <div class="text-danger small mt-1">{{ form.tipo_combustible.errors|join:", " }}</div>
+          {% endif %}
+        </div>
       </div>
-      <div class="col-12 col-md-2">
-        <label class="form-label mb-1" for="{{ form.litros.id_for_label }}">Litros</label>
-        {{ form.litros }}
-        {% if form.litros.errors %}
-          <div class="text-danger small mt-1">{{ form.litros.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-      <div class="col-12 col-md-2">
-        <label class="form-label mb-1" for="{{ form.precio_unitario.id_for_label }}">Precio unit.</label>
-        {{ form.precio_unitario }}
-        {% if form.precio_unitario.errors %}
-          <div class="text-danger small mt-1">{{ form.precio_unitario.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-      <div class="col-12 col-md-2">
-        <label class="form-label mb-1" for="{{ form.tipo_combustible.id_for_label }}">Tipo comb.</label>
-        {{ form.tipo_combustible }}
-        {% if form.tipo_combustible.errors %}
-          <div class="text-danger small mt-1">{{ form.tipo_combustible.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-    </div>
+    {% endwith %}
 
     {# ========== BLOQUE 8: DETALLE / NOTAS ========== #}
     <h2 class="h6 text-uppercase text-muted mb-2">Detalle</h2>
@@ -345,9 +431,11 @@
       </div>
     </div>
 
-    {# Campos ocultos (por si hubiera ids internos) #}
+    {# Campos ocultos (ids internos, excepto vehiculo que ya se imprime arriba) #}
     {% for field in form.hidden_fields %}
-      {{ field }}
+      {% if field.name != "vehiculo" %}
+        {{ field }}
+      {% endif %}
     {% endfor %}
   </div>
 
@@ -358,7 +446,6 @@
 
     <div class="d-flex flex-wrap gap-2">
       {% if not form.instance.pk or form.instance.esta_borrador %}
-        {# Nuevo movimiento o movimiento en BORRADOR #}
         <button
           type="submit"
           name="accion"
@@ -377,7 +464,6 @@
           Guardar y aprobar
         </button>
       {% else %}
-        {# Para edición de aprobados/rechazados: edición blanda #}
         <button type="submit" class="btn btn-primary btn-sm">
           Guardar cambios
         </button>
@@ -386,9 +472,16 @@
   </div>
 </form>
 
+{% if categoria_tipos_json %}
+  <script id="categoria-tipos-data" type="application/json">
+    {{ categoria_tipos_json|safe }}
+  </script>
+{% endif %}
+
 {% endblock %}
 
 {% block extra_js %}
   {{ block.super }}
   <script src="{% static 'finanzas/js/movimiento_form.js' %}"></script>
+  <script src="{% static 'finanzas/js/movimiento_proveedor.js' %}"></script>
 {% endblock %}

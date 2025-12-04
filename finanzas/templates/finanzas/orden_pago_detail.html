@@ -2,7 +2,7 @@
 {% load humanize %}
 {% load finanzas_extras %}
 
-{% block title %}Orden de pago #{{ orden.numero|default:orden.id }} – Comuna de Tacuarendí{% endblock %}
+{% block title %}Orden de pago #{{ orden.numero|default:orden.id }} – {{ COMUNA_NOMBRE|default:"Comuna de Tacuarendí" }}{% endblock %}
 
 {% block content %}
 
@@ -269,12 +269,14 @@
     <div class="mb-3">
       <div class="row align-items-start">
         <div class="col-8">
-          <h2 class="h5 mb-1">Comuna de Tacuarendí</h2>
+          <h2 class="h5 mb-1">{{ COMUNA_NOMBRE|default:"Comuna de Tacuarendí" }}</h2>
           <div class="small text-muted">
-            Localidad de Tacuarendí – Departamento General Obligado – Provincia de Santa Fe
+            {{ COMUNA_DOMICILIO|default:"Calle 8 y 5" }} – Tacuarendí – Departamento General Obligado – Provincia de Santa Fe
           </div>
           <div class="small text-muted">
-            CUIT: (completar comuna) · Tel.: (completar) · Correo: (completar)
+            CUIT: {{ COMUNA_CUIT|default:"30-67433889-5" }}
+            · Tel.: {{ COMUNA_TELEFONO|default:"3482 - 452012" }}
+            · Correo: {{ COMUNA_EMAIL|default:"comuna.tacuarendi@ltnet.com.ar" }}
           </div>
         </div>
         <div class="col-4 text-end">

@@ -6,6 +6,8 @@
 
 {% block content %}
 
+<section class="mv-detail" aria-label="Detalle de movimiento">
+
 {# ================== HEADER: TÍTULO + ACCIONES ================== #}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
@@ -357,6 +359,7 @@
     <div class="card shadow-sm mb-3">
       <div class="card-header py-2">
         <span class="small text-uppercase text-muted fw-semibold">
+          <i class="bi bi-bank me-1"></i>
           Cuentas involucradas
         </span>
       </div>
@@ -384,6 +387,7 @@
     <div class="card shadow-sm mb-3">
       <div class="card-header py-2 d-flex justify-content-between align-items-center">
         <span class="small text-uppercase text-muted fw-semibold">
+          <i class="bi bi-receipt me-1"></i>
           Orden de pago / Factura
         </span>
         {% if rol_staff_finanzas and movimiento.tipo == movimiento.TIPO_GASTO %}
@@ -613,6 +617,7 @@
     <div class="card shadow-sm mb-3">
       <div class="card-header py-2">
         <span class="small text-uppercase text-muted fw-semibold">
+          <i class="bi bi-search me-1"></i>
           Auditoría
         </span>
       </div>
@@ -678,6 +683,7 @@
       <div class="card shadow-sm h-100">
         <div class="card-header py-2">
           <span class="small text-uppercase text-muted fw-semibold">
+            <i class="bi bi-shop me-1"></i>
             Proveedor / Comercio
           </span>
         </div>
@@ -709,6 +715,7 @@
       <div class="card shadow-sm h-100">
         <div class="card-header py-2 d-flex justify-content-between align-items-center">
           <span class="small text-uppercase text-muted fw-semibold">
+            <i class="bi bi-person-badge me-1"></i>
             Beneficiario / Persona
           </span>
           <span class="badge bg-light text-muted border small">
@@ -773,6 +780,7 @@
       <div class="card shadow-sm h-100">
         <div class="card-header py-2">
           <span class="small text-uppercase text-muted fw-semibold">
+            <i class="bi bi-truck-front me-1"></i>
             Combustible / Vehículo
           </span>
         </div>
@@ -829,6 +837,7 @@
     <div class="card shadow-sm mt-3">
       <div class="card-header py-2 d-flex justify-content-between align-items-center">
         <span class="small text-uppercase text-muted fw-semibold">
+          <i class="bi bi-paperclip me-1"></i>
           Adjuntos
         </span>
         <span class="badge bg-light text-muted border small">
@@ -857,5 +866,7 @@
     </div>
   {% endif %}
 {% endwith %}
+
+</section>
 
 {% endblock %}

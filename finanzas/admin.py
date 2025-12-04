@@ -74,6 +74,28 @@ class MovimientoInline(admin.TabularInline):
     extra = 0
     can_delete = False
     show_change_link = True
+    ordering = ("-fecha_operacion", "-id")
+
+
+class AtencionInline(admin.TabularInline):
+    """
+    Inline de solo lectura para ver las atenciones sociales
+    registradas para una persona desde el admin.
+    """
+    model = models.Atencion
+    fields = (
+        "fecha_atencion",
+        "motivo_principal",
+        "canal",
+        "estado",
+        "prioridad",
+        "requiere_seguimiento",
+    )
+    readonly_fields = fields
+    extra = 0
+    can_delete = False
+    show_change_link = True
+    ordering = ("-fecha_atencion", "-id")
 
 
 @admin.register(models.Beneficiario)
@@ -106,7 +128,7 @@ class BeneficiarioAdmin(admin.ModelAdmin):
     list_editable = ("activo", "paga_servicios", "tipo_vinculo")
     ordering = ("apellido", "nombre")
     list_per_page = 50
-    inlines = [MovimientoInline]
+    inlines = [MovimientoInline, AtencionInline]
 
 
 @admin.register(models.Vehiculo)
@@ -164,6 +186,7 @@ class MovimientoAdmin(admin.ModelAdmin):
     ordering = ("-fecha_operacion", "-id")
     list_per_page = 50
 
+    # Incluimos todas las FKs que querés autocompletar
     autocomplete_fields = (
         "categoria",
         "area",
@@ -173,6 +196,8 @@ class MovimientoAdmin(admin.ModelAdmin):
         "vehiculo",
         "cuenta_origen",
         "cuenta_destino",
+        "orden_pago",
+        "oc",  # FK a OrdenCompra
     )
 
     readonly_fields = (
@@ -217,18 +242,99 @@ class AdjuntoMovimientoAdmin(admin.ModelAdmin):
     list_per_page = 50
 
 
+@admin.register(models.Atencion)
+class AtencionAdmin(admin.ModelAdmin):
+    list_display = (
+        "fecha_atencion",
+        "persona_resumen_admin",
+        "motivo_principal",
+        "canal",
+        "estado",
+        "prioridad",
+        "requiere_seguimiento",
+        "area",
+    )
+    list_filter = (
+        "estado",
+        "prioridad",
+        "canal",
+        "motivo_principal",
+        "area",
+        "fecha_atencion",
+    )
+    search_fields = (
+        "persona_nombre",
+        "persona_dni",
+        "persona_barrio",
+        "descripcion",
+        "resultado",
+        "origen_interno",
+        "persona__apellido",
+        "persona__nombre",
+        "persona__dni",
+    )
+    autocomplete_fields = ("persona", "area", "tarea_seguimiento")
+    date_hierarchy = "fecha_atencion"
+    ordering = ("-fecha_atencion", "-id")
+    list_per_page = 50
+
+    readonly_fields = (
+        "fecha_creacion",
+        "actualizado_en",
+        "creado_por",
+        "actualizado_por",
+    )
+
+    def persona_resumen_admin(self, obj):
+        return obj.persona_resumen
+
+    persona_resumen_admin.short_description = "Persona"
+
+    def save_model(self, request, obj, form, change):
+        if not obj.creado_por:
+            obj.creado_por = request.user
+        obj.actualizado_por = request.user
+        super().save_model(request, obj, form, change)
+
+
 # =========================
-# ÓRDENES DE PAGO (fix autocomplete Agenda)
+# ÓRDENES DE PAGO
 # =========================
 @admin.register(models.OrdenPago)
 class OrdenPagoAdmin(admin.ModelAdmin):
     """
-    Admin simple y seguro para no romper nada:
-    - Se registra el modelo para que Agenda pueda usar autocomplete_fields.
-    - Search mínimo para que el autocomplete funcione.
+    Admin simple y seguro para Orden de Pago:
+    - Necesario para usar autocomplete_fields desde otros módulos.
     """
-    search_fields = ("numero",)
-    ordering = ("-id",)
+    list_display = ("numero", "fecha_orden", "proveedor_nombre", "area")
+    list_filter = ("area", "fecha_orden")
+    search_fields = ("numero", "proveedor_nombre", "proveedor__nombre", "proveedor_cuit")
+    date_hierarchy = "fecha_orden"
+    ordering = ("-fecha_orden", "-id")
+    list_per_page = 50
+
+
+# =========================
+# ÓRDENES DE COMPRA (FIX ERROR admin.E039)
+# =========================
+@admin.register(models.OrdenCompra)
+class OrdenCompraAdmin(admin.ModelAdmin):
+    """
+    Admin para OrdenCompra:
+    - Requerido para que MovimientoAdmin.autocomplete_fields pueda apuntar a 'oc'.
+    - Definimos search_fields para que el autocomplete funcione.
+    """
+    list_display = ("serie", "numero", "fecha_oc", "proveedor_nombre", "estado", "area")
+    list_filter = ("estado", "rubro_principal", "area", "fecha_oc")
+    search_fields = (
+        "numero",
+        "proveedor_nombre",
+        "proveedor_cuit",
+        "proveedor__nombre",
+        "proveedor__cuit",
+    )
+    date_hierarchy = "fecha_oc"
+    ordering = ("-fecha_oc", "-id")
     list_per_page = 50
 
 

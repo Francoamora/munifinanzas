@@ -1,0 +1,276 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+
+{% block title %}
+  Vehículo {{ vehiculo.patente|default:vehiculo.id }} – Flota
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <p class="text-muted small mb-1 d-flex flex-wrap align-items-center gap-2">
+      <span>Flota y vehículos</span>
+      <span>·</span>
+      <span>Ficha del vehículo</span>
+    </p>
+    <h1 class="h4 mb-1">
+      Vehículo
+      {% if vehiculo.patente %}
+        {{ vehiculo.patente }}
+      {% else %}
+        ID {{ vehiculo.id }}
+      {% endif %}
+    </h1>
+    <div class="small text-muted">
+      Detalle, uso y consumo asociado al vehículo.
+    </div>
+  </div>
+
+  <div class="d-flex flex-column align-items-end gap-2">
+    <div class="d-flex flex-wrap justify-content-end gap-2">
+      {% if vehiculo.activo %}
+        <span class="badge bg-success-subtle text-success border border-success-subtle">
+          Activo
+        </span>
+      {% else %}
+        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+          Inactivo
+        </span>
+      {% endif %}
+      {% if vehiculo.area %}
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+          {{ vehiculo.area.nombre }}
+        </span>
+      {% endif %}
+    </div>
+    <div class="btn-group btn-group-sm" role="group">
+      <a href="{% url 'finanzas:vehiculo_list' %}" class="btn btn-outline-secondary">
+        Volver al listado
+      </a>
+      <a href="{% url 'finanzas:vehiculo_update' vehiculo.pk %}" class="btn btn-outline-secondary">
+        Editar
+      </a>
+      <a href="{% url 'finanzas:viaje_vehiculo_list' %}?vehiculo={{ vehiculo.pk }}" class="btn btn-outline-secondary d-none d-md-inline-block">
+        Ver viajes
+      </a>
+      <a href="{% url 'finanzas:flota_combustible_resumen' %}?vehiculo={{ vehiculo.pk }}" class="btn btn-outline-secondary d-none d-lg-inline-block">
+        Resumen de consumo
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-header py-2">
+        <h2 class="h6 mb-0">Datos del vehículo</h2>
+      </div>
+      <div class="card-body">
+        <dl class="row mb-0 small">
+          <dt class="col-5 col-md-4 text-muted">Patente / ID</dt>
+          <dd class="col-7 col-md-8">
+            {% if vehiculo.patente %}
+              {{ vehiculo.patente }}
+            {% else %}
+              ID {{ vehiculo.id }}
+            {% endif %}
+          </dd>
+
+          <dt class="col-5 col-md-4 text-muted">Descripción</dt>
+          <dd class="col-7 col-md-8">
+            {{ vehiculo.descripcion|default:"—" }}
+          </dd>
+
+          <dt class="col-5 col-md-4 text-muted">Área</dt>
+          <dd class="col-7 col-md-8">
+            {{ vehiculo.area.nombre|default:"—" }}
+          </dd>
+
+          <dt class="col-5 col-md-4 text-muted">Km referencia</dt>
+          <dd class="col-7 col-md-8">
+            {% if vehiculo.kilometraje_referencia %}
+              {{ vehiculo.kilometraje_referencia }} km
+            {% else %}
+              —
+            {% endif %}
+          </dd>
+
+          <dt class="col-5 col-md-4 text-muted">Horas referencia</dt>
+          <dd class="col-7 col-md-8">
+            {% if vehiculo.horometro_referencia %}
+              {{ vehiculo.horometro_referencia }} h
+            {% else %}
+              —
+            {% endif %}
+          </dd>
+
+          {# Campos opcionales que tal vez tengas en el modelo, no rompen si no existen #}
+          <dt class="col-5 col-md-4 text-muted">Interno</dt>
+          <dd class="col-7 col-md-8">
+            {{ vehiculo.interno|default:"—" }}
+          </dd>
+
+          <dt class="col-5 col-md-4 text-muted">Observaciones</dt>
+          <dd class="col-7 col-md-8">
+            {{ vehiculo.observaciones|default:"—" }}
+          </dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-header py-2">
+        <h2 class="h6 mb-0">Uso y consumo</h2>
+      </div>
+      <div class="card-body">
+        <div class="row row-cols-2 g-3 small">
+          <div class="col">
+            <div class="border rounded-3 p-2 h-100">
+              <div class="text-muted text-uppercase fw-semibold small mb-1">
+                Km registrados
+              </div>
+              <div class="fs-5">
+                {% if total_km_vehiculo %}
+                  {{ total_km_vehiculo|floatformat:1 }} km
+                {% else %}
+                  <span class="text-muted">Sin datos</span>
+                {% endif %}
+              </div>
+              <div class="text-muted small">
+                A partir de viajes con odómetro cargado.
+              </div>
+            </div>
+          </div>
+
+          <div class="col">
+            <div class="border rounded-3 p-2 h-100">
+              <div class="text-muted text-uppercase fw-semibold small mb-1">
+                Viajes registrados
+              </div>
+              <div class="fs-5">
+                {{ total_viajes_vehiculo|default:"0" }}
+              </div>
+              <div class="text-muted small">
+                En todo el historial.
+              </div>
+            </div>
+          </div>
+
+          <div class="col">
+            <div class="border rounded-3 p-2 h-100">
+              <div class="text-muted text-uppercase fw-semibold small mb-1">
+                Combustible total
+              </div>
+              <div class="fs-5">
+                {% if total_combustible_vehiculo %}
+                  $ {{ total_combustible_vehiculo|floatformat:2|intcomma }}
+                {% else %}
+                  <span class="text-muted">Sin datos</span>
+                {% endif %}
+              </div>
+              <div class="text-muted small">
+                Suma de movimientos de combustible.
+              </div>
+            </div>
+          </div>
+
+          <div class="col">
+            <div class="border rounded-3 p-2 h-100">
+              <div class="text-muted text-uppercase fw-semibold small mb-1">
+                Costo estimado por km
+              </div>
+              <div class="fs-5">
+                {% if costo_por_km_vehiculo %}
+                  $ {{ costo_por_km_vehiculo|floatformat:2 }}
+                {% else %}
+                  <span class="text-muted">No calculable</span>
+                {% endif %}
+              </div>
+              <div class="text-muted small">
+                Combustible / km recorridos.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p class="text-muted small mt-3 mb-0">
+          Estos indicadores se calculan en base a los viajes y movimientos de combustible
+          asociados al vehículo.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center">
+    <h2 class="h6 mb-0">Últimos viajes del vehículo</h2>
+    <a
+      href="{% url 'finanzas:viaje_vehiculo_list' %}?vehiculo={{ vehiculo.pk }}"
+      class="btn btn-outline-secondary btn-sm"
+    >
+      Ver todos
+    </a>
+  </div>
+  <div class="card-body p-0">
+    {% if viajes_recientes %}
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Fecha</th>
+              <th>Origen</th>
+              <th>Destino</th>
+              <th>Motivo</th>
+              <th>Chofer</th>
+              <th class="text-end">Km</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for v in viajes_recientes %}
+              <tr>
+                <td>
+                  {{ v.fecha_salida|date:"d/m/Y" }}
+                  {% if v.hora_salida %}
+                    <span class="text-muted small">
+                      · {{ v.hora_salida|time:"H:i" }}
+                    </span>
+                  {% endif %}
+                </td>
+                <td>{{ v.origen|default:"—" }}</td>
+                <td>{{ v.destino|default:"—" }}</td>
+                <td class="small">{{ v.motivo|default:"—" }}</td>
+                <td class="small">
+                  {% if v.chofer %}
+                    {{ v.chofer.apellido }} {{ v.chofer.nombre }}
+                  {% elif v.chofer_nombre %}
+                    {{ v.chofer_nombre }}
+                  {% else %}
+                    <span class="text-muted">Sin chofer cargado</span>
+                  {% endif %}
+                </td>
+                <td class="text-end">
+                  {% if v.km_recorridos %}
+                    {{ v.km_recorridos|floatformat:1 }} km
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="p-3 text-muted text-center small">
+        No hay viajes registrados para este vehículo (o aún no se cargaron con odómetro).
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

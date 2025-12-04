@@ -1,0 +1,353 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+{% load finanzas_extras %}
+
+{% block title %}Órdenes de compra – Comuna de Tacuarendí{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h1 class="h4 mb-0">Órdenes de compra</h1>
+    <div class="text-muted small">
+      Registro de órdenes de compra emitidas por la comuna.
+      Por defecto se muestran las pendientes (no cerradas ni anuladas).
+    </div>
+  </div>
+
+  {% if rol_staff_finanzas or rol_operador_finanzas %}
+    <a href="{% url 'finanzas:oc_create' %}" class="btn btn-success btn-sm">
+      + Nueva orden de compra
+    </a>
+  {% endif %}
+</div>
+
+{# =============== FILTROS =============== #}
+<form method="get" class="card shadow-sm mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-3">
+        <label class="form-label mb-1">Estado</label>
+        <select name="estado" class="form-select form-select-sm">
+          <option value="PENDIENTES" {% if estado_actual == "PENDIENTES" %}selected{% endif %}>
+            Pendientes (no cerradas ni anuladas)
+          </option>
+          <option value="TODAS" {% if estado_actual == "TODAS" %}selected{% endif %}>
+            Todos los estados
+          </option>
+          <option value="BORRADOR" {% if estado_actual == "BORRADOR" %}selected{% endif %}>Solo borrador</option>
+          <option value="AUTORIZADA" {% if estado_actual == "AUTORIZADA" %}selected{% endif %}>Solo autorizada</option>
+          <option value="CERRADA" {% if estado_actual == "CERRADA" %}selected{% endif %}>Solo cerrada</option>
+          <option value="ANULADA" {% if estado_actual == "ANULADA" %}selected{% endif %}>Solo anulada</option>
+        </select>
+      </div>
+
+      <div class="col-6 col-md-2">
+        <label class="form-label mb-1">Desde</label>
+        <input
+          type="date"
+          name="desde"
+          value="{{ request.GET.desde }}"
+          class="form-control form-control-sm"
+        >
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label mb-1">Hasta</label>
+        <input
+          type="date"
+          name="hasta"
+          value="{{ request.GET.hasta }}"
+          class="form-control form-control-sm"
+        >
+      </div>
+
+      <div class="col-12 col-md-3">
+        <label class="form-label mb-1">Buscar</label>
+        <input
+          type="text"
+          name="q"
+          value="{{ q }}"
+          class="form-control form-control-sm"
+          placeholder="N° orden, proveedor, CUIT, observaciones..."
+        >
+      </div>
+
+      <div class="col-12 col-md-2 d-flex flex-column gap-1">
+        <button class="btn btn-primary btn-sm w-100">
+          Aplicar filtros
+        </button>
+        <div class="small text-muted d-none d-md-block">
+          Si no aplicás filtros, se ven solo las órdenes pendientes.
+        </div>
+      </div>
+    </div>
+
+    {# Atajos de estado + rubros principales #}
+    <div class="row g-2 mt-3">
+      <div class="col-12 col-lg-5">
+        <div class="small text-muted mb-1">
+          Atajos rápidos de estado:
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <a
+            href="?estado=BORRADOR{% if request.GET.desde %}&desde={{ request.GET.desde }}{% endif %}{% if request.GET.hasta %}&hasta={{ request.GET.hasta }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if rubro_actual %}&rubro={{ rubro_actual }}{% endif %}"
+            class="badge rounded-pill px-2 py-1 text-decoration-none
+              {% if estado_actual == 'BORRADOR' %}bg-secondary-subtle text-secondary border border-secondary-subtle{% else %}bg-light text-muted border{% endif %}
+            "
+          >
+            Solo borradores
+          </a>
+
+          <a
+            href="?estado=AUTORIZADA{% if request.GET.desde %}&desde={{ request.GET.desde }}{% endif %}{% if request.GET.hasta %}&hasta={{ request.GET.hasta }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if rubro_actual %}&rubro={{ rubro_actual }}{% endif %}"
+            class="badge rounded-pill px-2 py-1 text-decoration-none
+              {% if estado_actual == 'AUTORIZADA' %}bg-primary-subtle text-primary border border-primary-subtle{% else %}bg-light text-muted border{% endif %}
+            "
+          >
+            Solo autorizadas
+          </a>
+
+          <a
+            href="?estado=CERRADA{% if request.GET.desde %}&desde={{ request.GET.desde }}{% endif %}{% if request.GET.hasta %}&hasta={{ request.GET.hasta }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if rubro_actual %}&rubro={{ rubro_actual }}{% endif %}"
+            class="badge rounded-pill px-2 py-1 text-decoration-none
+              {% if estado_actual == 'CERRADA' %}bg-success-subtle text-success border border-success-subtle{% else %}bg-light text-muted border{% endif %}
+            "
+          >
+            Solo cerradas
+          </a>
+
+          <a
+            href="?estado=ANULADA{% if request.GET.desde %}&desde={{ request.GET.desde }}{% endif %}{% if request.GET.hasta %}&hasta={{ request.GET.hasta }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if rubro_actual %}&rubro={{ rubro_actual }}{% endif %}"
+            class="badge rounded-pill px-2 py-1 text-decoration-none
+              {% if estado_actual == 'ANULADA' %}bg-danger-subtle text-danger border border-danger-subtle{% else %}bg-light text-muted border{% endif %}
+            "
+          >
+            Solo anuladas
+          </a>
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-7">
+        <div class="small text-muted mb-1">
+          Rubros principales:
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          {# Todos los rubros #}
+          <a
+            href="?{% if estado_actual %}estado={{ estado_actual }}&{% endif %}{% if request.GET.desde %}desde={{ request.GET.desde }}&{% endif %}{% if request.GET.hasta %}hasta={{ request.GET.hasta }}&{% endif %}{% if q %}q={{ q }}&{% endif %}"
+            class="badge rounded-pill px-2 py-1 text-decoration-none
+              {% if not rubro_actual %}bg-dark text-white{% else %}bg-light text-muted border{% endif %}
+            "
+          >
+            Todos los rubros
+          </a>
+
+          {% for value,label in RUBROS_OC %}
+            <a
+              href="?estado={{ estado_actual }}{% if request.GET.desde %}&desde={{ request.GET.desde }}{% endif %}{% if request.GET.hasta %}&hasta={{ request.GET.hasta }}{% endif %}{% if q %}&q={{ q }}{% endif %}&rubro={{ value }}"
+              class="badge rounded-pill px-2 py-1 text-decoration-none
+                {% if rubro_actual == value %}bg-info-subtle text-info border border-info-subtle{% else %}bg-light text-muted border{% endif %}
+              "
+            >
+              {{ label }}
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
+{# =============== RESUMEN + CONTEXTO =============== #}
+<div class="card shadow-sm mb-3 small">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-center">
+      <div class="col-12 col-md-8">
+        <div class="text-muted text-uppercase mb-1">
+          Resumen general
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <span>
+            Borradores:
+            <span class="fw-semibold">{{ resumen_borradores_cantidad }}</span>
+            <span class="text-muted">
+              (${{ resumen_borradores_monto|formato_pesos }})
+            </span>
+          </span>
+          <span>·</span>
+          <span>
+            Autorizadas:
+            <span class="fw-semibold">{{ resumen_autorizadas_cantidad }}</span>
+            <span class="text-muted">
+              (${{ resumen_autorizadas_monto|formato_pesos }})
+            </span>
+          </span>
+          <span>·</span>
+          <span>
+            Cerradas:
+            <span class="fw-semibold">{{ resumen_cerradas_cantidad }}</span>
+            <span class="text-muted">
+              (${{ resumen_cerradas_monto|formato_pesos }})
+            </span>
+          </span>
+        </div>
+      </div>
+      <div class="col-12 col-md-4 text-md-end">
+        <div class="text-muted text-uppercase mb-1">
+          Monto total listado
+        </div>
+        <div class="fw-bold">
+          ${{ total_monto_listado|formato_pesos }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-2 small text-muted">
+  <div>
+    {% if page_obj %}
+      {% if hay_filtros %}
+        Mostrando {{ page_obj.paginator.count }} orden{{ page_obj.paginator.count|pluralize:"es" }}
+        para el filtro aplicado.
+      {% else %}
+        Mostrando {{ page_obj.paginator.count }} orden{{ page_obj.paginator.count|pluralize:"es" }}
+        pendientes.
+      {% endif %}
+    {% endif %}
+  </div>
+  <div class="text-end d-none d-md-block">
+    <span class="badge bg-light text-muted border">
+      Fecha de hoy: {{ hoy|date:"d/m/Y" }}
+    </span>
+  </div>
+</div>
+
+{# =============== TABLA =============== #}
+<div class="table-responsive shadow-sm bg-white rounded">
+  <table class="table table-sm align-middle mb-0 table-hover">
+    <thead class="table-light">
+      <tr>
+        <th style="width:80px;">N° orden</th>
+        <th style="width:90px;">Fecha</th>
+        <th>Proveedor</th>
+        <th style="width:160px;">Área</th>
+        <th style="width:150px;">Rubro</th>
+        <th style="width:130px;">Estado</th>
+        <th class="text-end" style="width:140px;">Monto</th>
+        <th style="width:120px;"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for orden in ordenes %}
+        <tr>
+          <td>
+            <span class="fw-semibold">
+              {{ orden.numero|default:orden.id }}
+            </span>
+          </td>
+          <td>{{ orden.fecha_oc|date:"d/m/Y" }}</td>
+          <td>
+            {% if orden.proveedor %}
+              {{ orden.proveedor.nombre }}
+            {% elif orden.proveedor_nombre %}
+              {{ orden.proveedor_nombre }}
+            {% else %}
+              <span class="text-muted">Sin proveedor</span>
+            {% endif %}
+            {% if orden.proveedor_cuit %}
+              <div class="text-muted small">CUIT: {{ orden.proveedor_cuit }}</div>
+            {% endif %}
+          </td>
+          <td>{{ orden.area|default:"-" }}</td>
+          <td>
+            {% if orden.get_rubro_principal_display %}
+              <span class="badge bg-light text-muted border mb-1 align-self-start">
+                {% if orden.rubro_principal %}
+                  {{ orden.rubro_principal }} · {{ orden.get_rubro_principal_display }}
+                {% else %}
+                  {{ orden.get_rubro_principal_display }}
+                {% endif %}
+              </span>
+            {% else %}
+              <span class="text-muted small">-</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if orden.estado == orden.ESTADO_BORRADOR %}
+              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                Borrador
+              </span>
+            {% elif orden.estado == orden.ESTADO_AUTORIZADA %}
+              <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                Autorizada
+              </span>
+            {% elif orden.estado == orden.ESTADO_CERRADA %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle">
+                Cerrada
+              </span>
+            {% elif orden.estado == orden.ESTADO_ANULADA %}
+              <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+                Anulada
+              </span>
+            {% else %}
+              <span class="badge bg-light text-muted border">
+                -
+              </span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            <span class="fw-semibold">
+              ${{ orden.total_monto|formato_pesos }}
+            </span>
+          </td>
+          <td>
+            <a href="{% url 'finanzas:oc_detail' orden.pk %}" class="small text-decoration-none">
+              Ver detalle →
+            </a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="8" class="text-center py-3 text-muted">
+            No se encontraron órdenes de compra para el filtro aplicado.
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if is_paginated %}
+  <nav class="mt-3">
+    <ul class="pagination pagination-sm">
+      {% if page_obj.has_previous %}
+        <li class="page-item">
+          <a
+            class="page-link"
+            href="?page={{ page_obj.previous_page_number }}&estado={{ estado_actual }}&desde={{ request.GET.desde }}&hasta={{ request.GET.hasta }}&q={{ q }}&rubro={{ rubro_actual }}"
+          >
+            Anterior
+          </a>
+        </li>
+      {% endif %}
+      <li class="page-item disabled">
+        <span class="page-link">
+          Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+        </span>
+      </li>
+      {% if page_obj.has_next %}
+        <li class="page-item">
+          <a
+            class="page-link"
+            href="?page={{ page_obj.next_page_number }}&estado={{ estado_actual }}&desde={{ request.GET.desde }}&hasta={{ request.GET.hasta }}&q={{ q }}&rubro={{ rubro_actual }}"
+          >
+            Siguiente
+          </a>
+        </li>
+      {% endif %}
+    </ul>
+  </nav>
+{% endif %}
+
+{% endblock %}

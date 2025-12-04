@@ -1,0 +1,348 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+{% load finanzas_extras %}
+
+{% block title %}
+  {% if orden %}
+    Editar orden de compra #{{ orden.numero_completo }} – Comuna de Tacuarendí
+  {% else %}
+    Nueva orden de compra – Comuna de Tacuarendí
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+
+{# ===== HEADER ===== #}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <p class="text-muted small mb-1 d-flex flex-wrap align-items-center gap-2">
+      <span>Órdenes de compra</span>
+      <span>·</span>
+      {% if orden %}
+        <span>Edición de orden #{{ orden.numero_completo }}</span>
+      {% else %}
+        <span>Nueva orden</span>
+      {% endif %}
+    </p>
+    <h1 class="h4 mb-0">
+      {% if orden %}
+        Editar orden de compra #{{ orden.numero_completo }}
+      {% else %}
+        Nueva orden de compra
+      {% endif %}
+    </h1>
+    <div class="small text-muted">
+      Registrá proveedor, rubro, condición de compra y los conceptos que integran la orden.
+    </div>
+  </div>
+  <div class="d-flex flex-column align-items-end gap-2">
+    <a href="{% url 'finanzas:oc_list' %}" class="btn btn-outline-secondary btn-sm">
+      Volver a órdenes de compra
+    </a>
+    <span class="badge bg-light text-muted border small d-none d-md-inline-block">
+      {% if hoy %}
+        Fecha de hoy: {{ hoy|date:"d/m/Y" }}
+      {% else %}
+        Fecha de hoy: {% now "d/m/Y" %}
+      {% endif %}
+    </span>
+  </div>
+</div>
+
+<form method="post" novalidate>
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+    <div class="alert alert-danger py-2 small">
+      {{ form.non_field_errors }}
+    </div>
+  {% endif %}
+
+  <div class="row g-3">
+    {# ===== COLUMNA IZQUIERDA: DATOS DE LA ORDEN + LEYENDA RUBROS ===== #}
+    <div class="col-12 col-lg-4">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header py-2">
+          <div class="small text-uppercase text-muted fw-semibold">
+            Datos de la orden de compra
+          </div>
+        </div>
+        <div class="card-body">
+          {% for field in form %}
+            {# Ocultamos campos técnicos creador/actualizador en la UI #}
+            {% if field.name == "creado_por" or field.name == "actualizado_por" %}
+              {# No mostrar, lo maneja la vista automáticamente #}
+              {{ field.as_hidden }}
+            {% else %}
+              <div class="mb-2">
+                <label class="form-label small mb-1" for="{{ field.id_for_label }}">
+                  {{ field.label }}
+                  {% if field.field.required %}
+                    <span class="text-danger">*</span>
+                  {% endif %}
+                </label>
+                {{ field }}
+                {% if field.help_text %}
+                  <div class="form-text small">{{ field.help_text }}</div>
+                {% endif %}
+                {% for error in field.errors %}
+                  <div class="text-danger small">{{ error }}</div>
+                {% endfor %}
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+
+      {# LEYENDA DE RUBROS / CÓDIGOS DE OC #}
+      <div class="card shadow-sm">
+        <div class="card-header py-2">
+          <div class="d-flex justify-content-between align-items-center">
+            <span class="small text-uppercase text-muted fw-semibold">
+              Leyenda de rubros OC
+            </span>
+            <span class="badge bg-light text-muted border small">
+              Códigos internos
+            </span>
+          </div>
+        </div>
+        <div class="card-body small">
+          <p class="text-muted mb-2">
+            Los rubros ayudan a agrupar las órdenes de compra por tipo de gasto.
+            Usá estos códigos de referencia:
+          </p>
+          <ul class="list-unstyled mb-0">
+            <li class="mb-1">
+              <span class="badge rounded-pill bg-secondary-subtle text-secondary border border-secondary-subtle me-1">
+                AS
+              </span>
+              <span class="fw-semibold">Ayudas sociales</span>
+              <span class="text-muted">· Ayudas directas, emergencias, asistencia a vecinos.</span>
+            </li>
+            <li class="mb-1">
+              <span class="badge rounded-pill bg-info-subtle text-info border border-info-subtle me-1">
+                CB
+              </span>
+              <span class="fw-semibold">Combustible</span>
+              <span class="text-muted">· Carga de combustible para vehículos y maquinarias.</span>
+            </li>
+            <li class="mb-1">
+              <span class="badge rounded-pill bg-warning-subtle text-warning border border-warning-subtle me-1">
+                OB
+              </span>
+              <span class="fw-semibold">Obras y materiales</span>
+              <span class="text-muted">· Materiales de construcción, corralón, mejorado, etc.</span>
+            </li>
+            <li class="mb-1">
+              <span class="badge rounded-pill bg-primary-subtle text-primary border border-primary-subtle me-1">
+                SV
+              </span>
+              <span class="fw-semibold">Servicios contratados</span>
+              <span class="text-muted">· Servicios de terceros, alquileres, mantenimientos.</span>
+            </li>
+            <li class="mb-1">
+              <span class="badge rounded-pill bg-success-subtle text-success border border-success-subtle me-1">
+                PE
+              </span>
+              <span class="fw-semibold">Personal / jornales</span>
+              <span class="text-muted">· Changas, jornales, refuerzos de cuadrillas.</span>
+            </li>
+            <li class="mb-1">
+              <span class="badge rounded-pill bg-dark-subtle text-dark border border-dark-subtle me-1">
+                HI
+              </span>
+              <span class="fw-semibold">Herramientas / insumos</span>
+              <span class="text-muted">· Herramientas menores, insumos de trabajo general.</span>
+            </li>
+            <li>
+              <span class="badge rounded-pill bg-light text-muted border me-1">
+                OT
+              </span>
+              <span class="fw-semibold">Otros</span>
+              <span class="text-muted">· Gastos que no encajan en los rubros anteriores.</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    {# ===== COLUMNA DERECHA: DETALLE DE LÍNEAS ===== #}
+    <div class="col-12 col-lg-8">
+      <div class="card shadow-sm h-100">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <span class="small text-uppercase text-muted fw-semibold">
+            Detalle de conceptos de la orden
+          </span>
+          <div class="d-flex flex-column flex-sm-row gap-1 align-items-sm-center text-end">
+            <span class="small text-muted">
+              Cargá al menos una línea con monto.
+            </span>
+            <span class="badge bg-light text-muted border small">
+              Los montos se suman en el total de la OC
+            </span>
+          </div>
+        </div>
+        <div class="card-body">
+          {{ lineas_formset.management_form }}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 22%;">Categoría</th>
+                  <th style="width: 22%;">Área</th>
+                  <th>Descripción</th>
+                  <th style="width: 15%;" class="text-end">Monto</th>
+                  <th style="width: 40px;"></th>
+                </tr>
+              </thead>
+              <tbody id="oc-lineas-tbody">
+                {% for f in lineas_formset.forms %}
+                  <tr class="oc-linea-row">
+                    {% if f.instance.pk %}
+                      {{ f.id }}
+                    {% endif %}
+                    <td>
+                      {{ f.categoria }}
+                    </td>
+                    <td>
+                      {{ f.area }}
+                    </td>
+                    <td>
+                      {{ f.descripcion }}
+                    </td>
+                    <td class="text-end">
+                      {{ f.monto }}
+                    </td>
+                    <td class="text-center">
+                      {% if lineas_formset.can_delete %}
+                        <div class="form-check">
+                          {{ f.DELETE }}
+                        </div>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% for error in f.non_field_errors %}
+                    <tr>
+                      <td colspan="5" class="text-danger small">
+                        {{ error }}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          {% if lineas_formset.non_form_errors %}
+            <div class="text-danger small mt-2">
+              {{ lineas_formset.non_form_errors }}
+            </div>
+          {% endif %}
+
+          <div class="mt-3 d-flex justify-content-between align-items-center small text-muted">
+            <div>
+              Para agregar más filas, usá el formulario y guardá: el sistema siempre deja
+              una línea extra disponible.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ===== ACCIONES ===== #}
+  <div class="mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div class="small text-muted">
+      Los campos marcados con <span class="text-danger">*</span> son obligatorios.
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'finanzas:oc_list' %}" class="btn btn-outline-secondary btn-sm">
+        Cancelar
+      </a>
+      <button type="submit" name="accion" value="borrador" class="btn btn-primary btn-sm">
+        Guardar borrador
+      </button>
+      {% if rol_staff_finanzas %}
+        <button type="submit" name="accion" value="autorizar" class="btn btn-success btn-sm">
+          Guardar y autorizar
+        </button>
+      {% endif %}
+    </div>
+  </div>
+</form>
+
+{# ===== JS: búsqueda de proveedor por CUIT (AJAX) ===== #}
+<script>
+  (function() {
+    const inputCuit = document.querySelector('input[name$="proveedor_cuit"]');
+    const inputNombre = document.querySelector('input[name$="proveedor_nombre"]');
+    if (!inputCuit || !inputNombre) return;
+
+    const endpoint = "{% url 'finanzas:oc_proveedor_por_cuit' %}";
+    let lastValue = inputCuit.value;
+    let timeoutId = null;
+
+    const badgeId = "oc-proveedor-cuit-hint";
+    function ensureHintBadge() {
+      if (document.getElementById(badgeId)) return;
+      const small = document.createElement("div");
+      small.id = badgeId;
+      small.className = "form-text small text-muted";
+      small.textContent = "Ingresá el CUIT y salí del campo para intentar completar el nombre automáticamente.";
+      inputCuit.parentElement && inputCuit.parentElement.appendChild(small);
+    }
+
+    ensureHintBadge();
+
+    function buscarProveedor() {
+      const cuit = inputCuit.value.trim();
+      if (!cuit || cuit === lastValue) return;
+      lastValue = cuit;
+
+      const url = endpoint + "?cuit=" + encodeURIComponent(cuit);
+      const hint = document.getElementById(badgeId);
+      if (hint) {
+        hint.textContent = "Buscando proveedor por CUIT...";
+      }
+
+      fetch(url, {
+        headers: {
+          "X-Requested-With": "XMLHttpRequest"
+        }
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data && data.found) {
+            if (!inputNombre.value) {
+              inputNombre.value = data.nombre || "";
+            }
+            if (hint) {
+              hint.textContent = "Proveedor encontrado. Podés ajustar el nombre si es necesario.";
+            }
+          } else {
+            if (hint) {
+              hint.textContent = "No se encontró proveedor con ese CUIT. Cargá el nombre manualmente.";
+            }
+          }
+        })
+        .catch(() => {
+          if (hint) {
+            hint.textContent = "No se pudo verificar el CUIT en este momento.";
+          }
+        });
+    }
+
+    function debounceBuscar() {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      timeoutId = setTimeout(buscarProveedor, 400);
+    }
+
+    inputCuit.addEventListener("change", buscarProveedor);
+    inputCuit.addEventListener("blur", buscarProveedor);
+    inputCuit.addEventListener("keyup", debounceBuscar);
+  })();
+</script>
+
+{% endblock %}
