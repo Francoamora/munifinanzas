@@ -8,7 +8,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-muni-finanzas-demo-secret-key'
 DEBUG = True
 
-ALLOWED_HOSTS: list[str] = []
+ALLOWED_HOSTS: list[str] = [
+    "francomora23.pythonanywhere.com",
+    "localhost",
+    "127.0.0.1",
+]
 
 
 # ============================
