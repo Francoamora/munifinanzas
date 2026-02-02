@@ -1,29 +1,26 @@
 # finanzas/views_atenciones.py
 from django.shortcuts import get_object_or_404
 from django.views.generic import ListView, CreateView, UpdateView
-from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy, reverse
 from django.db.models import Q
 from django.contrib import messages
 
 from .models import Atencion, Beneficiario, Area
-from .forms_atenciones import AtencionForm  # <-- nuevo archivo (abajo)
+# Asumo que el formulario está en forms.py como el resto del sistema. 
+# Si creaste un archivo 'forms_atenciones.py', cambiá esta línea.
+from .forms import AtencionForm 
 
 # =========================================================
-# MIXINS DE SEGURIDAD
+# IMPORTAMOS EL MIXIN CORRECTO (El que deja pasar a Social Admin)
 # =========================================================
-
-class StaffRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
-    def test_func(self):
-        # si querés, acá después lo cambiamos por roles (OPERADOR_SOCIAL, etc.)
-        return self.request.user.is_staff or self.request.user.is_superuser
-
+from .mixins import OperadorSocialRequiredMixin, roles_ctx
 
 # =========================================================
 # VISTAS DE ATENCIONES
 # =========================================================
 
-class AtencionListView(StaffRequiredMixin, ListView):
+class AtencionListView(OperadorSocialRequiredMixin, ListView):
     model = Atencion
     template_name = "finanzas/atencion_list.html"
     context_object_name = "atenciones"
@@ -34,7 +31,7 @@ class AtencionListView(StaffRequiredMixin, ListView):
             Atencion.objects
             .select_related("persona", "area", "creado_por")
             .all()
-            .order_by("-fecha_atencion", "-fecha_creacion")  # ✅ en tu modelo es fecha_creacion
+            .order_by("-fecha_atencion", "-fecha_creacion")
         )
 
         q = (self.request.GET.get("q") or "").strip()
@@ -67,10 +64,13 @@ class AtencionListView(StaffRequiredMixin, ListView):
         ctx["q"] = (self.request.GET.get("q") or "").strip()
         ctx["area_sel"] = (self.request.GET.get("area") or "").strip()
         ctx["estado_sel"] = (self.request.GET.get("estado") or "").strip()
+        
+        # Inyectamos los roles para el menú
+        ctx.update(roles_ctx(self.request.user))
         return ctx
 
 
-class AtencionCreateView(StaffRequiredMixin, CreateView):
+class AtencionCreateView(OperadorSocialRequiredMixin, CreateView):
     model = Atencion
     form_class = AtencionForm
     template_name = "finanzas/atencion_form.html"
@@ -82,41 +82,61 @@ class AtencionCreateView(StaffRequiredMixin, CreateView):
             initial["persona"] = persona_id
         return initial
 
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        # Previsualización de persona si viene por URL
+        if self.request.GET.get('persona'):
+            try:
+                persona = Beneficiario.objects.get(id=self.request.GET.get('persona'))
+                ctx['persona_preseleccionada'] = persona
+            except:
+                pass
+        ctx.update(roles_ctx(self.request.user))
+        return ctx
+
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
-        kwargs["request"] = self.request  # para usar en el form si hace falta
+        kwargs["request"] = self.request
         return kwargs
 
     def get_success_url(self):
-        # 1) Si viene next=..., respetarlo (volver a ficha de persona, etc.)
+        # 1) Si viene next=...
         nxt = (self.request.POST.get("next") or self.request.GET.get("next") or "").strip()
         if nxt:
             return nxt
 
-        # 2) Si la atención quedó vinculada a persona, ir al historial de esa persona
+        # 2) Si está vinculada a persona, ir al historial de esa persona
         if getattr(self.object, "persona_id", None):
-            return reverse("finanzas:atencion_beneficiario_list", args=[self.object.persona_id])
+            # Asumiendo que tenés una URL para listar atenciones de una persona específica
+            # Si no existe, podés cambiarlo a 'finanzas:persona_detail'
+            try:
+                return reverse("finanzas:atencion_beneficiario_list", args=[self.object.persona_id])
+            except:
+                return reverse("finanzas:persona_detail", args=[self.object.persona_id])
 
-        # 3) fallback
+        # 3) Fallback: Listado general
         return reverse_lazy("finanzas:atencion_list")
 
     def form_valid(self, form):
-        # ✅ Campos correctos según tu modelo:
         form.instance.creado_por = self.request.user
         form.instance.actualizado_por = self.request.user
         messages.success(self.request, "Atención registrada correctamente.")
         return super().form_valid(form)
 
     def form_invalid(self, form):
-        # Esto te evita el “loop silencioso”: deja claro que hubo error.
-        messages.error(self.request, "No se pudo guardar. Revisá los campos marcados.")
+        messages.error(self.request, "No se pudo guardar. Revisá los campos.")
         return super().form_invalid(form)
 
 
-class AtencionUpdateView(StaffRequiredMixin, UpdateView):
+class AtencionUpdateView(OperadorSocialRequiredMixin, UpdateView):
     model = Atencion
     form_class = AtencionForm
     template_name = "finanzas/atencion_form.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx.update(roles_ctx(self.request.user))
+        return ctx
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
@@ -129,7 +149,11 @@ class AtencionUpdateView(StaffRequiredMixin, UpdateView):
             return nxt
 
         if self.object.persona_id:
-            return reverse("finanzas:atencion_beneficiario_list", args=[self.object.persona_id])
+            try:
+                return reverse("finanzas:atencion_beneficiario_list", args=[self.object.persona_id])
+            except:
+                return reverse("finanzas:persona_detail", args=[self.object.persona_id])
+                
         return reverse_lazy("finanzas:atencion_list")
 
     def form_valid(self, form):
@@ -138,11 +162,14 @@ class AtencionUpdateView(StaffRequiredMixin, UpdateView):
         return super().form_valid(form)
 
     def form_invalid(self, form):
-        messages.error(self.request, "No se pudo guardar. Revisá los campos marcados.")
+        messages.error(self.request, "No se pudo guardar. Revisá los campos.")
         return super().form_invalid(form)
 
 
-class AtencionBeneficiarioListView(StaffRequiredMixin, ListView):
+class AtencionBeneficiarioListView(OperadorSocialRequiredMixin, ListView):
+    """
+    Lista de atenciones filtrada para una persona específica
+    """
     model = Atencion
     template_name = "finanzas/atencion_beneficiario_list.html"
     context_object_name = "atenciones"
@@ -160,4 +187,5 @@ class AtencionBeneficiarioListView(StaffRequiredMixin, ListView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["beneficiario"] = self.beneficiario
+        ctx.update(roles_ctx(self.request.user))
         return ctx
