@@ -163,31 +163,25 @@
 
 <div class="row g-4 mb-5">
     
+    {% if perms_ver_dinero %}
     <div class="col-12 col-md-6 col-xl-3 animate-in" style="animation-delay: 0.1s;">
         <div class="kpi-card featured">
             <div class="d-flex justify-content-between align-items-start w-100 mb-2">
                 <div class="glass-icon">
                     <i class="bi bi-wallet2"></i>
                 </div>
-                {% if perms_ver_dinero %}
-                    <a href="{% url 'finanzas:balance_resumen' %}" class="text-white opacity-75 hover-opacity-100"><i class="bi bi-arrow-right"></i></a>
-                {% endif %}
+                <a href="{% url 'finanzas:balance_resumen' %}" class="text-white opacity-75 hover-opacity-100"><i class="bi bi-arrow-right"></i></a>
             </div>
             <div class="mt-auto">
                 <div class="kpi-label">Saldo Neto</div>
-                
-                {% if perms_ver_dinero %}
-                    <div class="kpi-value counter-anim" data-target="{{ saldo_mes|stringformat:'f' }}">$0,00</div>
-                {% else %}
-                    <div class="kpi-value text-white-50" style="font-size: 1.5rem;">Restringido</div>
-                {% endif %}
-
+                <div class="kpi-value counter-anim" data-target="{{ saldo_mes|stringformat:'f' }}">$0,00</div>
                 <div class="mt-2 small opacity-75 fw-light">
                     <i class="bi bi-calendar-check me-1"></i>{{ titulo_periodo }}
                 </div>
             </div>
         </div>
     </div>
+    {% endif %}
 
     <div class="col-12 col-md-6 col-xl-3 animate-in" style="animation-delay: 0.2s;">
         <div class="kpi-card">
@@ -202,7 +196,7 @@
                 {% if perms_ver_dinero %}
                     <div class="kpi-value text-dark counter-anim" data-target="{{ ayudas_mes_monto|stringformat:'f' }}">$0,00</div>
                 {% else %}
-                    <div class="kpi-value text-secondary" style="font-size: 1.5rem;">---</div>
+                    <div class="kpi-value text-secondary" style="font-size: 1.2rem;">Gestión Social</div>
                 {% endif %}
                 
                 <div class="mt-3 pt-3 border-top d-flex justify-content-between small text-muted">
@@ -226,7 +220,7 @@
                 {% if perms_ver_dinero %}
                     <div class="kpi-value text-dark counter-anim" data-target="{{ combustible_mes|stringformat:'f' }}">$0,00</div>
                 {% else %}
-                    <div class="kpi-value text-secondary" style="font-size: 1.5rem;">---</div>
+                    <div class="kpi-value text-secondary" style="font-size: 1.2rem;">Gestión Flota</div>
                 {% endif %}
 
                 <div class="mt-3 pt-3 border-top d-flex justify-content-between small text-muted">
@@ -237,6 +231,7 @@
         </div>
     </div>
 
+    {% if perms_ver_dinero %}
     <div class="col-12 col-md-6 col-xl-3 animate-in" style="animation-delay: 0.4s;">
         <div class="kpi-card">
             <div class="d-flex justify-content-between align-items-start w-100 mb-2">
@@ -246,23 +241,16 @@
             </div>
             <div class="mt-auto">
                 <div class="kpi-label">A Pagar</div>
-                
-                {% if perms_ver_dinero %}
-                    <div class="kpi-value text-dark">{{ cantidad_ordenes_pendientes }}</div>
-                    <div class="mt-3 pt-3 border-top">
-                        <a href="{% url 'finanzas:orden_pago_list' %}?estado=BORRADOR" class="d-block text-decoration-none small fw-bold text-primary">
-                            Gestionar Pagos <i class="bi bi-arrow-right ms-1"></i>
-                        </a>
-                    </div>
-                {% else %}
-                    <div class="kpi-value text-secondary" style="font-size: 1.5rem;">---</div>
-                    <div class="mt-3 pt-3 border-top small text-muted">
-                        Solo Tesorería
-                    </div>
-                {% endif %}
+                <div class="kpi-value text-dark">{{ cantidad_ordenes_pendientes }}</div>
+                <div class="mt-3 pt-3 border-top">
+                    <a href="{% url 'finanzas:orden_pago_list' %}?estado=BORRADOR" class="d-block text-decoration-none small fw-bold text-primary">
+                        Gestionar Pagos <i class="bi bi-arrow-right ms-1"></i>
+                    </a>
+                </div>
             </div>
         </div>
     </div>
+    {% endif %}
 </div>
 
 {% if perms_ver_dinero %}
