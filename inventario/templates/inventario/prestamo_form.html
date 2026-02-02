@@ -1,0 +1,213 @@
+{% extends "finanzas/base.html" %}
+{% load static %}
+
+{% block title %}Nuevo Préstamo{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center animate-fade-in">
+    <div class="col-md-8 col-lg-6">
+        <div class="card border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="card-header bg-warning bg-opacity-10 py-3 border-bottom-0">
+                <h5 class="fw-bold text-dark mb-0">
+                    <i class="bi bi-tools me-2 text-warning"></i>Registrar Préstamo
+                </h5>
+            </div>
+            
+            <div class="card-body p-4">
+                <form method="post" id="prestamoForm" novalidate>
+                    {% csrf_token %}
+                    
+                    {% if form.non_field_errors %}
+                        <div class="alert alert-danger rounded-3 mb-4">
+                            {{ form.non_field_errors }}
+                        </div>
+                    {% endif %}
+
+                    <div class="mb-4 position-relative">
+                        <label class="form-label small fw-bold text-uppercase text-muted">Herramienta / Activo</label>
+                        {{ form.insumo }}
+                        {% if form.insumo.errors %}<div class="text-danger small mt-1">{{ form.insumo.errors }}</div>{% endif %}
+                        
+                        <div id="stockPanel" class="mt-2 d-none animate-fade-in">
+                            <div class="d-flex align-items-center justify-content-between p-3 rounded-3 border" id="stockContainer">
+                                <div>
+                                    <small class="text-uppercase fw-bold opacity-75" style="font-size: 0.65rem;" id="stockLabel">Disponible</small>
+                                    <div class="d-flex align-items-baseline">
+                                        <h3 class="mb-0 fw-bold me-1" id="stockValue">-</h3>
+                                        <span class="small fw-bold" id="stockUnit">unid.</span>
+                                    </div>
+                                </div>
+                                <div id="stockIcon" class="fs-1 opacity-25">
+                                    <i class="bi bi-box-seam"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label small fw-bold text-uppercase text-muted">¿Quién retira?</label>
+                        {{ form.responsable }}
+                        <div class="form-text small">Busca por nombre o apellido en el padrón.</div>
+                        {% if form.responsable.errors %}<div class="text-danger small mt-1">{{ form.responsable.errors }}</div>{% endif %}
+                    </div>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold text-uppercase text-muted">Cantidad</label>
+                            {{ form.cantidad }}
+                            <div class="invalid-feedback" id="cantFeedback">No podés superar el stock.</div>
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label small fw-bold text-uppercase text-muted">Estado / Notas</label>
+                            {{ form.observaciones_salida }}
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-dark fw-bold py-2 rounded-pill shadow-sm" id="btnGuardar" disabled>
+                            <i class="bi bi-box-arrow-right me-2"></i>Confirmar Salida
+                        </button>
+                        <a href="{% url 'inventario:prestamo_list' %}" class="btn btn-light border fw-bold py-2 rounded-pill">
+                            Cancelar
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // Elementos del DOM
+        const selectInsumo = document.getElementById('id_insumo');
+        const inputCantidad = document.getElementById('id_cantidad');
+        const btnGuardar = document.getElementById('btnGuardar');
+        
+        // Panel Info
+        const stockPanel = document.getElementById('stockPanel');
+        const stockContainer = document.getElementById('stockContainer');
+        const stockValue = document.getElementById('stockValue');
+        const stockUnit = document.getElementById('stockUnit');
+        const stockIcon = document.getElementById('stockIcon');
+        const cantFeedback = document.getElementById('cantFeedback');
+
+        // Inicializar Select2 si existe (Recomendado)
+        if (typeof $ !== 'undefined' && $(selectInsumo).length > 0) {
+            $(selectInsumo).select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                placeholder: 'Seleccionar herramienta...',
+                allowClear: true
+            });
+            
+            // Evento de Select2
+            $(selectInsumo).on('select2:select', function(e) {
+                fetchStockData(e.params.data.id);
+            });
+            
+            $(selectInsumo).on('select2:clear', function(e) {
+                resetUI();
+            });
+        } else {
+            // Fallback nativo
+            selectInsumo.addEventListener('change', function() {
+                if(this.value) fetchStockData(this.value);
+                else resetUI();
+            });
+        }
+
+        function resetUI() {
+            stockPanel.classList.add('d-none');
+            inputCantidad.value = '';
+            inputCantidad.disabled = true;
+            btnGuardar.disabled = true;
+            inputCantidad.classList.remove('is-invalid');
+            
+            // Limpiar estilos del contenedor
+            stockContainer.className = 'd-flex align-items-center justify-content-between p-3 rounded-3 border';
+        }
+
+        function fetchStockData(id) {
+            if (!id) return;
+
+            // Mostrar estado de carga (opcional)
+            stockValue.innerText = '...';
+            stockPanel.classList.remove('d-none');
+
+            fetch(`{% url 'inventario:api_get_stock' %}?id=${id}`)
+                .then(response => response.json())
+                .then(data => {
+                    const stock = parseFloat(data.stock);
+                    
+                    // Actualizar textos
+                    stockValue.innerText = stock;
+                    stockUnit.innerText = data.unidad;
+                    
+                    // Configurar Input
+                    inputCantidad.max = stock;
+                    inputCantidad.min = 0.1;
+                    
+                    // === LÓGICA DE ESTADO (CRÍTICO) ===
+                    
+                    if (stock <= 0) {
+                        // CASO: SIN STOCK
+                        stockContainer.className = 'd-flex align-items-center justify-content-between p-3 rounded-3 border border-danger bg-danger bg-opacity-10 text-danger';
+                        stockIcon.innerHTML = '<i class="bi bi-x-circle-fill"></i>';
+                        
+                        inputCantidad.value = 0;
+                        inputCantidad.disabled = true;  // Bloqueamos input
+                        btnGuardar.disabled = true;     // Bloqueamos botón
+                        
+                        cantFeedback.innerText = "No hay stock disponible para prestar.";
+                        inputCantidad.classList.add('is-invalid'); // Mostramos rojo
+                        
+                    } else {
+                        // CASO: HAY STOCK (RESET POSITIVO)
+                        stockContainer.className = 'd-flex align-items-center justify-content-between p-3 rounded-3 border border-success bg-success bg-opacity-10 text-success';
+                        stockIcon.innerHTML = '<i class="bi bi-check-circle-fill"></i>';
+                        
+                        inputCantidad.disabled = false; // Habilitamos input
+                        inputCantidad.value = 1;        // Sugerimos 1
+                        inputCantidad.classList.remove('is-invalid'); // Sacamos rojo
+                        btnGuardar.disabled = false;    // Habilitamos botón
+                        
+                        // Foco para agilidad
+                        setTimeout(() => inputCantidad.focus(), 100);
+                    }
+                })
+                .catch(err => {
+                    console.error("Error API:", err);
+                    resetUI();
+                });
+        }
+
+        // Validación en tiempo real al escribir
+        inputCantidad.addEventListener('input', function() {
+            const val = parseFloat(this.value);
+            const max = parseFloat(this.max);
+            
+            if (val > max) {
+                this.classList.add('is-invalid');
+                cantFeedback.innerText = `Solo hay ${max} disponibles.`;
+                btnGuardar.disabled = true;
+            } else if (val <= 0 || isNaN(val)) {
+                btnGuardar.disabled = true;
+            } else {
+                this.classList.remove('is-invalid');
+                btnGuardar.disabled = false;
+            }
+        });
+        
+        // Ejecutar al inicio si hay valor (ej: recarga por error de form)
+        if (selectInsumo.value) {
+            fetchStockData(selectInsumo.value);
+        } else {
+            resetUI(); // Asegurar estado limpio al inicio
+        }
+    });
+</script>
+{% endblock %}

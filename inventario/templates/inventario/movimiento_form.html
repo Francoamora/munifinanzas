@@ -1,0 +1,177 @@
+{% extends "finanzas/base.html" %}
+{% block title %}Registrar Movimiento{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center py-4 animate-fade-in">
+    <div class="col-12 col-md-8 col-lg-6">
+        
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1 class="h3 fw-bold text-dark mb-1">
+                    <i class="bi bi-arrow-left-right me-2 text-primary"></i>Movimiento de Stock
+                </h1>
+                <p class="text-secondary mb-0 small">Compras, consumos y ajustes manuales.</p>
+            </div>
+            <a href="{% url 'inventario:stock_list' %}" class="btn btn-white border shadow-sm btn-sm px-4 fw-bold text-secondary hover-lift">
+                <i class="bi bi-x-lg me-1"></i>Cancelar
+            </a>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+            <div class="card-body p-4 p-lg-5">
+                <form method="post" class="needs-validation" id="stockForm">
+                    {% csrf_token %}
+                    
+                    <div class="mb-4">
+                        <label class="small fw-bold text-dark mb-2">1. SELECCIONAR ARTÍCULO</label>
+                        {{ form.insumo }}
+                        
+                        <div id="info-box" class="card bg-primary-subtle border-0 mt-3 d-none animate-fade-in rounded-3">
+                            <div class="card-body d-flex justify-content-between align-items-center p-3">
+                                <div>
+                                    <span class="badge bg-primary mb-1" id="info-tipo">TIPO</span>
+                                    <h6 class="mb-0 fw-bold text-dark" id="info-nombre">Nombre</h6>
+                                    <div class="small text-muted mt-1">
+                                        Disponible: <strong class="text-dark" id="info-stock">0</strong> <span id="info-unidad">Unidad</span>
+                                    </div>
+                                </div>
+                                <div class="text-end border-start border-primary border-opacity-25 ps-3">
+                                    <span class="small text-uppercase fw-bold text-primary opacity-75" style="font-size: 0.65rem;">STOCK FINAL</span>
+                                    <div class="display-6 fw-bold text-primary lh-1" id="stock-futuro">0</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="border-light my-4">
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-12">
+                            <label class="small fw-bold text-dark mb-2">2. TIPO DE OPERACIÓN</label>
+                            {{ form.tipo }}
+                            <div class="form-text small text-muted">
+                                Para prestar herramientas, usá el botón "Nuevo Préstamo" en el panel principal.
+                            </div>
+                        </div>
+
+                        <div class="col-md-5">
+                            <label class="small fw-bold text-dark mb-2">CANTIDAD</label>
+                            <div class="input-group">
+                                {{ form.cantidad }} 
+                            </div>
+                        </div>
+                        <div class="col-md-7">
+                            <label class="small fw-bold text-secondary mb-2">REFERENCIA / DETALLE</label>
+                            {{ form.referencia }}
+                        </div>
+                    </div>
+
+                    <div class="d-grid pt-2">
+                        <button type="submit" class="btn btn-dark fw-bold py-3 rounded-3 shadow-sm hover-lift" id="btn-submit">
+                            <i class="bi bi-check-lg me-2"></i>Confirmar Movimiento
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+    input[name="cantidad"] { font-size: 1.2rem; font-weight: bold; color: #0f172a; }
+</style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const selectInsumo = document.getElementById('id_insumo');
+    const selectTipo = document.getElementById('id_tipo');
+    const inputCant = document.getElementById('id_cantidad');
+    
+    // UI Elements
+    const infoBox = document.getElementById('info-box');
+    const infoNombre = document.getElementById('info-nombre');
+    const infoStock = document.getElementById('info-stock');
+    const infoUnidad = document.getElementById('info-unidad');
+    const infoTipo = document.getElementById('info-tipo');
+    const stockFuturoDisplay = document.getElementById('stock-futuro');
+    
+    let currentStock = 0;
+
+    // Inicializar Select2 si jQuery está cargado
+    if (typeof $ !== 'undefined' && $(selectInsumo).length > 0) {
+        $(selectInsumo).select2({
+            theme: 'bootstrap-5',
+            width: '100%',
+            placeholder: 'Buscar material...',
+            allowClear: true
+        });
+
+        // Evento Select2
+        $(selectInsumo).on('select2:select', function(e) {
+            fetchStock(e.params.data.id);
+        });
+    } else {
+        // Fallback nativo
+        selectInsumo.addEventListener('change', function() {
+            fetchStock(this.value);
+        });
+    }
+
+    function fetchStock(id) {
+        if(!id) return;
+        fetch(`{% url 'inventario:api_get_stock' %}?id=${id}`)
+            .then(response => response.json())
+            .then(data => {
+                currentStock = data.stock;
+                infoNombre.textContent = data.nombre;
+                infoStock.textContent = currentStock;
+                infoUnidad.textContent = data.unidad;
+                
+                // Actualizar badges
+                if (data.es_herramienta) {
+                    infoTipo.className = "badge bg-warning text-dark";
+                    infoTipo.innerHTML = '<i class="bi bi-tools me-1"></i>Herramienta';
+                } else {
+                    infoTipo.className = "badge bg-primary";
+                    infoTipo.innerHTML = '<i class="bi bi-box-seam me-1"></i>Insumo';
+                }
+                
+                infoBox.classList.remove('d-none');
+                calcularFuturo();
+                setTimeout(() => inputCant.focus(), 100);
+            });
+    }
+
+    function calcularFuturo() {
+        const cantidad = parseFloat(inputCant.value) || 0;
+        const tipo = selectTipo.value;
+        let futuro = currentStock;
+
+        // Lógica simple: Entrada suma, Salida resta
+        if (['SALIDA'].includes(tipo)) {
+            futuro = currentStock - cantidad;
+        } else if (['ENTRADA'].includes(tipo) || tipo === 'AJUSTE') {
+            futuro = currentStock + cantidad;
+        }
+
+        stockFuturoDisplay.textContent = futuro.toFixed(1).replace('.0', '');
+
+        // Alerta Visual Stock Negativo
+        if (futuro < 0) {
+            infoBox.classList.remove('bg-primary-subtle');
+            infoBox.classList.add('bg-danger-subtle', 'border-danger');
+            stockFuturoDisplay.classList.add('text-danger');
+        } else {
+            infoBox.classList.remove('bg-danger-subtle', 'border-danger');
+            infoBox.classList.add('bg-primary-subtle');
+            stockFuturoDisplay.classList.remove('text-danger');
+        }
+    }
+
+    inputCant.addEventListener('input', calcularFuturo);
+    selectTipo.addEventListener('change', calcularFuturo);
+});
+</script>
+{% endblock %}

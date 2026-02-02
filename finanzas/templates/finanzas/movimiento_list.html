@@ -1,448 +1,267 @@
 {% extends "finanzas/base.html" %}
-{% load static %}
 {% load humanize %}
 {% load finanzas_extras %}
 
-{% block title %}Movimientos – Comuna de Tacuarendí{% endblock %}
+{% block title %}Caja Diaria{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Tabla Pro */
+    .table-hover tbody tr:hover { background-color: #f8fafc; cursor: pointer; }
+    .table-hover tbody tr:hover td { color: #1e293b; }
+    
+    .avatar-icon {
+        width: 36px; height: 36px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 10px; font-size: 1.1rem;
+        transition: transform 0.2s;
+    }
+    tr:hover .avatar-icon { transform: scale(1.1); }
+
+    /* Inputs de Filtro */
+    .form-control-sm, .form-select-sm { border-radius: 6px; border-color: #e2e8f0; }
+    .form-label-sm { font-size: 0.7rem; text-transform: uppercase; font-weight: 700; color: #64748b; letter-spacing: 0.5px; margin-bottom: 0.3rem; }
+</style>
+{% endblock %}
 
 {% block content %}
 
-<section class="mv-list" aria-labelledby="mv-list-title">
-
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <div>
-    <h1 class="h4 mb-0" id="mv-list-title">
-      <i class="bi bi-journal-text me-1"></i>
-      Movimientos
-    </h1>
-    <div class="text-muted small">
-      Listado general de ingresos, gastos y transferencias.
-      Por defecto se muestran solo movimientos aprobados, ordenados desde los más recientes.
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-end mb-4 gap-3 animate-fade-in">
+    <div>
+        <h6 class="text-uppercase text-primary fw-bold small ls-1 mb-1">
+            <i class="bi bi-wallet2 me-2"></i>Tesorería
+        </h6>
+        <h1 class="display-6 fw-bold text-dark mb-0">Caja Diaria</h1>
     </div>
-  </div>
-
-  {% if rol_staff_finanzas or rol_operador_finanzas %}
-    <a href="{% url 'finanzas:movimiento_create' %}" class="btn btn-success btn-sm">
-      + Nuevo movimiento
-    </a>
-  {% endif %}
+    
+    <div class="d-flex gap-2">
+        <button class="btn btn-white border shadow-sm fw-medium px-3" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel" aria-expanded="{% if hay_filtros %}true{% else %}false{% endif %}">
+            <i class="bi bi-sliders me-2 text-secondary"></i>Filtros Avanzados
+        </button>
+        
+        {% if rol_staff_finanzas or rol_operador_finanzas %}
+        <a href="{% url 'finanzas:movimiento_create' %}" class="btn btn-primary shadow-sm fw-bold px-4 hover-lift">
+            <i class="bi bi-plus-lg me-2"></i>Nuevo Movimiento
+        </a>
+        {% endif %}
+    </div>
 </div>
 
-{# =============== FILTROS =============== #}
-<form
-  id="movimiento-filter-form"
-  method="get"
-  class="card shadow-sm mb-3"
-  aria-label="Filtros de movimientos"
->
-  <div class="card-body py-3">
-    <p id="mov-filters-help" class="visually-hidden">
-      Filtros para acotar el listado de movimientos por tipo, fechas, estado y texto de búsqueda.
-    </p>
-
-    <div class="row g-3 align-items-stretch">
-      {# Columna izquierda: campos de filtro #}
-      <div class="col-12 col-lg-9">
-        <div class="row g-2">
-          <div class="col-12 col-md-3">
-            <label class="form-label mb-1" for="filtro-tipo">Tipo</label>
-            <select name="tipo" id="filtro-tipo" class="form-select form-select-sm" aria-describedby="mov-filters-help">
-              <option value="" {% if not request.GET.tipo %}selected{% endif %}>Todos</option>
-              {% for value,label in tipos %}
-                <option value="{{ value }}" {% if request.GET.tipo == value %}selected{% endif %}>
-                  {{ label }}
-                </option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="col-6 col-md-3">
-            <label class="form-label mb-1" for="filtro-desde">Desde</label>
-            <input
-              type="date"
-              id="filtro-desde"
-              name="desde"
-              value="{{ request.GET.desde }}"
-              class="form-control form-control-sm"
-            >
-          </div>
-
-          <div class="col-6 col-md-3">
-            <label class="form-label mb-1" for="filtro-hasta">Hasta</label>
-            <input
-              type="date"
-              id="filtro-hasta"
-              name="hasta"
-              value="{{ request.GET.hasta }}"
-              class="form-control form-control-sm"
-            >
-          </div>
-
-          <div class="col-12 col-md-3">
-            <label class="form-label mb-1" for="filtro-estado">Estado</label>
-
-            {% if rol_consulta_politica %}
-              <select class="form-select form-select-sm" id="filtro-estado" disabled>
-                <option value="APROBADO" selected>Solo aprobados</option>
-              </select>
-              <input type="hidden" name="estado" value="APROBADO">
-              <div class="form-text small">
-                Como usuario de consulta siempre ves solo movimientos aprobados.
-              </div>
-            {% else %}
-              <select name="estado" id="filtro-estado" class="form-select form-select-sm">
-                <option value="APROBADO"
-                  {% if estado_actual == "APROBADO" or not estado_actual %}selected{% endif %}
-                >
-                  Solo aprobados
-                </option>
-                <option value="BORRADOR" {% if estado_actual == "BORRADOR" %}selected{% endif %}>
-                  Borradores
-                </option>
-                <option value="RECHAZADO" {% if estado_actual == "RECHAZADO" %}selected{% endif %}>
-                  Rechazados
-                </option>
-                <option value="TODOS" {% if estado_actual == "TODOS" %}selected{% endif %}>
-                  Todos los estados
-                </option>
-              </select>
-            {% endif %}
-          </div>
-
-          <div class="col-12">
-            <label class="form-label mb-1" for="filtro-buscar">Buscar</label>
-            <input
-              type="text"
-              id="filtro-buscar"
-              name="q"
-              value="{{ request.GET.q }}"
-              class="form-control form-control-sm"
-              placeholder="Descripción, persona, proveedor..."
-            >
-          </div>
-        </div>
-      </div>
-
-      {# Columna derecha: aplicar filtros + rangos rápidos #}
-      <div class="col-12 col-lg-3">
-        <div class="d-flex flex-column h-100 justify-content-between gap-2">
-          <div>
-            <button class="btn btn-primary btn-sm w-100" type="submit">
-              Aplicar filtros
-            </button>
-          </div>
-
-          <div class="d-flex flex-column gap-1">
-            <span class="small text-muted">Rangos rápidos</span>
-            <div class="btn-group w-100" role="group" aria-label="Rangos de fechas rápidos">
-              <button
-                type="button"
-                class="btn btn-outline-secondary btn-sm flex-fill"
-                data-quick-range="last30"
-              >
-                Últimos 30 días
-              </button>
-              <button
-                type="button"
-                class="btn btn-outline-secondary btn-sm flex-fill"
-                data-quick-range="this_month"
-              >
-                Este mes
-              </button>
-              <button
-                type="button"
-                class="btn btn-outline-secondary btn-sm flex-fill"
-                data-quick-range="this_year"
-              >
-                Este año
-              </button>
+<div class="collapse {% if hay_filtros %}show{% endif %} mb-4" id="filterPanel">
+    <div class="card border-0 shadow-sm bg-white rounded-4 overflow-hidden">
+        <div class="card-header bg-white border-bottom py-3 px-4">
+            <div class="d-flex align-items-center gap-2 text-secondary">
+                <i class="bi bi-funnel-fill"></i>
+                <span class="fw-bold small text-uppercase ls-1">Configuración de Búsqueda</span>
             </div>
-          </div>
         </div>
-      </div>
+        <div class="card-body p-4 bg-light bg-opacity-25">
+            <form method="get" class="row g-3">
+                
+                <div class="col-12 col-lg-4">
+                    <label class="form-label-sm">Búsqueda Global</label>
+                    <div class="input-group shadow-sm">
+                        <span class="input-group-text bg-white border-end-0 ps-3"><i class="bi bi-search text-secondary"></i></span>
+                        <input type="text" name="q" class="form-control border-start-0 bg-white ps-0" placeholder="Concepto, monto, persona..." value="{{ q }}">
+                    </div>
+                </div>
 
+                <div class="col-6 col-lg-2">
+                    <label class="form-label-sm">Desde</label>
+                    <input type="date" name="fecha_desde" class="form-control form-control-sm shadow-sm" value="{{ request.GET.fecha_desde }}">
+                </div>
+                <div class="col-6 col-lg-2">
+                    <label class="form-label-sm">Hasta</label>
+                    <input type="date" name="fecha_hasta" class="form-control form-control-sm shadow-sm" value="{{ request.GET.fecha_hasta }}">
+                </div>
+
+                <div class="col-12 col-lg-4">
+                    <label class="form-label-sm">Categoría / Rubro</label>
+                    <select name="categoria" class="form-select form-select-sm shadow-sm">
+                        <option value="">Todas las categorías</option>
+                        {% for c in categorias %}
+                            <option value="{{ c.id }}" {% if request.GET.categoria|add:"0" == c.id %}selected{% endif %}>{{ c.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-6 col-lg-2">
+                    <label class="form-label-sm">Tipo Movimiento</label>
+                    <select name="tipo" class="form-select form-select-sm shadow-sm">
+                        <option value="">Todos</option>
+                        <option value="INGRESO" {% if request.GET.tipo == 'INGRESO' %}selected{% endif %}>Ingresos (+)</option>
+                        <option value="GASTO" {% if request.GET.tipo == 'GASTO' %}selected{% endif %}>Gastos (-)</option>
+                    </select>
+                </div>
+
+                <div class="col-6 col-lg-2">
+                    <label class="form-label-sm">Estado</label>
+                    <select name="estado" class="form-select form-select-sm shadow-sm">
+                        <option value="APROBADO" {% if estado_actual == 'APROBADO' %}selected{% endif %}>Aprobados (Caja)</option>
+                        <option value="BORRADOR" {% if estado_actual == 'BORRADOR' %}selected{% endif %}>Borradores</option>
+                        <option value="TODOS" {% if estado_actual == 'TODOS' %}selected{% endif %}>Todos</option>
+                    </select>
+                </div>
+
+                <div class="col-12 col-lg-8 d-flex align-items-end justify-content-end gap-2">
+                    {% if hay_filtros %}
+                        <a href="{% url 'finanzas:movimiento_list' %}" class="btn btn-sm btn-white border fw-bold text-danger shadow-sm px-3">
+                            <i class="bi bi-trash me-1"></i>Limpiar
+                        </a>
+                    {% endif %}
+                    <button type="submit" class="btn btn-sm btn-dark shadow-sm fw-bold px-4">
+                        <i class="bi bi-check-lg me-2"></i>Aplicar Filtros
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
-  </div>
-</form>
-
-{# =============== RESUMEN DEL FILTRO + CONTEXTO =============== #}
-<div class="d-flex justify-content-between align-items-center mb-2 small text-muted flex-wrap gap-2">
-  <div>
-    {% if page_obj %}
-      {% if hay_filtros %}
-        Mostrando {{ page_obj.paginator.count }} movimiento{{ page_obj.paginator.count|pluralize:"s" }}
-        para el filtro aplicado.
-      {% else %}
-        Mostrando {{ page_obj.paginator.count }} movimiento{{ page_obj.paginator.count|pluralize:"s" }}
-        aprobados más recientes.
-      {% endif %}
-    {% endif %}
-  </div>
-  <div class="text-end">
-    <span class="badge bg-light text-muted border">
-      Fecha de hoy: {{ hoy|date:"d/m/Y" }}
-    </span>
-  </div>
 </div>
 
-<div class="row g-3 mb-3">
-  <div class="col-12 col-md-4">
-    <div class="card border-success-subtle shadow-sm h-100">
-      <div class="card-body py-2">
-        <div class="small text-muted text-uppercase mb-1">
-          <i class="bi bi-arrow-down-circle me-1"></i>
-          Ingresos en el filtro
-        </div>
-        <div class="fw-bold text-success">
-          ${{ total_ingresos_filtro|default:0|formato_pesos }}
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="col-12 col-md-4">
-    <div class="card border-danger-subtle shadow-sm h-100">
-      <div class="card-body py-2">
-        <div class="small text-muted text-uppercase mb-1">
-          <i class="bi bi-arrow-up-circle me-1"></i>
-          Gastos en el filtro
-        </div>
-        <div class="fw-bold text-danger">
-          ${{ total_gastos_filtro|default:0|formato_pesos }}
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="col-12 col-md-4">
-    <div class="card border-secondary-subtle shadow-sm h-100">
-      <div class="card-body py-2">
-        <div class="small text-muted text-uppercase mb-1">
-          <i class="bi bi-balance-scale me-1"></i>
-          Saldo del filtro
-        </div>
-        <div class="fw-bold {% if saldo_filtro >= 0 %}text-success{% else %}text-danger{% endif %}">
-          ${{ saldo_filtro|default:0|formato_pesos }}
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-{# =============== TABLA =============== #}
-<div class="table-responsive shadow-sm bg-white rounded">
-  <table class="table table-sm align-middle mb-0 table-hover">
-    <thead class="table-light">
-      <tr>
-        <th scope="col" style="width: 90px;">Fecha</th>
-        <th scope="col" style="width: 110px;">Tipo</th>
-        <th scope="col" style="width: 120px;">Estado</th>
-        <th scope="col">Categoría</th>
-        <th scope="col">Área</th>
-        <th scope="col">Beneficiario</th>
-        <th scope="col" class="text-end" style="width: 140px;">Monto</th>
-        <th scope="col" style="width: 160px;">Orden de pago / Factura</th>
-        <th scope="col">Detalle / acciones</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for m in movimientos %}
-        <tr>
-          <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
-          <td>
-            {% if m.tipo == m.TIPO_INGRESO %}
-              <span class="badge bg-success-subtle text-success border border-success-subtle">
-                Ingreso
-              </span>
-            {% elif m.tipo == m.TIPO_GASTO %}
-              <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
-                Gasto
-              </span>
-            {% else %}
-              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
-                Transferencia
-              </span>
-            {% endif %}
-          </td>
-          <td>
-            {% if m.estado == m.ESTADO_APROBADO %}
-              <span class="badge badge-estado badge-estado-aprobado">
-                Aprobado
-              </span>
-            {% elif m.estado == m.ESTADO_BORRADOR %}
-              <span class="badge badge-estado badge-estado-borrador">
-                Borrador
-              </span>
-            {% elif m.estado == m.ESTADO_RECHAZADO %}
-              <span class="badge badge-estado badge-estado-rechazado">
-                Rechazado
-              </span>
-            {% else %}
-              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
-                -
-              </span>
-            {% endif %}
-          </td>
-          <td>{{ m.categoria }}</td>
-          <td>{{ m.area|default:"-" }}</td>
-          <td>
-            {% if m.beneficiario %}
-              {{ m.beneficiario.apellido }}, {{ m.beneficiario.nombre }}
-            {% else %}
-              <span class="text-muted">-</span>
-            {% endif %}
-          </td>
-          <td class="text-end">
-            <span class="fw-semibold
-              {% if m.tipo == m.TIPO_INGRESO %}
-                text-success
-              {% elif m.tipo == m.TIPO_GASTO %}
-                text-danger
-              {% else %}
-                text-body
-              {% endif %}
-            ">
-              {% if m.tipo == m.TIPO_INGRESO %}+{% elif m.tipo == m.TIPO_GASTO %}-{% endif %}
-              ${{ m.monto|formato_pesos }}
-            </span>
-          </td>
-
-          {# Columna: Orden de pago / Factura #}
-          <td class="small">
-            {% if m.tipo == m.TIPO_GASTO and m.estado == m.ESTADO_APROBADO %}
-              {% if m.orden_pago %}
+{% if hay_filtros or q %}
+<div class="row g-3 mb-4 animate-fade-in">
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm border-start border-4 border-success">
+            <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center">
                 <div>
-                  <span class="badge bg-success-subtle text-success border border-success-subtle">
-                    Orden vinculada
-                  </span>
+                    <small class="text-muted text-uppercase fw-bold" style="font-size: 0.65rem;">Ingresos Filtrados</small>
+                    <div class="fw-bold text-success fs-5">+${{ total_ingresos_filtro|formato_pesos }}</div>
                 </div>
-                <div class="text-muted">
-                  OP #{{ m.orden_pago.numero|default:m.orden_pago.id }}
-                  · {{ m.orden_pago.get_estado_display }}
-                </div>
-                <div class="mt-1">
-                  <a
-                    href="{% url 'finanzas:orden_pago_detail' m.orden_pago.pk %}"
-                    class="small text-decoration-none"
-                  >
-                    Ver orden →
-                  </a>
-                </div>
-              {% elif m.orden_pago_fecha or m.factura_numero or m.factura_tipo %}
-                <div>
-                  <span class="badge bg-success-subtle text-success border border-success-subtle">
-                    Datos cargados
-                  </span>
-                </div>
-                {% if m.factura_numero %}
-                  <div class="text-muted">
-                    Fact.: {{ m.factura_numero }}
-                  </div>
-                {% endif %}
-                <div class="text-muted small">
-                  (Registrado directamente en el movimiento – modo anterior)
-                </div>
-              {% else %}
-                <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
-                  Sin orden vinculada
-                </span>
-              {% endif %}
-            {% else %}
-              <span class="text-muted">-</span>
-            {% endif %}
-          </td>
-
-          <td>
-            <div class="d-flex flex-column">
-              <a
-                href="{% url 'finanzas:movimiento_detail' m.pk %}"
-                class="text-decoration-none"
-              >
-                {{ m.descripcion|default:"(sin detalle)"|truncatechars:60 }}
-              </a>
-
-              <div class="mt-1 d-flex flex-wrap gap-1 small">
-                {% if m.es_ayuda_social %}
-                  <span class="badge rounded-pill bg-info-subtle text-info border border-info-subtle">
-                    Ayuda social
-                  </span>
-                {% endif %}
-                {% if m.es_gasto_personal %}
-                  <span class="badge rounded-pill bg-secondary-subtle text-secondary border border-secondary-subtle">
-                    Gasto de personal
-                  </span>
-                {% endif %}
-                {% if m.es_combustible %}
-                  <span class="badge rounded-pill bg-warning-subtle text-warning border border-warning-subtle">
-                    Combustible / vehículo
-                  </span>
-                {% endif %}
-                {% if m.es_pago_servicio %}
-                  <span class="badge rounded-pill bg-primary-subtle text-primary border border-primary-subtle">
-                    Pago de servicio
-                  </span>
-                {% endif %}
-              </div>
-
-              {% if rol_staff_finanzas or rol_operador_finanzas %}
-                <div class="mt-1 small">
-                  <a
-                    href="{% url 'finanzas:movimiento_update' m.pk %}"
-                    class="text-decoration-none"
-                  >
-                    ✏️ Editar
-                  </a>
-                </div>
-              {% endif %}
+                <i class="bi bi-graph-up-arrow text-success opacity-25 fs-3"></i>
             </div>
-          </td>
-        </tr>
-      {% empty %}
-        <tr>
-          <td colspan="9" class="text-center py-3 text-muted">
-            No se encontraron movimientos para el filtro aplicado.
-          </td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm border-start border-4 border-danger">
+            <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center">
+                <div>
+                    <small class="text-muted text-uppercase fw-bold" style="font-size: 0.65rem;">Gastos Filtrados</small>
+                    <div class="fw-bold text-danger fs-5">-${{ total_gastos_filtro|formato_pesos }}</div>
+                </div>
+                <i class="bi bi-graph-down-arrow text-danger opacity-25 fs-3"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm border-start border-4 border-primary bg-primary bg-opacity-10">
+            <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center">
+                <div>
+                    <small class="text-primary-emphasis text-uppercase fw-bold" style="font-size: 0.65rem;">Balance Selección</small>
+                    <div class="fw-bold text-primary-emphasis fs-5">${{ saldo_filtro|formato_pesos }}</div>
+                </div>
+                <i class="bi bi-wallet2 text-primary opacity-50 fs-3"></i>
+            </div>
+        </div>
+    </div>
 </div>
-
-{% if is_paginated %}
-  <nav class="mt-3" aria-label="Paginación de movimientos">
-    <ul class="pagination pagination-sm mb-0">
-      {% if page_obj.has_previous %}
-        <li class="page-item">
-          <a
-            class="page-link"
-            href="?page={{ page_obj.previous_page_number }}&tipo={{ request.GET.tipo }}&desde={{ request.GET.desde }}&hasta={{ request.GET.hasta }}&estado={{ estado_actual }}&q={{ request.GET.q }}"
-          >
-            Anterior
-          </a>
-        </li>
-      {% endif %}
-      <li class="page-item disabled">
-        <span class="page-link">
-          Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
-        </span>
-      </li>
-      {% if page_obj.has_next %}
-        <li class="page-item">
-          <a
-            class="page-link"
-            href="?page={{ page_obj.next_page_number }}&tipo={{ request.GET.tipo }}&desde={{ request.GET.desde }}&hasta={{ request.GET.hasta }}&estado={{ estado_actual }}&q={{ request.GET.q }}"
-          >
-            Siguiente
-          </a>
-        </li>
-      {% endif %}
-    </ul>
-  </nav>
 {% endif %}
 
-</section>
+<div class="card border-0 shadow-sm overflow-hidden rounded-4">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="bg-light text-secondary small text-uppercase">
+                <tr>
+                    <th class="ps-4 py-3" style="width: 5%;"></th>
+                    <th style="width: 15%;">Fecha</th>
+                    <th style="width: 35%;">Concepto / Detalle</th>
+                    <th style="width: 20%;">Categoría</th>
+                    <th class="text-end" style="width: 15%;">Monto</th>
+                    <th class="text-center" style="width: 10%;">Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in movimientos %}
+                <tr onclick="window.location='{% url 'finanzas:movimiento_detail' m.pk %}';">
+                    
+                    <td class="ps-4">
+                        {% if m.tipo == 'INGRESO' %}
+                            <div class="avatar-icon bg-success bg-opacity-10 text-success">
+                                <i class="bi bi-arrow-down-left"></i>
+                            </div>
+                        {% else %}
+                            <div class="avatar-icon bg-danger bg-opacity-10 text-danger">
+                                <i class="bi bi-arrow-up-right"></i>
+                            </div>
+                        {% endif %}
+                    </td>
 
-{% endblock %}
+                    <td>
+                        <div class="d-flex flex-column">
+                            <span class="fw-bold text-dark">{{ m.fecha_operacion|date:"d M" }}</span>
+                            <span class="small text-muted">{{ m.fecha_operacion|date:"Y" }}</span>
+                        </div>
+                    </td>
 
-{% block extra_js %}
-  {{ block.super }}
-  <script src="{% static 'finanzas/js/movimientos_filtros.js' %}"></script>
+                    <td>
+                        <div class="fw-medium text-dark text-truncate" style="max-width: 350px;">{{ m.descripcion }}</div>
+                        
+                        <div class="d-flex flex-wrap gap-2 mt-1">
+                            {% if m.proveedor %}
+                                <span class="badge bg-white text-secondary border fw-normal">
+                                    <i class="bi bi-shop me-1"></i>{{ m.proveedor.nombre|truncatechars:20 }}
+                                </span>
+                            {% endif %}
+                            {% if m.beneficiario %}
+                                <span class="badge bg-white text-secondary border fw-normal">
+                                    <i class="bi bi-person me-1"></i>{{ m.beneficiario }}
+                                </span>
+                            {% endif %}
+                            {% if m.vehiculo %}
+                                <span class="badge bg-white text-secondary border fw-normal">
+                                    <i class="bi bi-truck me-1"></i>{{ m.vehiculo.patente }}
+                                </span>
+                            {% endif %}
+                            {% if m.orden_pago %}
+                                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 fw-normal">
+                                    OP #{{ m.orden_pago.numero|default:m.orden_pago.id }}
+                                </span>
+                            {% endif %}
+                        </div>
+                    </td>
+
+                    <td>
+                        <span class="badge bg-light text-dark border fw-normal px-2 py-1">
+                            {{ m.categoria.nombre|default:"General" }}
+                        </span>
+                    </td>
+
+                    <td class="text-end pe-4">
+                        {% if m.tipo == 'INGRESO' %}
+                            <span class="fw-bold text-success">+${{ m.monto|formato_pesos }}</span>
+                        {% else %}
+                            <span class="fw-bold text-danger">-${{ m.monto|formato_pesos }}</span>
+                        {% endif %}
+                    </td>
+
+                    <td class="text-center pe-4">
+                        {% if m.esta_borrador %}
+                            <i class="bi bi-circle text-warning" title="Borrador" data-bs-toggle="tooltip"></i>
+                        {% elif m.esta_rechazado %}
+                            <i class="bi bi-x-circle-fill text-danger" title="Rechazado" data-bs-toggle="tooltip"></i>
+                        {% else %}
+                            <i class="bi bi-check-circle-fill text-success" title="Aprobado" data-bs-toggle="tooltip"></i>
+                        {% endif %}
+                    </td>
+
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="text-center py-5">
+                        <div class="mb-3 opacity-25">
+                            <i class="bi bi-inbox fs-1"></i>
+                        </div>
+                        <h6 class="text-secondary fw-bold">No hay movimientos registrados</h6>
+                        <p class="text-muted small mb-0">Intenta cambiar los filtros o carga un nuevo movimiento.</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="card-footer bg-white border-top-0 py-3">
+        {% include "finanzas/components/pagination.html" %}
+    </div>
+</div>
+
 {% endblock %}

@@ -1,589 +1,358 @@
 {% extends "finanzas/base.html" %}
 {% load humanize %}
-{% load finanzas_extras %}
+{% load static %}
 
-{% block title %}Orden de pago #{{ orden.numero|default:orden.id }} – {{ COMUNA_NOMBRE|default:"Comuna de Tacuarendí" }}{% endblock %}
+{% block title %}OP #{{ orden.numero }}{% endblock %}
 
 {% block content %}
 
-<style>
-/* ===== Layout de impresión tipo hoja A4 para Orden de pago ===== */
-@media print {
-  body {
-    background: #ffffff !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-    font-size: 10pt;
-  }
-
-  @page {
-    size: A4 portrait;
-    margin: 1.1cm;
-  }
-
-  .no-print {
-    display: none !important;
-  }
-
-  header,
-  nav,
-  .navbar,
-  .sidebar,
-  .footer,
-  .alert,
-  .btn {
-    display: none !important;
-  }
-
-  /* Hoja principal */
-  .op-print-sheet {
-    box-shadow: none !important;
-    border: 1px solid #000 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    page-break-inside: avoid;
-  }
-
-  .op-print-sheet .card-body {
-    padding: 0.5rem 0.75rem 0.6rem 0.75rem !important;
-  }
-
-  .op-print-inner {
-    padding: 0 !important;
-  }
-
-  /* Tipografía y líneas más compactas */
-  .op-print-sheet,
-  .op-print-sheet * {
-    line-height: 1.25;
-  }
-
-  .op-print-sheet h2,
-  .op-print-sheet .h5 {
-    margin-bottom: 0.2rem !important;
-  }
-
-  .op-print-sheet .small {
-    font-size: 0.8em;
-  }
-
-  .op-print-sheet hr {
-    margin-top: 0.5rem !important;
-    margin-bottom: 0.5rem !important;
-  }
-
-  .op-print-sheet .row.g-3 {
-    --bs-gutter-y: 0.4rem;
-    --bs-gutter-x: 0.5rem;
-  }
-
-  /* Tablas más densas */
-  .op-print-table th,
-  .op-print-table td {
-    padding: 0.15rem 0.25rem !important;
-  }
-
-  /* Observaciones compactas */
-  .op-observaciones-wrap {
-    margin-top: 0.3rem !important;
-    margin-bottom: 0.3rem !important;
-  }
-
-  .op-observaciones {
-    padding: 0.25rem 0.4rem !important;
-    font-size: 0.8em !important;
-    margin: 0 !important;
-  }
-
-  /* Firmas más juntas */
-  .op-firmas-row {
-    margin-top: 1.2rem !important;
-  }
-
-  .op-firma-linea {
-    margin-top: 1.5rem !important;
-    height: 2rem !important;
-  }
-}
-</style>
-
-{# ===== Barra superior de acciones (solo pantalla) ===== #}
-<div class="d-flex justify-content-between align-items-center mb-3 no-print">
-  <div>
-    <p class="text-muted small mb-1 d-flex flex-wrap align-items-center gap-2">
-      <span>Orden de pago #{{ orden.numero|default:orden.id }}</span>
-      <span>·</span>
-      <span
-        class="badge
-          {% if orden.estado == orden.ESTADO_BORRADOR %}
-            bg-secondary-subtle text-secondary border border-secondary-subtle
-          {% elif orden.estado == orden.ESTADO_AUTORIZADA %}
-            bg-primary-subtle text-primary border border-primary-subtle
-          {% elif orden.estado == orden.ESTADO_FACTURADA %}
-            bg-info-subtle text-info border border-info-subtle
-          {% elif orden.estado == orden.ESTADO_PAGADA %}
-            bg-success-subtle text-success border border-success-subtle
-          {% elif orden.estado == orden.ESTADO_ANULADA %}
-            bg-danger-subtle text-danger border border-danger-subtle
-          {% else %}
-            bg-light text-muted border
-          {% endif %}
-        "
-      >
-        {{ orden.get_estado_display }}
-      </span>
-    </p>
-    <h1 class="h4 mb-0">
-      {% if orden.proveedor %}
-        {{ orden.proveedor.nombre }}
-      {% elif orden.proveedor_nombre %}
-        {{ orden.proveedor_nombre }}
-      {% else %}
-        Orden sin proveedor
-      {% endif %}
-      · ${{ total_monto|formato_pesos }}
-    </h1>
-  </div>
-
-  <div class="d-flex flex-column align-items-end gap-2">
-    {% if rol_staff_finanzas %}
-      <div class="d-flex flex-wrap justify-content-end gap-1">
-        {% if orden.estado == orden.ESTADO_BORRADOR %}
-          <form
-            method="post"
-            action="{% url 'finanzas:orden_pago_cambiar_estado' orden.pk 'autorizar' %}"
-            onsubmit="return confirm('¿Autorizar esta orden de pago?');"
-          >
-            {% csrf_token %}
-            <button type="submit" class="btn btn-success btn-sm">
-              Autorizar
-            </button>
-          </form>
-          <form
-            method="post"
-            action="{% url 'finanzas:orden_pago_cambiar_estado' orden.pk 'anular' %}"
-            onsubmit="return confirm('¿Anular esta orden de pago?');"
-          >
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-danger btn-sm">
-              Anular
-            </button>
-          </form>
-        {% elif orden.estado == orden.ESTADO_AUTORIZADA %}
-          <form
-            method="post"
-            action="{% url 'finanzas:orden_pago_cambiar_estado' orden.pk 'facturar' %}"
-            onsubmit="return confirm('¿Marcar esta orden como FACTURADA?');"
-          >
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-info btn-sm">
-              Marcar facturada
-            </button>
-          </form>
-          <form
-            method="post"
-            action="{% url 'finanzas:orden_pago_cambiar_estado' orden.pk 'pagar' %}"
-            onsubmit="return confirm('¿Marcar esta orden como PAGADA?');"
-          >
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-success btn-sm">
-              Marcar pagada
-            </button>
-          </form>
-          <form
-            method="post"
-            action="{% url 'finanzas:orden_pago_cambiar_estado' orden.pk 'anular' %}"
-            onsubmit="return confirm('¿Anular esta orden de pago?');"
-          >
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-danger btn-sm">
-              Anular
-            </button>
-          </form>
-        {% elif orden.estado == orden.ESTADO_FACTURADA %}
-          <form
-            method="post"
-            action="{% url 'finanzas:orden_pago_cambiar_estado' orden.pk 'pagar' %}"
-            onsubmit="return confirm('¿Marcar esta orden como PAGADA?');"
-          >
-            {% csrf_token %}
-            <button type="submit" class="btn btn-success btn-sm">
-              Marcar pagada
-            </button>
-          </form>
-          <form
-            method="post"
-            action="{% url 'finanzas:orden_pago_cambiar_estado' orden.pk 'anular' %}"
-            onsubmit="return confirm('¿Anular esta orden de pago?');"
-          >
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-danger btn-sm">
-              Anular
-            </button>
-          </form>
-        {% elif orden.estado == orden.ESTADO_PAGADA %}
-          <form
-            method="post"
-            action="{% url 'finanzas:orden_pago_cambiar_estado' orden.pk 'borrador' %}"
-            onsubmit="return confirm('¿Reabrir esta orden como BORRADOR? Esto es poco habitual.');"
-          >
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-secondary btn-sm">
-              Reabrir como borrador
-            </button>
-          </form>
-        {% elif orden.estado == orden.ESTADO_ANULADA %}
-          <form
-            method="post"
-            action="{% url 'finanzas:orden_pago_cambiar_estado' orden.pk 'borrador' %}"
-            onsubmit="return confirm('¿Reabrir esta orden anulada como BORRADOR?');"
-          >
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-secondary btn-sm">
-              Reabrir como borrador
-            </button>
-          </form>
-        {% endif %}
-      </div>
-    {% endif %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 print-hide animate-fade-in gap-3">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0 small">
+                <li class="breadcrumb-item"><a href="{% url 'finanzas:orden_pago_list' %}" class="text-decoration-none text-secondary fw-bold">Tesorería</a></li>
+                <li class="breadcrumb-item active">Detalle OP</li>
+            </ol>
+        </nav>
+        <div class="d-flex align-items-center gap-2 mt-1">
+            <h1 class="h4 fw-bold text-dark mb-0">Orden de Pago #{{ orden.numero }}</h1>
+            {% if orden.estado == 'BORRADOR' %}
+                <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">BORRADOR</span>
+            {% elif orden.estado == 'AUTORIZADA' %}
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle">AUTORIZADA</span>
+            {% elif orden.estado == 'PAGADA' %}
+                <span class="badge bg-success text-white">PAGADA</span>
+            {% elif orden.estado == 'ANULADA' %}
+                <span class="badge bg-danger text-white">ANULADA</span>
+            {% endif %}
+        </div>
+    </div>
 
     <div class="d-flex gap-2">
-      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()">
-        Imprimir / PDF
-      </button>
-      <a href="{% url 'finanzas:orden_pago_list' %}" class="btn btn-outline-secondary btn-sm">
-        Volver a órdenes
-      </a>
-      {% if rol_staff_finanzas or rol_operador_finanzas %}
-        <a href="{% url 'finanzas:orden_pago_update' orden.pk %}" class="btn btn-primary btn-sm">
-          Editar orden
+        
+        <a href="https://wa.me/?text=Hola, le informamos que la *Orden de Pago N° {{ orden.numero }}* a favor de *{{ orden.proveedor_nombre|urlencode }}* por ${{ orden.total_monto|intcomma }} se encuentra lista/procesada." 
+           target="_blank" 
+           class="btn btn-success shadow-sm fw-bold text-white hover-lift"
+           title="Avisar pago por WhatsApp">
+            <i class="bi bi-whatsapp me-2"></i>Avisar
         </a>
-      {% endif %}
+        <button onclick="window.print()" class="btn btn-dark shadow-sm fw-bold hover-lift">
+            <i class="bi bi-printer-fill me-2"></i>Imprimir
+        </button>
+
+        {% if orden.estado == 'BORRADOR' %}
+            <a href="{% url 'finanzas:orden_pago_update' orden.pk %}" class="btn btn-white border shadow-sm fw-bold text-secondary hover-lift">
+                <i class="bi bi-pencil-square me-2"></i>Editar
+            </a>
+            {% if rol_staff_finanzas %}
+            <form method="post" action="{% url 'finanzas:orden_pago_cambiar_estado' orden.pk 'autorizar' %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success shadow-sm fw-bold hover-lift" onclick="return confirm('¿Autorizar esta Orden de Pago?');">
+                    <i class="bi bi-check-lg me-2"></i>Autorizar
+                </button>
+            </form>
+            {% endif %}
+        {% endif %}
+
+        {% if orden.estado == 'AUTORIZADA' and rol_staff_finanzas %}
+            <form method="post" action="{% url 'finanzas:orden_pago_cambiar_estado' orden.pk 'pagar' %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary shadow-sm fw-bold hover-lift" onclick="return confirm('¿Confirmar el pago efectivo sin generar movimiento automático? (Usar solo si ya se descargó caja)');">
+                    <i class="bi bi-check2-all me-2"></i>Marcar Pagada
+                </button>
+            </form>
+            <form method="post" action="{% url 'finanzas:orden_pago_cambiar_estado' orden.pk 'anular' %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger shadow-sm border-0" onclick="return confirm('¿Anular esta orden?');">
+                    <i class="bi bi-x-circle"></i>
+                </button>
+            </form>
+        {% endif %}
     </div>
-  </div>
 </div>
 
-{# ===== Hoja A4 de orden de pago ===== #}
-<div class="card shadow-sm op-print-sheet mb-3">
-  <div class="card-body op-print-inner">
-    <div class="mb-3">
-      <div class="row align-items-start">
-        <div class="col-8">
-          <h2 class="h5 mb-1">{{ COMUNA_NOMBRE|default:"Comuna de Tacuarendí" }}</h2>
-          <div class="small text-muted">
-            {{ COMUNA_DOMICILIO|default:"Calle 8 y 5" }} – Tacuarendí – Departamento General Obligado – Provincia de Santa Fe
-          </div>
-          <div class="small text-muted">
-            CUIT: {{ COMUNA_CUIT|default:"30-67433889-5" }}
-            · Tel.: {{ COMUNA_TELEFONO|default:"3482 - 452012" }}
-            · Correo: {{ COMUNA_EMAIL|default:"comuna.tacuarendi@ltnet.com.ar" }}
-          </div>
+<div class="card border border-dark rounded-0 bg-white mx-auto shadow-lg" style="max-width: 210mm; min-height: 260mm;" id="printableArea">
+    
+    <div class="card-body p-5 position-relative">
+        
+        <div class="row border-bottom border-2 border-dark pb-3 mb-4 align-items-center">
+            <div class="col-2 text-center">
+                <img src="{% static 'finanzas/img/logo-comuna.png' %}" alt="Logo" style="max-width: 80px; height: auto;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <i class="bi bi-building fs-1 text-secondary" style="display: none;"></i>
+            </div>
+            <div class="col-6 border-end border-dark">
+                <h4 class="fw-bold text-dark mb-0 lh-1">COMUNA DE TACUARENDÍ</h4>
+                <div class="small text-muted mt-1">Santa Fe, Argentina</div>
+                <div class="small text-muted mb-1">CUIT: 30-67433889-5</div>
+                <span class="badge bg-dark text-white rounded-0 text-uppercase ls-1" style="font-size: 0.65rem;">Tesorería General</span>
+            </div>
+            <div class="col-4 text-end">
+                <div class="text-uppercase small fw-bold text-muted mb-1">ORDEN DE PAGO</div>
+                <div class="display-6 fw-bold text-dark font-monospace lh-1">{{ orden.numero }}</div>
+                <div class="small mt-2 font-monospace">Fecha: <strong>{{ orden.fecha_orden|date:"d/m/Y" }}</strong></div>
+            </div>
         </div>
-        <div class="col-4 text-end">
-          <div class="small text-uppercase text-muted fw-semibold">
-            Orden de pago
-          </div>
-          <div class="fs-5 fw-bold">
-            N° {{ orden.numero|default:orden.id }}
-          </div>
-          <div class="small">
-            Fecha: {{ orden.fecha_orden|date:"d/m/Y" }}
-          </div>
-          <div class="small text-muted">
-            Estado: {{ orden.get_estado_display }}
-          </div>
+
+        <div class="row mb-4 g-0">
+            <div class="col-7">
+                <div class="border border-dark p-3 bg-light bg-opacity-25 h-100 position-relative">
+                    <span class="position-absolute top-0 start-0 bg-dark text-white px-2 py-0 small fw-bold text-uppercase" style="font-size: 0.65rem;">Beneficiario</span>
+                    <div class="mt-2">
+                        <div class="fs-5 fw-bold text-dark text-uppercase">{{ orden.proveedor_nombre }}</div>
+                        {% if orden.proveedor_cuit %}
+                            <div class="small font-monospace text-muted">CUIT: {{ orden.proveedor_cuit }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="col-5">
+                <div class="border border-dark border-start-0 p-3 h-100 position-relative">
+                    <span class="position-absolute top-0 start-0 bg-white border-bottom border-end border-dark px-2 py-0 small fw-bold text-uppercase text-muted" style="font-size: 0.65rem;">Condiciones</span>
+                    <div class="mt-1">
+                        <ul class="list-unstyled small mb-0">
+                            <li class="mb-1 d-flex justify-content-between border-bottom border-dark border-opacity-10 pb-1">
+                                <span class="text-muted">Forma de Pago:</span>
+                                <span class="fw-bold text-dark text-end">{{ orden.get_condicion_pago_display|default:"A Convenir" }}</span>
+                            </li>
+                            <li class="mb-1 d-flex justify-content-between border-bottom border-dark border-opacity-10 pb-1">
+                                <span class="text-muted">Medio Previsto:</span>
+                                <span class="fw-bold text-dark text-end">{{ orden.get_medio_pago_previsto_display|default:"Efec/Transf" }}</span>
+                            </li>
+                            <li class="d-flex justify-content-between pt-1">
+                                <span class="text-muted">Área:</span>
+                                <span class="fw-bold text-dark text-end">{{ orden.area|default:"Central" }}</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
         </div>
-      </div>
+
+        {% if orden.factura_numero %}
+        <div class="mb-4">
+            <div class="bg-light border border-dark border-bottom-0 px-3 py-1 fw-bold text-uppercase small d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-receipt me-2"></i>Comprobante Asociado</span>
+            </div>
+            <table class="table table-bordered border-dark mb-0 table-sm">
+                <thead class="bg-white text-center small text-uppercase">
+                    <tr>
+                        <th style="width: 20%;">Tipo</th>
+                        <th style="width: 40%;">Número</th>
+                        <th style="width: 20%;">Fecha Emisión</th>
+                        <th style="width: 20%;">Importe Comp.</th>
+                    </tr>
+                </thead>
+                <tbody class="align-middle text-center">
+                    <tr>
+                        <td class="fw-bold">{{ orden.factura_tipo|default:"-" }}</td>
+                        <td class="font-monospace">{{ orden.factura_numero }}</td>
+                        <td>{{ orden.factura_fecha|date:"d/m/Y"|default:"-" }}</td>
+                        <td class="font-monospace">${{ orden.factura_monto|intcomma|default:"-" }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <div class="mb-4">
+            <div class="bg-dark text-white px-3 py-1 fw-bold text-uppercase small mb-0">
+                Imputación Presupuestaria / Detalle
+            </div>
+            <table class="table table-bordered border-dark mb-0 table-sm" style="font-size: 0.95rem;">
+                <thead class="bg-light text-center text-uppercase small">
+                    <tr>
+                        <th style="width: 30%;">Categoría</th>
+                        <th style="width: 50%;">Descripción</th>
+                        <th style="width: 20%;">Importe</th>
+                    </tr>
+                </thead>
+                <tbody class="align-middle">
+                    {% for linea in orden.lineas.all %}
+                    <tr>
+                        <td class="ps-3 small text-muted">{{ linea.categoria.nombre|default:"General" }}</td>
+                        <td class="ps-3 fw-medium text-dark">{{ linea.descripcion }}</td>
+                        <td class="text-end pe-3 font-monospace fw-bold">${{ linea.monto|intcomma }}</td>
+                    </tr>
+                    {% empty %}
+                        {% if orden.factura_monto and orden.factura_monto > 0 %}
+                        <tr>
+                            <td class="ps-3 small text-muted">General / Automático</td>
+                            <td class="ps-3 fw-medium text-dark fst-italic">Imputación global según comprobante {{ orden.factura_numero }}</td>
+                            <td class="text-end pe-3 font-monospace fw-bold">${{ orden.factura_monto|intcomma }}</td>
+                        </tr>
+                        {% else %}
+                        <tr style="height: 40px;"><td colspan="3"></td></tr>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {% if orden.lineas.count < 3 %}
+                        <tr style="height: 30px;"><td class="bg-light opacity-10"></td><td></td><td></td></tr>
+                        <tr style="height: 30px;"><td class="bg-light opacity-10"></td><td></td><td></td></tr>
+                    {% endif %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="2" class="text-end fw-bold text-uppercase pe-3 bg-light border-top-2 border-dark align-middle">Total a Pagar</td>
+                        <td class="text-end fw-bold bg-light pe-3 fs-5 font-monospace border-top-2 border-dark text-dark">
+                            {% if orden.total_monto > 0 %}
+                                ${{ orden.total_monto|intcomma }}
+                            {% else %}
+                                ${{ orden.factura_monto|default:0|intcomma }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <div class="mb-5">
+            <div class="bg-light border border-dark px-3 py-1 fw-bold text-uppercase small">
+                Observaciones / Instrucciones de Pago
+            </div>
+            <div class="border border-dark border-top-0 p-3" style="min-height: 60px;">
+                <p class="mb-0 small text-dark fst-italic">
+                    {{ orden.observaciones|default:"Sin observaciones adicionales."|linebreaksbr }}
+                </p>
+            </div>
+        </div>
+
+        <div class="row mt-auto pt-5 align-items-end justify-content-center">
+            <div class="col-12 text-center small text-muted border-top pt-2">
+                Documento de gestión interna generado el {{ orden.fecha_orden|date:"d/m/Y" }} por el sistema.
+            </div>
+        </div>
+
+        {% if orden.estado == 'ANULADA' %}
+        <div class="position-absolute top-50 start-50 translate-middle text-danger opacity-25" 
+             style="transform: translate(-50%, -50%) rotate(-45deg); font-size: 8rem; font-weight: 900; z-index: 0; pointer-events: none; border: 10px solid currentColor; padding: 20px;">
+            ANULADA
+        </div>
+        {% elif orden.estado == 'PAGADA' %}
+        <div class="position-absolute top-50 start-50 translate-middle text-success opacity-10" 
+             style="transform: translate(-50%, -50%) rotate(-45deg); font-size: 6rem; font-weight: 900; z-index: 0; pointer-events: none; border: 8px solid currentColor; padding: 20px;">
+            PAGADA
+        </div>
+        {% endif %}
+
     </div>
-
-    <hr class="my-2">
-
-    <div class="row g-3 mb-2">
-      <div class="col-12 col-md-7">
-        <div class="fw-semibold text-uppercase small mb-1">
-          Datos del proveedor
-        </div>
-        <table class="table table-sm mb-0 op-print-table">
-          <tbody>
-            <tr>
-              <th style="width: 110px;">Proveedor</th>
-              <td>
-                {% if orden.proveedor %}
-                  {{ orden.proveedor.nombre }}
-                {% elif orden.proveedor_nombre %}
-                  {{ orden.proveedor_nombre }}
-                {% else %}
-                  (sin proveedor)
-                {% endif %}
-              </td>
-            </tr>
-            <tr>
-              <th>CUIT</th>
-              <td>{{ orden.proveedor_cuit|default:"(sin CUIT)" }}</td>
-            </tr>
-            <tr>
-              <th>Área</th>
-              <td>{{ orden.area|default:"(sin área)" }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="col-12 col-md-5">
-        <div class="fw-semibold text-uppercase small mb-1">
-          Condición / medio de pago
-        </div>
-        <table class="table table-sm mb-0 op-print-table">
-          <tbody>
-            <tr>
-              <th style="width: 120px;">Condición</th>
-              <td>{{ orden.get_condicion_pago_display|default:"(sin especificar)" }}</td>
-            </tr>
-            <tr>
-              <th>Medio previsto</th>
-              <td>{{ orden.get_medio_pago_previsto_display|default:"(sin especificar)" }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    {% if orden.observaciones %}
-      <div class="mt-2 mb-1 op-observaciones-wrap">
-        <div class="fw-semibold text-uppercase small mb-1">
-          Observaciones
-        </div>
-        <div class="border rounded-1 p-2 small bg-light op-observaciones">
-          {{ orden.observaciones|linebreaksbr }}
-        </div>
-      </div>
-    {% endif %}
-
-    <hr class="my-3">
-
-    <div class="fw-semibold text-uppercase small mb-1">
-      Detalle de conceptos
-    </div>
-    <div class="table-responsive mb-0">
-      <table class="table table-sm align-middle mb-0 op-print-table">
-        <thead class="table-light">
-          <tr>
-            <th style="width: 20%;">Categoría</th>
-            <th style="width: 20%;">Área</th>
-            <th>Descripción</th>
-            <th style="width: 15%;" class="text-end">Monto</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for linea in lineas %}
-            <tr>
-              <td>{{ linea.categoria|default:"-" }}</td>
-              <td>{{ linea.area|default:"-" }}</td>
-              <td>{{ linea.descripcion }}</td>
-              <td class="text-end">
-                ${{ linea.monto|formato_pesos }}
-              </td>
-            </tr>
-          {% empty %}
-            <tr>
-              <td colspan="4" class="text-center py-3 text-muted">
-                La orden todavía no tiene líneas de detalle.
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    <div class="row justify-content-end mt-2">
-      <div class="col-12 col-md-5">
-        <table class="table table-sm mb-0 op-print-table">
-          <tbody>
-            <tr>
-              <th>Total de la orden</th>
-              <td class="text-end fw-semibold">
-                ${{ total_monto|formato_pesos }}
-              </td>
-            </tr>
-            {% if orden.factura_monto %}
-              <tr>
-                <th>Monto factura</th>
-                <td class="text-end">
-                  ${{ orden.factura_monto|formato_pesos }}
-                </td>
-              </tr>
-            {% endif %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <hr class="my-3">
-
-    <div class="row g-3 mb-2">
-      <div class="col-12 col-md-7">
-        <div class="fw-semibold text-uppercase small mb-1">
-          Comprobante / factura
-        </div>
-        <table class="table table-sm mb-0 op-print-table">
-          <tbody>
-            <tr>
-              <th style="width: 140px;">Tipo</th>
-              <td>{{ orden.get_factura_tipo_display|default:"(sin especificar)" }}</td>
-            </tr>
-            <tr>
-              <th>Número</th>
-              <td>{{ orden.factura_numero|default:"(sin especificar)" }}</td>
-            </tr>
-            <tr>
-              <th>Fecha</th>
-              <td>
-                {% if orden.factura_fecha %}
-                  {{ orden.factura_fecha|date:"d/m/Y" }}
-                {% else %}
-                  (sin especificar)
-                {% endif %}
-              </td>
-            </tr>
-            <tr>
-              <th>Monto</th>
-              <td>
-                {% if orden.factura_monto %}
-                  ${{ orden.factura_monto|formato_pesos }}
-                {% else %}
-                  (sin especificar)
-                {% endif %}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="col-12 col-md-5">
-        <div class="fw-semibold text-uppercase small mb-1">
-          Auditoría interna
-        </div>
-        <table class="table table-sm mb-0 op-print-table">
-          <tbody>
-            <tr>
-              <th style="width: 140px;">ID interno</th>
-              <td>#{{ orden.id }}</td>
-            </tr>
-            <tr>
-              <th>Fecha creación</th>
-              <td>{{ orden.fecha_creacion|date:"d/m/Y H:i" }}</td>
-            </tr>
-            <tr>
-              <th>Última actualización</th>
-              <td>{{ orden.actualizado_en|date:"d/m/Y H:i" }}</td>
-            </tr>
-            {% if orden.creado_por %}
-              <tr>
-                <th>Creada por</th>
-                <td>{{ orden.creado_por }}</td>
-              </tr>
-            {% endif %}
-            {% if orden.actualizado_por %}
-              <tr>
-                <th>Última modificación</th>
-                <td>{{ orden.actualizado_por }}</td>
-              </tr>
-            {% endif %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="row mt-4 op-firmas-row">
-      <div class="col-6 text-center">
-        <div class="op-firma-linea border-top border-dark mx-auto" style="width: 70%; height: 2.5rem;"></div>
-        <div class="small mt-1">
-          Autorizado por
-        </div>
-      </div>
-      <div class="col-6 text-center">
-        <div class="op-firma-linea border-top border-dark mx-auto" style="width: 70%; height: 2.5rem;"></div>
-        <div class="small mt-1">
-          Proveedor / Beneficiario
-        </div>
-      </div>
-    </div>
-  </div>
 </div>
 
-{# ===== Movimientos vinculados (no se imprimen) ===== #}
-<div class="card shadow-sm no-print">
-  <div class="card-header py-2 d-flex justify-content-between align-items-center">
-    <span class="small text-uppercase text-muted fw-semibold">
-      Movimientos asociados
-    </span>
-    <div class="d-flex align-items-center gap-2">
-      {% if total_movimientos and total_movimientos > 0 %}
-        <span class="small text-muted">
-          Total movimientos: ${{ total_movimientos|formato_pesos }}
-        </span>
-      {% endif %}
-
-      {% if puede_generar_movimiento %}
-        <form
-          method="post"
-          action="{% url 'finanzas:orden_pago_generar_movimiento' orden.pk %}"
-          onsubmit="return confirm('Se generará un movimiento de GASTO aprobado por el total de la orden. ¿Continuar?');"
-        >
-          {% csrf_token %}
-          <button type="submit" class="btn btn-sm btn-outline-success">
-            Generar movimiento de gasto
-          </button>
-        </form>
-      {% elif tiene_movimientos %}
-        <span class="badge bg-success-subtle text-success border border-success-subtle small">
-          Movimiento generado
-        </span>
-      {% endif %}
+{% if orden.estado == 'PAGADA' or orden.estado == 'AUTORIZADA' %}
+<div class="container print-hide mb-5" style="max-width: 210mm;">
+    <div class="card border-0 shadow-sm rounded-3">
+        <div class="card-header bg-white py-2 border-bottom">
+            <small class="fw-bold text-uppercase text-muted ls-1"><i class="bi bi-activity me-1"></i>Seguimiento Contable</small>
+        </div>
+        <div class="card-body">
+            {% if movimientos %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0 align-middle">
+                        <thead class="bg-light text-secondary small text-uppercase">
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Movimiento</th>
+                                <th>Monto</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for m in movimientos %}
+                            <tr>
+                                <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
+                                <td>
+                                    <a href="{% url 'finanzas:movimiento_detail' m.pk %}" class="text-decoration-none fw-bold text-dark">
+                                        #{{ m.id }} - {{ m.descripcion }}
+                                    </a>
+                                </td>
+                                <td class="text-danger fw-bold">-${{ m.monto|intcomma }}</td>
+                                <td>
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle">{{ m.get_estado_display }}</span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="d-flex align-items-center justify-content-between p-2">
+                    <div class="d-flex align-items-center gap-2 text-warning-emphasis">
+                        <i class="bi bi-exclamation-circle-fill fs-5"></i>
+                        <span>Atención: Esta orden está autorizada pero no se ha descargado el pago de la Caja.</span>
+                    </div>
+                    {% if rol_staff_finanzas and orden.estado != 'ANULADA' %}
+                    <form method="post" action="{% url 'finanzas:orden_pago_generar_movimiento' orden.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-primary btn-sm fw-bold shadow-sm" onclick="return confirm('Se generará un EGRESO en la caja por el total de la orden. ¿Confirmar?');">
+                            <i class="bi bi-box-arrow-down me-1"></i>Generar Egreso de Caja
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
     </div>
-  </div>
-  <div class="card-body small p-0">
-    {% if movimientos %}
-      <div class="table-responsive mb-0">
-        <table class="table table-sm align-middle mb-0">
-          <thead class="table-light">
-            <tr>
-              <th style="width: 90px;">Fecha</th>
-              <th>Categoría</th>
-              <th>Área</th>
-              <th style="width: 130px;" class="text-end">Monto</th>
-              <th style="width: 120px;"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for m in movimientos %}
-              <tr>
-                <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
-                <td>{{ m.categoria|default:"-" }}</td>
-                <td>{{ m.area|default:"-" }}</td>
-                <td class="text-end">
-                  ${{ m.monto|formato_pesos }}
-                </td>
-                <td>
-                  <a
-                    href="{% url 'finanzas:movimiento_detail' m.pk %}"
-                    class="small text-decoration-none"
-                  >
-                    Ver movimiento →
-                  </a>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="p-3 text-muted">
-        No hay movimientos vinculados a esta orden. Una vez que la orden esté PAGADA,
-        podés generar el movimiento contable desde aquí (si corresponde).
-      </div>
-    {% endif %}
-  </div>
 </div>
+{% endif %}
+
+<style>
+    /* Estilos Impresión PRO - OCULTAR TODO */
+    @media print {
+        /* 1. Ocultar TODO por defecto y bloquear scroll */
+        html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            height: 100%;
+            overflow: hidden; 
+        }
+
+        body * {
+            visibility: hidden; 
+            height: 0; 
+        }
+
+        /* 2. Ocultar Bootstrap intrusivo */
+        .navbar, nav, header, footer, .btn, .breadcrumb, .alert {
+            display: none !important;
+        }
+
+        /* 3. Hacer visible SOLO nuestra hoja A4 */
+        #printableArea, #printableArea * {
+            visibility: visible;
+            height: auto;
+            overflow: visible;
+        }
+
+        /* 4. Posicionar la hoja A4 cubriendo todo */
+        #printableArea {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            background-color: white !important;
+            min-height: auto !important; /* Dejar que el contenido mande */
+            z-index: 9999;
+        }
+
+        /* 5. Ajustes de la hoja real */
+        @page {
+            size: A4;
+            margin: 10mm; /* Margen físico de la impresora */
+        }
+        
+        .bg-dark { background-color: #212529 !important; color: white !important; -webkit-print-color-adjust: exact; }
+        .bg-light { background-color: #f8f9fa !important; -webkit-print-color-adjust: exact; }
+        
+        tr { page-break-inside: avoid; }
+    }
+    
+    .font-monospace { font-family: 'Consolas', 'Monaco', 'Courier New', monospace; letter-spacing: -0.5px; }
+    .ls-1 { letter-spacing: 1px; }
+    .hover-lift { transition: transform 0.2s; }
+    .hover-lift:hover { transform: translateY(-2px); }
+</style>
 
 {% endblock %}

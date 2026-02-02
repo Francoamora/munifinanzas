@@ -1,283 +1,257 @@
 {% extends "finanzas/base.html" %}
 
 {% block title %}
-  {% if form.instance.pk %}
-    Editar persona – Comuna de Tacuarendí
-  {% else %}
-    Nueva persona – Comuna de Tacuarendí
-  {% endif %}
+    {% if form.instance.pk %}Editar Persona{% else %}Nueva Persona{% endif %}
 {% endblock %}
 
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <div>
-    <h1 class="h4 mb-1">
-      {% if form.instance.pk %}
-        Editar persona / beneficiario
-      {% else %}
-        Nueva persona / beneficiario
-      {% endif %}
-    </h1>
-    <div class="text-muted small">
-      Datos de contacto, ubicación y relación con la comuna (servicios, ayudas, sueldos/changas).
-    </div>
-  </div>
+<div class="row justify-content-center animate-fade-in">
+    <div class="col-12 col-xl-10">
+        
+        <form method="post" novalidate class="needs-validation">
+            {% csrf_token %}
 
-  <a href="{% url 'finanzas:persona_list' %}" class="btn btn-outline-secondary btn-sm">
-    Volver al listado
-  </a>
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="h3 fw-bold text-dark mb-1">
+                        {% if form.instance.pk %}
+                            <i class="bi bi-person-gear me-2 text-warning"></i>Editar Ficha
+                        {% else %}
+                            <i class="bi bi-person-plus-fill me-2 text-success"></i>Nueva Persona
+                        {% endif %}
+                    </h1>
+                    <p class="text-secondary mb-0 fw-medium small">Registro único de vecinos y beneficiarios.</p>
+                </div>
+                <div>
+                    <a href="{% url 'finanzas:persona_list' %}" class="btn btn-white border shadow-sm fw-medium text-dark me-2">
+                        Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold shadow-sm">
+                        <i class="bi bi-save me-2"></i>Guardar Ficha
+                    </button>
+                </div>
+            </div>
+
+            {% if form.errors or form.non_field_errors %}
+            <div class="alert alert-danger border-0 shadow-sm rounded-3 mb-4">
+              <div class="d-flex align-items-center gap-3">
+                <i class="bi bi-exclamation-octagon-fill fs-3 text-danger"></i>
+                <div>
+                  <h6 class="fw-bold mb-1 text-danger">Verifique los datos</h6>
+
+                  {% if form.non_field_errors %}
+                    <ul class="mb-2 small text-danger-emphasis ps-3">
+                      {% for error in form.non_field_errors %}
+                        <li>{{ error }}</li>
+                      {% endfor %}
+                    </ul>
+                  {% endif %}
+
+                  <ul class="mb-0 small text-danger-emphasis ps-3">
+                    {% for field in form %}
+                      {% for error in field.errors %}
+                        <li><strong>{{ field.label }}:</strong> {{ error }}</li>
+                      {% endfor %}
+                    {% endfor %}
+                  </ul>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+            
+            <div class="row g-4">
+                
+                <div class="col-lg-8">
+                    
+                    <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
+                        <div class="card-header bg-white py-3 border-bottom">
+                            <h6 class="mb-0 fw-bold text-dark small text-uppercase ls-1">
+                                <i class="bi bi-person-vcard me-2 text-primary"></i>Datos Personales
+                            </h6>
+                        </div>
+                        <div class="card-body p-4">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <div class="form-floating">
+                                        {{ form.nombre }}
+                                        <label class="text-muted">Nombres *</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-floating">
+                                        {{ form.apellido }}
+                                        <label class="text-muted">Apellidos *</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-floating">
+                                        {{ form.dni }}
+                                        <label class="text-muted">DNI / CUIL *</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-floating">
+                                        {{ form.fecha_nacimiento }}
+                                        <label class="text-muted">Fecha de Nacimiento</label>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-12"><hr class="border-secondary opacity-10 my-1"></div>
+
+                                <div class="col-12">
+                                    <div class="form-floating">
+                                        {{ form.direccion }}
+                                        <label class="text-muted">Dirección Real</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-floating">
+                                        {{ form.barrio }}
+                                        <label class="text-muted">Barrio</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-floating">
+                                        {{ form.telefono }}
+                                        <label class="text-muted">Teléfono / Celular</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                        <div class="card-header bg-white py-3 border-bottom">
+                            <h6 class="mb-0 fw-bold text-dark small text-uppercase ls-1">
+                                <i class="bi bi-clipboard-heart me-2 text-danger"></i>Situación Social
+                            </h6>
+                        </div>
+                        <div class="card-body p-4">
+                            
+                            <div class="p-3 bg-light rounded-3 border mb-3">
+                                <div class="form-check form-switch">
+                                    {{ form.percibe_beneficio }}
+                                    <label class="form-check-label fw-bold text-dark ms-2" for="{{ form.percibe_beneficio.id_for_label }}">
+                                        Percibe beneficios externos (AUH, Jubilación, etc.)
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="row g-3 mb-4 transition-all" id="bloqueBeneficios">
+                                <div class="col-md-6">
+                                    <div class="form-floating">
+                                        {{ form.beneficio_detalle }}
+                                        <label class="text-muted">Nombre del Beneficio</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-floating">
+                                        {{ form.beneficio_organismo }}
+                                        <label class="text-muted">Organismo (ANSES/Provincia)</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-floating">
+                                        {{ form.beneficio_monto_aprox }}
+                                        <label class="text-muted">Monto Aproximado ($)</label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-floating">
+                                {{ form.notas }}
+                                <label class="text-muted">Informe Social / Observaciones</label>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="col-lg-4">
+                    <div class="card border-0 shadow-sm rounded-4 sticky-top" style="top: 2rem;">
+                        <div class="card-header bg-dark text-white py-3">
+                            <h6 class="mb-0 fw-bold small text-uppercase ls-1">
+                                <i class="bi bi-briefcase me-2"></i>Relación Comunal
+                            </h6>
+                        </div>
+                        <div class="card-body p-4">
+                            
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold text-secondary text-uppercase">Tipo de Vínculo</label>
+                                {{ form.tipo_vinculo }}
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold text-secondary text-uppercase">Sector / Área</label>
+                                {{ form.sector_laboral }}
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="form-label small fw-bold text-secondary text-uppercase">Fecha Ingreso</label>
+                                {{ form.fecha_ingreso }}
+                            </div>
+
+                            <hr class="border-secondary opacity-10">
+
+                            <div class="form-check form-switch mb-3">
+                                {{ form.paga_servicios }}
+                                <label class="form-check-label fw-medium ms-2" for="{{ form.paga_servicios.id_for_label }}">
+                                    Es Contribuyente
+                                </label>
+                            </div>
+                            
+                            <div class="form-floating mb-3">
+                                {{ form.detalle_servicios }}
+                                <label class="text-muted">Detalle (Lote/Ref)</label>
+                            </div>
+
+                            <div class="d-grid mt-4">
+                                <button type="submit" class="btn btn-primary py-2 fw-bold shadow-sm">
+                                    Guardar Cambios
+                                </button>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </form>
+    </div>
 </div>
 
-<form method="post" class="card shadow-sm">
-  <div class="card-body">
-    {% csrf_token %}
+{% endblock %}
 
-    {% if form.non_field_errors %}
-      <div class="alert alert-danger py-2">
-        {{ form.non_field_errors }}
-      </div>
-    {% endif %}
-
-    {# ===== Datos principales ===== #}
-    <h2 class="h6 text-uppercase text-muted mb-2">Datos principales</h2>
-    <div class="row g-3 mb-3">
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.apellido.id_for_label }}">Apellido</label>
-        {{ form.apellido }}
-        {% if form.apellido.errors %}
-          <div class="text-danger small">{{ form.apellido.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.nombre.id_for_label }}">Nombre</label>
-        {{ form.nombre }}
-        {% if form.nombre.errors %}
-          <div class="text-danger small">{{ form.nombre.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.dni.id_for_label }}">DNI</label>
-        {{ form.dni }}
-        {% if form.dni.errors %}
-          <div class="text-danger small">{{ form.dni.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-    </div>
-
-    {# ===== Ubicación y contacto ===== #}
-    <h2 class="h6 text-uppercase text-muted mb-2">Ubicación y contacto</h2>
-    <div class="row g-3 mb-3">
-      <div class="col-12 col-md-6">
-        <label class="form-label mb-1" for="{{ form.direccion.id_for_label }}">Domicilio</label>
-        {{ form.direccion }}
-        {% if form.direccion.errors %}
-          <div class="text-danger small">{{ form.direccion.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-      <div class="col-12 col-md-3">
-        <label class="form-label mb-1" for="{{ form.barrio.id_for_label }}">Barrio</label>
-        {{ form.barrio }}
-        {% if form.barrio.errors %}
-          <div class="text-danger small">{{ form.barrio.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-      <div class="col-12 col-md-3">
-        <label class="form-label mb-1" for="{{ form.telefono.id_for_label }}">Teléfono</label>
-        {{ form.telefono }}
-        {% if form.telefono.errors %}
-          <div class="text-danger small">{{ form.telefono.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-    </div>
-
-    {# ===== Vínculo laboral con la comuna (ARREGLA el bug) ===== #}
-    <h2 class="h6 text-uppercase text-muted mb-2">Vínculo laboral con la comuna</h2>
-    <div class="row g-3 mb-3">
-      <div class="col-12 col-md-6">
-        <label class="form-label mb-1" for="{{ form.tipo_vinculo.id_for_label }}">
-          Tipo de vínculo laboral
-        </label>
-        {{ form.tipo_vinculo }}
-        {% if form.tipo_vinculo.errors %}
-          <div class="text-danger small">{{ form.tipo_vinculo.errors|join:", " }}</div>
-        {% endif %}
-        <div class="form-text small">
-          Si no trabaja para la comuna, dejá “Sin vínculo laboral”.
-        </div>
-      </div>
-      <div class="col-12 col-md-6">
-        <label class="form-label mb-1" for="{{ form.sector_laboral.id_for_label }}">
-          Área / sector en la comuna (si corresponde)
-        </label>
-        {{ form.sector_laboral }}
-        {% if form.sector_laboral.errors %}
-          <div class="text-danger small">{{ form.sector_laboral.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-    </div>
-
-    {# ===== Beneficios sociales / pensión ===== #}
-    <h2 class="h6 text-uppercase text-muted mb-2">Beneficios sociales / Pensión</h2>
-    <div class="row g-3 mb-3">
-      <div class="col-12 col-md-4 d-flex align-items-start">
-        <div class="form-check mt-2">
-          {{ form.percibe_beneficio }}
-          <label class="form-check-label" for="{{ form.percibe_beneficio.id_for_label }}">
-            Percibe pensión o beneficio social
-          </label>
-        </div>
-        {% if form.percibe_beneficio.errors %}
-          <div class="text-danger small ms-2">{{ form.percibe_beneficio.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-
-      <div class="col-12 col-md-8">
-        <label class="form-label mb-1" for="{{ form.beneficio_detalle.id_for_label }}">
-          Detalle del beneficio
-        </label>
-        {{ form.beneficio_detalle }}
-        {% if form.beneficio_detalle.errors %}
-          <div class="text-danger small">{{ form.beneficio_detalle.errors|join:", " }}</div>
-        {% endif %}
-        <div class="form-text small">
-          Ej: AUH, jubilación mínima, pensión no contributiva, tarjeta alimentaria, etc.
-        </div>
-      </div>
-
-      <div class="col-12 col-md-6">
-        <label class="form-label mb-1" for="{{ form.beneficio_organismo.id_for_label }}">
-          Organismo / programa
-        </label>
-        {{ form.beneficio_organismo }}
-        {% if form.beneficio_organismo.errors %}
-          <div class="text-danger small">{{ form.beneficio_organismo.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-
-      <div class="col-12 col-md-6">
-        <label class="form-label mb-1" for="{{ form.beneficio_monto_aprox.id_for_label }}">
-          Monto aproximado mensual (opcional)
-        </label>
-        {{ form.beneficio_monto_aprox }}
-        {% if form.beneficio_monto_aprox.errors %}
-          <div class="text-danger small">{{ form.beneficio_monto_aprox.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-    </div>
-
-
-    {# ===== Servicios / contribuciones ===== #}
-    <h2 class="h6 text-uppercase text-muted mb-2">Servicios / contribuciones a la comuna</h2>
-    <div class="row g-3 mb-3">
-      <div class="col-12 col-md-4 d-flex align-items-start">
-        <div class="form-check mt-2">
-          {{ form.paga_servicios }}
-          <label class="form-check-label" for="{{ form.paga_servicios.id_for_label }}">
-            Paga servicios a la comuna
-          </label>
-        </div>
-        {% if form.paga_servicios.errors %}
-          <div class="text-danger small ms-2">{{ form.paga_servicios.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-      <div class="col-12 col-md-8">
-        <label class="form-label mb-1" for="{{ form.detalle_servicios.id_for_label }}">
-          Detalle de servicios / referencia
-        </label>
-        {{ form.detalle_servicios }}
-        <div class="form-text small">
-          Ejemplo: "Agua potable – Medidor 123, Lote 5 Manzana 3" u otra referencia útil para localizar al contribuyente.
-        </div>
-        {% if form.detalle_servicios.errors %}
-          <div class="text-danger small">{{ form.detalle_servicios.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-    </div>
-
-    {# ===== Notas y estado ===== #}
-    <h2 class="h6 text-uppercase text-muted mb-2">Notas y estado</h2>
-    <div class="row g-3 mb-3">
-      <div class="col-12 col-md-9">
-        <label class="form-label mb-1" for="{{ form.notas.id_for_label }}">Notas</label>
-        {{ form.notas }}
-        {% if form.notas.errors %}
-          <div class="text-danger small">{{ form.notas.errors|join:", " }}</div>
-        {% endif %}
-        <div class="form-text small">
-          Podés registrar datos relevantes: situación social, referencias, observaciones de entrevistas, etc.
-        </div>
-      </div>
-      <div class="col-12 col-md-3 d-flex align-items-start">
-        <div class="form-check mt-2">
-          {{ form.activo }}
-          <label class="form-check-label" for="{{ form.activo.id_for_label }}">
-            Activo en el censo
-          </label>
-        </div>
-        {% if form.activo.errors %}
-          <div class="text-danger small ms-2">{{ form.activo.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-
-  <div class="card-footer d-flex justify-content-between align-items-center">
-    <a href="{% url 'finanzas:persona_list' %}" class="btn btn-outline-secondary btn-sm">
-      Cancelar
-    </a>
-    <button type="submit" class="btn btn-primary btn-sm">
-      {% if form.instance.pk %}
-        Guardar cambios
-      {% else %}
-        Crear persona
-      {% endif %}
-    </button>
-  </div>
-</form>
-
+{% block extra_js %}
 <script>
-  (function () {
-    // ===== Servicios: toggle detalle_servicios =====
-    const checkServicios = document.getElementById("id_paga_servicios");
-    const detalleServicios = document.getElementById("id_detalle_servicios");
+    document.addEventListener('DOMContentLoaded', function() {
+        // Lógica para mostrar/ocultar campos de beneficios
+        const checkBeneficio = document.getElementById('{{ form.percibe_beneficio.id_for_label }}');
+        const bloqueBeneficios = document.getElementById('bloqueBeneficios');
+        const inputsBeneficios = bloqueBeneficios.querySelectorAll('input');
 
-    function toggleServicios() {
-      if (!checkServicios || !detalleServicios) return;
-      const enabled = checkServicios.checked;
-      detalleServicios.disabled = !enabled;
-      detalleServicios.classList.toggle("is-disabled-field", !enabled);
-      if (!enabled) detalleServicios.value = "";
-    }
+        function toggleBeneficios() {
+            if (checkBeneficio.checked) {
+                bloqueBeneficios.style.opacity = '1';
+                bloqueBeneficios.style.pointerEvents = 'auto';
+                inputsBeneficios.forEach(input => input.disabled = false);
+            } else {
+                bloqueBeneficios.style.opacity = '0.4';
+                bloqueBeneficios.style.pointerEvents = 'none';
+                inputsBeneficios.forEach(input => input.disabled = true);
+            }
+        }
 
-    if (checkServicios) {
-      checkServicios.addEventListener("change", toggleServicios);
-      toggleServicios();
-    }
-
-    // ===== Beneficios: toggle detalle/organismo/monto =====
-    const checkBeneficio = document.getElementById("id_percibe_beneficio");
-    const detalleBeneficio = document.getElementById("id_beneficio_detalle");
-    const orgBeneficio = document.getElementById("id_beneficio_organismo");
-    const montoBeneficio = document.getElementById("id_beneficio_monto_aprox");
-
-    function toggleBeneficio() {
-      if (!checkBeneficio) return;
-      const enabled = checkBeneficio.checked;
-
-      [detalleBeneficio, orgBeneficio, montoBeneficio].forEach(el => {
-        if (!el) return;
-        el.disabled = !enabled;
-        el.classList.toggle("is-disabled-field", !enabled);
-        if (!enabled) el.value = "";
-      });
-    }
-
-    if (checkBeneficio) {
-      checkBeneficio.addEventListener("change", toggleBeneficio);
-      toggleBeneficio();
-    }
-  })();
+        // Inicializar y escuchar cambios
+        if(checkBeneficio){
+            checkBeneficio.addEventListener('change', toggleBeneficios);
+            toggleBeneficios(); // Ejecutar al cargar
+        }
+    });
 </script>
 
+<style>
+    .transition-all { transition: all 0.3s ease; }
+</style>
 {% endblock %}

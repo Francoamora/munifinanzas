@@ -1,0 +1,372 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+
+{% block title %}Hoja de Ruta #{{ hoja.id }}{% endblock %}
+
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4 gap-3 animate-fade-in">
+  <div>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb small mb-1">
+        <li class="breadcrumb-item"><a href="{% url 'finanzas:hoja_ruta_list' %}" class="text-decoration-none text-secondary fw-bold">FLOTA</a></li>
+        <li class="breadcrumb-item active text-dark" aria-current="page">HOJA #{{ hoja.id }}</li>
+      </ol>
+    </nav>
+    <div class="d-flex align-items-center gap-3">
+      <h1 class="h3 fw-bold text-dark mb-0">
+        {{ hoja.vehiculo.patente }} <span class="text-secondary fw-normal">| {{ hoja.vehiculo.descripcion }}</span>
+      </h1>
+      {% if hoja.estado == 'ABIERTA' %}
+        <span class="badge bg-success text-white border border-success px-3 rounded-pill shadow-sm">EN CURSO</span>
+      {% else %}
+        <span class="badge bg-secondary text-white border border-secondary px-3 rounded-pill">FINALIZADA</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="d-flex gap-3 flex-wrap">
+    <div class="bg-white px-4 py-2 rounded-3 border shadow-sm text-center">
+      <span class="d-block text-uppercase text-secondary fw-bold" style="font-size:0.65rem; letter-spacing: 1px;">CHOFER</span>
+      {% if hoja.chofer %}
+        <a class="fw-bold text-dark text-decoration-none" href="{% url 'finanzas:persona_detail' hoja.chofer.pk %}">
+          {{ hoja.chofer }}
+        </a>
+      {% else %}
+        <span class="fw-bold text-dark">{{ hoja.chofer_nombre|default:"--" }}</span>
+      {% endif %}
+    </div>
+
+    <div class="bg-white px-4 py-2 rounded-3 border shadow-sm text-center">
+      <span class="d-block text-uppercase text-secondary fw-bold" style="font-size:0.65rem; letter-spacing: 1px;">PASAJEROS</span>
+      <span class="fw-bold text-dark fs-5">{{ cantidad_pasajeros_unicos }}</span>
+    </div>
+
+    <div class="bg-white px-4 py-2 rounded-3 border shadow-sm text-center">
+      <span class="d-block text-uppercase text-secondary fw-bold" style="font-size:0.65rem; letter-spacing: 1px;">RECORRIDO</span>
+      <span class="fw-bold text-primary fs-5">{{ hoja.km_recorridos|intcomma }} <span class="fs-6 text-muted">km</span></span>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
+      <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+        <div>
+          <h6 class="mb-0 fw-bold text-dark text-uppercase small ls-1"><i class="bi bi-people-fill me-2 text-primary"></i>Pasajeros y Traslados</h6>
+        </div>
+
+        {% if hoja.estado == 'ABIERTA' %}
+        <button type="button" class="btn btn-primary btn-sm shadow-sm fw-bold px-3 rounded-pill" data-bs-toggle="modal" data-bs-target="#modalNuevoTraslado">
+          <i class="bi bi-plus-lg me-1"></i> NUEVO TRASLADO
+        </button>
+        {% endif %}
+      </div>
+
+      <div class="card-body p-0">
+        <div class="list-group list-group-flush">
+          {% for t in traslados %}
+          <div class="list-group-item p-4 border-bottom position-relative hover-bg-light transition">
+            <div class="row align-items-center">
+
+              <div class="col-md-5 mb-3 mb-md-0">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <span class="badge bg-light text-dark border fw-bold">{{ t.origen }}</span>
+                  <i class="bi bi-arrow-right text-muted small"></i>
+                  <span class="badge bg-dark text-white fw-bold">{{ t.destino }}</span>
+                </div>
+                <div class="small text-secondary fw-medium">
+                  <i class="bi bi-info-circle me-1"></i> {{ t.motivo|default:'Traslado general' }}
+                </div>
+              </div>
+
+              <div class="col-md-7">
+                <div class="d-flex flex-wrap gap-2 justify-content-md-end">
+                  {% for p in t.pasajeros.all %}
+                    <div class="d-flex align-items-center bg-white border rounded-pill px-3 py-1 shadow-sm">
+                      <div class="bg-primary-subtle text-primary rounded-circle d-flex align-items-center justify-content-center me-2 fw-bold" style="width:24px;height:24px;font-size:0.7rem;">
+                        {{ p.nombre|slice:":1" }}{{ p.apellido|slice:":1" }}
+                      </div>
+                      <a href="{% url 'finanzas:persona_detail' p.pk %}" class="text-decoration-none text-dark fw-bold small">
+                        {{ p.apellido }}, {{ p.nombre }}
+                      </a>
+                    </div>
+                  {% endfor %}
+
+                  {% if t.otros_pasajeros %}
+                    <div class="d-flex align-items-center bg-warning-subtle border border-warning-subtle rounded-pill px-3 py-1">
+                      <i class="bi bi-people text-warning-emphasis me-2"></i>
+                      <span class="text-warning-emphasis small fw-bold">{{ t.otros_pasajeros }}</span>
+                    </div>
+                  {% endif %}
+                </div>
+              </div>
+
+            </div>
+          </div>
+          {% empty %}
+          <div class="text-center py-5">
+            <div class="bg-light rounded-circle d-inline-flex p-4 mb-3 shadow-sm">
+              <i class="bi bi-map text-secondary fs-1"></i>
+            </div>
+            <h6 class="text-dark fw-bold">Sin actividad registrada</h6>
+            <p class="text-muted small mb-3">Esta hoja de ruta aún no tiene traslados cargados.</p>
+            {% if hoja.estado == 'ABIERTA' %}
+            <button class="btn btn-outline-primary btn-sm fw-bold rounded-pill px-4" data-bs-toggle="modal" data-bs-target="#modalNuevoTraslado">
+              Registrar el primer viaje
+            </button>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+
+    <div class="card border-0 shadow-sm rounded-4 sticky-top overflow-hidden" style="top: 100px; z-index: 10;">
+      <div class="card-header bg-dark text-white py-3">
+        <h6 class="mb-0 fw-bold text-uppercase small ls-1"><i class="bi bi-speedometer2 me-2"></i>Control de Kilometraje</h6>
+      </div>
+      <div class="card-body p-4">
+
+        <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary border-opacity-10">
+          <span class="text-secondary small text-uppercase fw-bold">SALIDA</span>
+          <div class="text-end">
+            <div class="fw-bold text-dark font-monospace fs-5">{{ hoja.odometro_inicio|intcomma }} KM</div>
+            <small class="text-muted fw-bold">{{ hoja.hora_salida|default:"--:--" }} hs</small>
+          </div>
+        </div>
+
+        {% if hoja.estado == 'ABIERTA' %}
+          <form method="post" class="mt-2">
+            {% csrf_token %}
+            <h6 class="fw-bold text-dark mb-3 small text-uppercase">Cerrar Jornada</h6>
+
+            <div class="mb-3">
+              <label class="form-label small fw-bold text-secondary">ODÓMETRO DE LLEGADA</label>
+              {{ form_cierre.odometro_fin }}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label small fw-bold text-secondary">HORA DE LLEGADA</label>
+              {{ form_cierre.hora_llegada }}
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label small fw-bold text-secondary">OBSERVACIONES</label>
+              {{ form_cierre.observaciones }}
+            </div>
+
+            <div class="d-grid">
+              <button type="submit" name="cerrar_hoja" class="btn btn-danger fw-bold py-2 shadow-sm" onclick="return confirm('¿Confirmas cerrar la hoja de ruta? Esta acción actualiza el kilometraje del vehículo.');">
+                FINALIZAR TURNO
+              </button>
+            </div>
+          </form>
+        {% else %}
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <span class="text-secondary small text-uppercase fw-bold">LLEGADA</span>
+            <div class="text-end">
+              <div class="fw-bold text-dark font-monospace fs-5">{{ hoja.odometro_fin|intcomma }} KM</div>
+              <small class="text-muted fw-bold">{{ hoja.hora_llegada|default:"--:--" }} hs</small>
+            </div>
+          </div>
+          <div class="alert alert-success border-0 d-flex align-items-center mt-4 rounded-3 shadow-sm">
+            <i class="bi bi-check-circle-fill fs-4 me-3"></i>
+            <div>
+              <div class="fw-bold text-uppercase small">Jornada Finalizada</div>
+              <div class="small">Recorrido total: <strong>{{ hoja.km_recorridos|intcomma }} km</strong></div>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm rounded-4 mt-4 overflow-hidden">
+      <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-bold text-dark text-uppercase small ls-1"><i class="bi bi-fuel-pump-fill me-2 text-primary"></i>Gastos (Combustible)</h6>
+      </div>
+
+      <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3 p-3 bg-light rounded-3">
+          <div class="small fw-bold text-secondary text-uppercase">Total Dinero</div>
+          <div class="fw-bold text-dark fs-5">${{ total_dinero_combustible|floatformat:0|intcomma }}</div>
+        </div>
+
+        <div class="list-group list-group-flush">
+          {% for m in movimientos_flota %}
+            <div class="list-group-item px-0 py-3 d-flex justify-content-between align-items-start gap-2 border-bottom border-light">
+              <div class="flex-grow-1">
+                <div class="fw-bold text-dark small text-uppercase">
+                  {{ m.categoria.nombre }}
+                </div>
+                <div class="text-muted small">
+                  {{ m.proveedor_nombre|default:"Sin proveedor" }}
+                  {% if m.litros %}
+                    <span class="badge bg-info-subtle text-info-emphasis ms-1">{{ m.litros|floatformat:1 }} L</span>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="text-end">
+                <div class="fw-bold text-dark">${{ m.monto|floatformat:0|intcomma }}</div>
+              </div>
+            </div>
+          {% empty %}
+            <div class="text-center py-3 text-muted small fst-italic">
+              Sin cargas de combustible registradas hoy.
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="modal fade" id="modalNuevoTraslado" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg rounded-4">
+      <div class="modal-header bg-primary text-white border-0 py-3">
+        <h5 class="modal-title fw-bold"><i class="bi bi-geo-alt-fill me-2"></i>Registrar Nuevo Traslado</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <form method="post" id="formTraslado" data-url-personas="{% url 'finanzas:persona_autocomplete' %}">
+        {% csrf_token %}
+        <div class="modal-body p-4 p-lg-5 bg-light">
+
+          <div class="card border-0 shadow-sm mb-4 rounded-3">
+            <div class="card-body p-4">
+              <h6 class="text-uppercase text-primary small fw-bold mb-3 border-bottom pb-2">Detalles del Viaje</h6>
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label small fw-bold text-dark">ORIGEN</label>
+                  {{ form_traslado.origen }}
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-bold text-dark">DESTINO</label>
+                  {{ form_traslado.destino }}
+                </div>
+                <div class="col-12">
+                  <label class="form-label small fw-bold text-dark">MOTIVO (Médico, Trámite, etc.)</label>
+                  {{ form_traslado.motivo }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card border-0 shadow-sm rounded-3">
+            <div class="card-body p-4">
+              <h6 class="text-uppercase text-primary small fw-bold mb-3 border-bottom pb-2">Pasajeros</h6>
+
+              <div class="mb-4">
+                <label class="form-label small fw-bold text-dark">BUSCAR EN PADRÓN (Múltiple)</label>
+                {{ form_traslado.pasajeros }}
+                <div class="form-text small">Puedes buscar por nombre, apellido o DNI.</div>
+              </div>
+
+              <div class="bg-warning-subtle p-3 rounded-3 border border-warning-subtle">
+                <label class="form-label small fw-bold text-warning-emphasis mb-1">¿PERSONAS NO EMPADRONADAS?</label>
+                {{ form_traslado.otros_pasajeros }}
+                <div class="form-text small text-muted">Escribe los nombres separados por comas (ej: "Juan Perez (Hijo), María Lopez").</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+        <div class="modal-footer border-0 bg-white py-3">
+          <button type="button" class="btn btn-light fw-bold text-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" name="agregar_traslado" class="btn btn-primary px-4 fw-bold shadow-sm hover-lift">
+            <i class="bi bi-check-lg me-1"></i> GUARDAR TRASLADO
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<style>
+  /* ESTILOS PRO */
+  .form-control, .form-select { 
+      border: 1px solid #cbd5e1; 
+      padding: 0.65rem 0.8rem; 
+      border-radius: 8px; 
+      font-size: 0.95rem; 
+  }
+  .form-control:focus, .form-select:focus { 
+      border-color: #0d6efd; 
+      box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15); 
+  }
+  
+  /* Select2 dentro de Modal */
+  .select2-container--bootstrap-5 .select2-selection--multiple {
+      min-height: 45px;
+      border-color: #cbd5e1;
+  }
+  .select2-container--bootstrap-5 .select2-dropdown {
+      z-index: 9999; /* Asegurar que flote sobre todo */
+  }
+  
+  .hover-bg-light:hover { background-color: #f8fafc; }
+  .transition { transition: background-color 0.2s; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // --- VARIABLES ---
+    const $modal = $('#modalNuevoTraslado');
+    const $selectPasajeros = $('#id_pasajeros'); // El ID que Django le da a form_traslado.pasajeros
+    const urlPersonas = $('#formTraslado').data('url-personas');
+
+    // --- INICIALIZAR SELECT2 EN EL MODAL ---
+    // Importante: Inicializamos cuando el modal se abre para evitar problemas de ancho y z-index
+    $modal.on('shown.bs.modal', function () {
+        
+        // Si ya está inicializado, no hacer nada
+        if ($selectPasajeros.hasClass("select2-hidden-accessible")) return;
+
+        $selectPasajeros.select2({
+            theme: 'bootstrap-5',
+            width: '100%',
+            placeholder: 'Escribe para buscar pasajeros...',
+            dropdownParent: $modal, // CLAVE: Hace que el dropdown viva dentro del modal
+            allowClear: true,
+            minimumInputLength: 1, // Buscar desde 1 letra
+            language: "es",
+            ajax: {
+                url: urlPersonas,
+                dataType: 'json',
+                delay: 250,
+                data: function (params) {
+                    return {
+                        q: params.term, // query param
+                        page: params.page
+                    };
+                },
+                processResults: function (data) {
+                    // Mapeamos para asegurarnos que tenga id y text
+                    return {
+                        results: data.results
+                    };
+                },
+                cache: true
+            }
+        });
+    });
+
+    // Focus en el primer campo al abrir
+    $modal.on('shown.bs.modal', function () {
+        $('#id_origen').focus();
+    });
+
+});
+</script>
+{% endblock %}

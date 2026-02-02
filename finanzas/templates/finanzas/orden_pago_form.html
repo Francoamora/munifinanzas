@@ -1,160 +1,379 @@
 {% extends "finanzas/base.html" %}
+{% load static %}
 {% load humanize %}
-{% load finanzas_extras %}
 
 {% block title %}
-  {% if orden %}
-    Editar orden de pago #{{ orden.numero|default:orden.id }} – Comuna de Tacuarendí
-  {% else %}
-    Nueva orden de pago – Comuna de Tacuarendí
-  {% endif %}
+    {% if orden %}Editar OP #{{ orden.numero }}{% else %}Nueva Orden de Pago{% endif %}
 {% endblock %}
 
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <div>
-    <h1 class="h4 mb-0">
-      {% if orden %}
-        Editar orden de pago #{{ orden.numero|default:orden.id }}
-      {% else %}
-        Nueva orden de pago
-      {% endif %}
-    </h1>
-    <div class="small text-muted">
-      Definí proveedor, condición de pago y los conceptos que incluye la orden.
+<div class="row justify-content-center animate-fade-in mb-5">
+    <div class="col-12 col-xxl-11">
+
+        <form method="post" novalidate id="opForm" data-url-ocs="{% url 'finanzas:oc_pendientes_proveedor' %}">
+            {% csrf_token %}
+            
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
+                <div>
+                    <h1 class="h3 fw-bold text-dark mb-1">
+                        {% if orden %}
+                            <i class="bi bi-pencil-square me-2 text-success"></i>Editar OP <span class="text-muted">#{{ orden.numero }}</span>
+                        {% else %}
+                            <i class="bi bi-wallet2 me-2 text-success"></i>Nueva Orden de Pago
+                        {% endif %}
+                    </h1>
+                    <p class="text-secondary mb-0 small fw-medium">Gestión de Tesorería</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="{% url 'finanzas:orden_pago_list' %}" class="btn btn-white border shadow-sm px-4 fw-bold text-secondary">
+                        Cancelar
+                    </a>
+                    {% if not orden or orden.estado == 'BORRADOR' %}
+                    <button type="submit" name="accion" value="borrador" class="btn btn-white border shadow-sm fw-bold text-dark hover-lift">
+                        <i class="bi bi-save me-2"></i>Guardar Borrador
+                    </button>
+                    <button type="submit" name="accion" value="autorizar" class="btn btn-success shadow-sm fw-bold px-4 hover-lift">
+                        <i class="bi bi-check-lg me-2"></i>Guardar y Autorizar
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if form.errors %}
+                <div class="alert alert-danger shadow-sm border-0 mb-4 rounded-3 p-3">
+                    <div class="d-flex align-items-center gap-3">
+                        <i class="bi bi-exclamation-triangle-fill fs-4"></i>
+                        <div><strong>Atención:</strong> Revise los errores marcados en el formulario.</div>
+                    </div>
+                </div>
+            {% endif %}
+
+            <div class="row g-4 mb-4">
+                
+                <div class="col-lg-8">
+                    <div class="card border-0 shadow-sm rounded-4 h-100 overflow-hidden">
+                        <div class="card-header bg-white py-3 px-4 border-bottom">
+                            <h6 class="mb-0 fw-bold text-dark text-uppercase small ls-1">
+                                <i class="bi bi-person-vcard me-2 text-primary"></i>Datos del Beneficiario y Comprobante
+                            </h6>
+                        </div>
+                        <div class="card-body p-4 bg-light bg-opacity-10">
+                            <div class="row g-3 mb-4">
+                                <div class="col-12">
+                                    <label class="form-label small fw-bold text-secondary">BUSCAR PROVEEDOR *</label>
+                                    <div class="input-group shadow-sm">
+                                        <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-primary"></i></span>
+                                        {{ form.proveedor }}
+                                    </div>
+                                </div>
+                                <div class="col-md-8">
+                                    <label class="form-label small fw-bold text-muted">RAZÓN SOCIAL</label>
+                                    {{ form.proveedor_nombre }}
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small fw-bold text-muted">CUIT</label>
+                                    {{ form.proveedor_cuit }}
+                                </div>
+                            </div>
+
+                            <hr class="border-light my-4">
+
+                            <div class="row g-3">
+                                <div class="col-md-3">
+                                    <label class="form-label small fw-bold text-secondary">TIPO</label>
+                                    {{ form.factura_tipo }}
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small fw-bold text-secondary">N° FACTURA</label>
+                                    {{ form.factura_numero }}
+                                </div>
+                                <div class="col-md-5">
+                                    <label class="form-label small fw-bold text-secondary">FECHA FACTURA</label>
+                                    {{ form.factura_fecha }}
+                                </div>
+                                
+                                <div class="col-md-6 mt-4">
+                                    <label class="form-label small fw-bold text-dark">MONTO A PAGAR</label>
+                                    <div class="input-group input-group-lg shadow-sm">
+                                        <span class="input-group-text bg-success text-white border-0 fw-bold">$</span>
+                                        {{ form.factura_monto }}
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mt-4">
+                                    <label class="form-label small fw-bold text-dark">FECHA DE PAGO (OP)</label>
+                                    {{ form.fecha_orden }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-4">
+                    <div class="card border-0 shadow-sm rounded-4 h-100 bg-primary bg-opacity-10 border-primary border-opacity-10" id="panel-ocs" style="display: none;">
+                        <div class="card-header bg-transparent border-bottom border-primary border-opacity-10 py-3 px-3">
+                            <h6 class="mb-0 fw-bold text-primary text-uppercase small ls-1 d-flex align-items-center gap-2">
+                                <i class="bi bi-cart-check-fill"></i> OCs Pendientes
+                            </h6>
+                        </div>
+                        <div class="card-body p-0 position-relative">
+                            <div id="lista-ocs" class="list-group list-group-flush bg-transparent" style="max-height: 380px; overflow-y: auto;">
+                                </div>
+                            <div id="loading-ocs" class="text-center py-5 d-none">
+                                <div class="spinner-border spinner-border-sm text-primary mb-2" role="status"></div>
+                                <div class="small text-primary fw-bold">Consultando...</div>
+                            </div>
+                            <div id="no-ocs" class="text-center py-5 d-none">
+                                <i class="bi bi-check-circle text-success fs-3 mb-2 d-block"></i>
+                                <span class="small text-muted fw-bold">Sin pendientes.</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card border-0 shadow-sm rounded-4 h-100 d-flex align-items-center justify-content-center text-center p-4 bg-white" id="panel-placeholder">
+                        <div class="opacity-50">
+                            <i class="bi bi-arrow-left-circle fs-1 text-secondary mb-2 d-block"></i>
+                            <small class="text-muted fw-medium">Seleccione un proveedor para ver<br>sus Órdenes de Compra.</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-body p-4">
+                    <div class="row g-4 align-items-end">
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold text-secondary">CONDICIÓN DE PAGO</label>
+                            {{ form.condicion_pago }}
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold text-secondary">MEDIO PREVISTO</label>
+                            {{ form.medio_pago_previsto }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-secondary">ÁREA SOLICITANTE</label>
+                            {{ form.area }}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small fw-bold text-secondary">OBSERVACIONES INTERNAS</label>
+                            {{ form.observaciones }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm rounded-4 mb-5 overflow-hidden">
+                <div class="card-header bg-dark text-white py-3 px-4 d-flex justify-content-between align-items-center">
+                    <span class="fw-bold text-uppercase small ls-1">
+                        <i class="bi bi-list-check me-2"></i>3. Imputación Presupuestaria
+                    </span>
+                    <span class="badge bg-white text-dark bg-opacity-10 border border-white border-opacity-25 fw-normal">Desglose del Gasto</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="bg-light text-secondary small text-uppercase">
+                            <tr>
+                                <th class="ps-4 py-3" style="width: 35%;">Categoría / Rubro</th>
+                                <th class="py-3" style="width: 45%;">Detalle / Nota Específica</th>
+                                <th class="text-end pe-4 py-3" style="width: 20%;">Importe ($)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white">
+                            {{ lineas_formset.management_form }}
+                            {% for f in lineas_formset %}
+                                <tr>
+                                    {% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}
+                                    <td class="ps-4 py-2">
+                                        {{ f.categoria }}
+                                        {% if f.categoria.errors %}<div class="text-danger small">{{ f.categoria.errors }}</div>{% endif %}
+                                    </td>
+                                    <td class="py-2">
+                                        {{ f.descripcion }}
+                                    </td>
+                                    <td class="pe-4 py-2">
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-text bg-light border-end-0 text-muted">$</span>
+                                            {{ f.monto }}
+                                        </div>
+                                        {% if f.monto.errors %}<div class="text-danger small text-end">{{ f.monto.errors }}</div>{% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card-footer bg-light p-3 text-center border-top">
+                    <small class="text-muted fst-italic">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Si vincula una OC, el monto se asignará automáticamente. Si es un pago directo, complete las categorías.
+                    </small>
+                </div>
+            </div>
+
+        </form>
     </div>
-  </div>
-  <div>
-    <a href="{% url 'finanzas:orden_pago_list' %}" class="btn btn-outline-secondary btn-sm">
-      Volver a órdenes
-    </a>
-  </div>
 </div>
 
-<form method="post" novalidate>
-  {% csrf_token %}
+{% endblock %}
 
-  {% if form.non_field_errors %}
-    <div class="alert alert-danger py-2 small">
-      {{ form.non_field_errors }}
-    </div>
-  {% endif %}
+{% block extra_js %}
+<style>
+    /* INPUTS MÁS CÓMODOS */
+    .form-control, .form-select {
+        border: 1px solid #cbd5e1;
+        padding: 0.65rem 0.85rem;
+        border-radius: 8px;
+        font-size: 0.95rem;
+    }
+    .form-control:focus, .form-select:focus {
+        border-color: #198754;
+        box-shadow: 0 0 0 3px rgba(25, 135, 84, 0.15);
+    }
+    
+    /* READONLY ESTILO */
+    input[readonly].bg-light {
+        background-color: #f8fafc !important;
+        color: #64748b;
+        font-weight: 600;
+        border-color: #f1f5f9;
+    }
 
-  <div class="row g-3">
-    <div class="col-12 col-lg-4">
-      <div class="card shadow-sm h-100">
-        <div class="card-body">
-          {% for field in form %}
-            <div class="mb-2">
-              <label class="form-label small mb-1" for="{{ field.id_for_label }}">
-                {{ field.label }}
-                {% if field.field.required %}
-                  <span class="text-danger">*</span>
-                {% endif %}
-              </label>
-              {{ field }}
-              {% if field.help_text %}
-                <div class="form-text small">{{ field.help_text }}</div>
-              {% endif %}
-              {% for error in field.errors %}
-                <div class="text-danger small">{{ error }}</div>
-              {% endfor %}
-            </div>
-          {% endfor %}
-        </div>
-      </div>
-    </div>
+    /* TEXTAREA */
+    textarea.form-control { resize: none; min-height: 50px; }
 
-    <div class="col-12 col-lg-8">
-      <div class="card shadow-sm h-100">
-        <div class="card-header py-2 d-flex justify-content-between align-items-center">
-          <span class="small text-uppercase text-muted fw-semibold">
-            Detalle de conceptos
-          </span>
-          <span class="small text-muted">
-            Al menos una línea con monto.
-          </span>
-        </div>
-        <div class="card-body">
-          {{ lineas_formset.management_form }}
-          <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th style="width: 22%;">Categoría</th>
-                  <th style="width: 22%;">Área</th>
-                  <th>Descripción</th>
-                  <th style="width: 15%;" class="text-end">Monto</th>
-                  <th style="width: 40px;"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for f in lineas_formset.forms %}
-                  <tr>
-                    {% if f.instance.pk %}
-                      {{ f.id }}
-                    {% endif %}
-                    <td>
-                      {{ f.categoria }}
-                    </td>
-                    <td>
-                      {{ f.area }}
-                    </td>
-                    <td>
-                      {{ f.descripcion }}
-                    </td>
-                    <td class="text-end">
-                      {{ f.monto }}
-                    </td>
-                    <td class="text-center">
-                      {% if lineas_formset.can_delete %}
-                        <div class="form-check">
-                          {{ f.DELETE }}
-                        </div>
-                      {% endif %}
-                    </td>
-                  </tr>
-                  {% for error in f.non_field_errors %}
-                    <tr>
-                      <td colspan="5" class="text-danger small">
-                        {{ error }}
-                      </td>
-                    </tr>
-                  {% endfor %}
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
+    /* TABLA IMPUTACIÓN */
+    .table input.form-control, .table select.form-select {
+        border: 1px solid #e2e8f0;
+        background-color: #fff;
+        font-size: 0.9rem;
+    }
+    .table td { border-bottom-color: #f1f5f9; }
 
-          {% if lineas_formset.non_form_errors %}
-            <div class="text-danger small mt-2">
-              {{ lineas_formset.non_form_errors }}
-            </div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-  </div>
+    /* LISTA OCS */
+    .oc-item { cursor: pointer; border-color: rgba(13, 110, 253, 0.1) !important; transition: 0.2s; }
+    .oc-item:hover { background-color: #fff !important; padding-left: 1.25rem !important; }
+    .oc-item.active { background-color: #fff !important; border-left: 4px solid #0d6efd !important; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+</style>
 
-  <div class="mt-3 d-flex justify-content-between align-items-center">
-    <div class="small text-muted">
-      Los campos marcados con <span class="text-danger">*</span> son obligatorios.
-    </div>
-    <div class="d-flex flex-wrap gap-2">
-      <a href="{% url 'finanzas:orden_pago_list' %}" class="btn btn-outline-secondary btn-sm">
-        Cancelar
-      </a>
-      <button type="submit" name="accion" value="borrador" class="btn btn-primary btn-sm">
-        Guardar borrador
-      </button>
-      {% if rol_staff_finanzas %}
-        <button type="submit" name="accion" value="autorizar" class="btn btn-success btn-sm">
-          Guardar y autorizar
-        </button>
-      {% endif %}
-    </div>
-  </div>
-</form>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    
+    // ELEMENTOS
+    const $proveedorSelect = $('#id_proveedor');
+    const $nombreInput = $('#id_proveedor_nombre');
+    const $cuitInput = $('#id_proveedor_cuit');
+    
+    const $panelPlaceholder = $('#panel-placeholder');
+    const $panelOcs = $('#panel-ocs');
+    const $listaOcs = $('#lista-ocs');
+    const $loader = $('#loading-ocs');
+    const $emptyMsg = $('#no-ocs');
+    
+    const $montoInput = $('input[name="factura_monto"]');
+    const $obsInput = $('#id_observaciones');
+    const urlOcs = $('#opForm').data('url-ocs');
 
+    // 1. SELECT2
+    $proveedorSelect.select2({
+        theme: 'bootstrap-5',
+        width: '100%',
+        placeholder: 'Nombre, CUIT o Alias...',
+        allowClear: true,
+        ajax: {
+            url: "{% url 'finanzas:oc_proveedores_suggest' %}",
+            dataType: 'json',
+            delay: 250,
+            data: params => ({ q: params.term }),
+            processResults: data => ({ results: data.results }),
+        }
+    });
+
+    // 2. SELECCIÓN PROVEEDOR
+    $proveedorSelect.on('select2:select', function(e) {
+        const data = e.params.data;
+        $nombreInput.val(data.nombre || data.text.split('(')[0].trim());
+        $cuitInput.val(data.cuit || '');
+        
+        $panelPlaceholder.hide();
+        buscarOcsPendientes(data.id);
+    });
+
+    $proveedorSelect.on('select2:clear', function() {
+        $nombreInput.val('');
+        $cuitInput.val('');
+        $panelOcs.hide();
+        $panelPlaceholder.show();
+    });
+
+    // 3. BUSCAR OCS
+    function buscarOcsPendientes(proveedorId) {
+        $panelOcs.show();
+        $listaOcs.empty();
+        $emptyMsg.addClass('d-none');
+        $loader.removeClass('d-none');
+
+        $.ajax({
+            url: urlOcs,
+            data: { 'proveedor_id': proveedorId },
+            success: function(response) {
+                $loader.addClass('d-none');
+                
+                if (response.results.length > 0) {
+                    response.results.forEach(oc => {
+                        const itemHtml = `
+                            <div class="list-group-item list-group-item-action oc-item p-3 border-0 border-bottom" 
+                                 data-id="${oc.id}" 
+                                 data-total="${oc.total}" 
+                                 data-numero="${oc.text}">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="d-flex align-items-center gap-2 mb-1">
+                                            <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25">OC Pendiente</span>
+                                            <span class="small text-muted">${oc.fecha}</span>
+                                        </div>
+                                        <h6 class="mb-0 fw-bold text-dark text-truncate" style="max-width: 200px;">${oc.text}</h6>
+                                        <small class="text-muted d-block mt-1"><i class="bi bi-tag-fill me-1 opacity-50"></i>${oc.rubro || 'General'}</small>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-primary rounded-circle shadow-sm" style="width:32px; height:32px; padding:0;" title="Vincular OC">
+                                        <i class="bi bi-plus-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                        $listaOcs.append(itemHtml);
+                    });
+                } else {
+                    $emptyMsg.removeClass('d-none');
+                }
+            },
+            error: function() {
+                $loader.addClass('d-none');
+                $listaOcs.html('<div class="p-4 text-center text-danger small">Error de conexión.</div>');
+            }
+        });
+    }
+
+    // 4. VINCULAR OC
+    $listaOcs.on('click', '.oc-item', function() {
+        const $this = $(this);
+        const total = $this.data('total');
+        const texto = $this.data('numero');
+
+        $('.oc-item').removeClass('active bg-light');
+        $this.addClass('active');
+
+        // Efecto en monto
+        $montoInput.val(total.toString().replace('.', ',')); 
+        $montoInput.addClass('bg-success bg-opacity-10 text-success');
+        setTimeout(() => $montoInput.removeClass('bg-success bg-opacity-10 text-success'), 800);
+
+        // Observaciones
+        let obsActual = $obsInput.val();
+        if (!obsActual.includes(texto)) {
+            const nuevaObs = `Pago correspondiente a ${texto}. ${obsActual}`;
+            $obsInput.val(nuevaObs.trim());
+        }
+    });
+
+});
+</script>
 {% endblock %}

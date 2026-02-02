@@ -1,0 +1,295 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+{% load static %}
+
+{% block title %}OC #{{ orden.numero }}{% endblock %}
+
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 print-hide animate-fade-in gap-3">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0 small">
+                <li class="breadcrumb-item"><a href="{% url 'finanzas:oc_list' %}" class="text-decoration-none text-secondary fw-bold">Compras</a></li>
+                <li class="breadcrumb-item active">Detalle OC</li>
+            </ol>
+        </nav>
+        <div class="d-flex align-items-center gap-2 mt-1">
+            <h1 class="h4 fw-bold text-dark mb-0">Orden de Compra #{{ orden.numero }}</h1>
+            
+            {% if orden.estado == 'BORRADOR' %}
+                <span class="badge bg-warning text-dark border border-warning-subtle">BORRADOR</span>
+            {% elif orden.estado == 'AUTORIZADA' %}
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle">AUTORIZADA</span>
+            {% elif orden.estado == 'CERRADA' %}
+                <span class="badge bg-success text-white">CERRADA</span>
+            {% elif orden.estado == 'ANULADA' %}
+                <span class="badge bg-danger text-white">ANULADA</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        
+        <a href="https://wa.me/?text=Hola, adjunto la *Orden de Compra N° {{ orden.numero }}* para *{{ orden.proveedor_nombre|urlencode }}*. %0A%0APor favor confirmar recepción." 
+           target="_blank" 
+           class="btn btn-success shadow-sm fw-bold text-white hover-lift"
+           title="Compartir por WhatsApp">
+            <i class="bi bi-whatsapp me-2"></i>Compartir
+        </a>
+        <button onclick="window.print()" class="btn btn-dark shadow-sm fw-bold hover-lift">
+            <i class="bi bi-printer-fill me-2"></i>Imprimir
+        </button>
+
+        {% if orden.estado == 'BORRADOR' %}
+            <a href="{% url 'finanzas:oc_update' orden.pk %}" class="btn btn-white border shadow-sm fw-bold text-secondary hover-lift">
+                <i class="bi bi-pencil-square me-2"></i>Editar
+            </a>
+            
+            {% if rol_staff_finanzas or user.is_superuser %}
+            <form method="post" action="{% url 'finanzas:oc_cambiar_estado' orden.pk 'autorizar' %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success shadow-sm fw-bold hover-lift" onclick="return confirm('¿Autorizar esta Orden?');">
+                    <i class="bi bi-check-lg me-2"></i>Autorizar
+                </button>
+            </form>
+            {% endif %}
+        {% endif %}
+
+        {% if orden.estado == 'AUTORIZADA' %}
+            {% if rol_staff_finanzas or user.is_superuser %}
+            <form method="post" action="{% url 'finanzas:oc_generar_movimiento' orden.pk %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary shadow-sm fw-bold hover-lift" onclick="return confirm('¿Confirmas el pago? Se generará el gasto.');">
+                    <i class="bi bi-cash-stack me-2"></i>Pagar
+                </button>
+            </form>
+            
+            <form method="post" action="{% url 'finanzas:oc_cambiar_estado' orden.pk 'anular' %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger shadow-sm border-0" onclick="return confirm('¿Anular OC?');">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </form>
+            {% endif %}
+        {% endif %}
+    </div>
+</div>
+
+<div class="card border border-dark rounded-0 bg-white mx-auto shadow-lg" style="max-width: 210mm; min-height: 260mm;" id="printableArea">
+    
+    <div class="card-body p-5 position-relative">
+        
+        <div class="row border-bottom border-2 border-dark pb-3 mb-4 align-items-center">
+            <div class="col-2 text-center">
+                <img src="{% static 'finanzas/img/logo-comuna.png' %}" alt="Logo" style="max-width: 80px; height: auto;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <i class="bi bi-building fs-1 text-secondary" style="display: none;"></i>
+            </div>
+            <div class="col-6 border-end border-dark">
+                <h4 class="fw-bold text-dark mb-0 lh-1">COMUNA DE TACUARENDÍ</h4>
+                <div class="small text-muted mt-1">Santa Fe, Argentina</div>
+                <div class="small text-muted mb-1">CUIT: 30-67433889-5</div>
+                <span class="badge bg-dark text-white rounded-0 text-uppercase ls-1" style="font-size: 0.65rem;">Orden Oficial</span>
+            </div>
+            <div class="col-4 text-end">
+                <div class="text-uppercase small fw-bold text-muted mb-1">ORDEN DE COMPRA</div>
+                <div class="display-6 fw-bold text-dark font-monospace lh-1">{{ orden.numero }}</div>
+                <div class="small mt-2 font-monospace">Fecha: <strong>{{ orden.fecha_oc|date:"d/m/Y" }}</strong></div>
+            </div>
+        </div>
+
+        <div class="row mb-4 g-0">
+            <div class="col-7">
+                <div class="border border-dark p-3 bg-light bg-opacity-25 h-100 position-relative">
+                    <span class="position-absolute top-0 start-0 bg-dark text-white px-2 py-0 small fw-bold text-uppercase" style="font-size: 0.65rem;">Señor/es (Proveedor)</span>
+                    <div class="mt-2">
+                        <div class="fs-5 fw-bold text-dark text-uppercase">{{ orden.proveedor_nombre }}</div>
+                        {% if orden.proveedor_cuit %}
+                            <div class="small font-monospace text-muted">CUIT: {{ orden.proveedor_cuit }}</div>
+                        {% endif %}
+                        {% if orden.proveedor.direccion %}
+                            <div class="small text-muted mt-1"><i class="bi bi-geo-alt-fill me-1"></i>{{ orden.proveedor.direccion }}</div>
+                        {% endif %}
+                        {% if orden.proveedor.telefono %}
+                            <div class="small text-muted"><i class="bi bi-telephone me-1"></i>{{ orden.proveedor.telefono }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-5">
+                <div class="border border-dark border-start-0 p-3 h-100 position-relative">
+                    <span class="position-absolute top-0 start-0 bg-white border-bottom border-end border-dark px-2 py-0 small fw-bold text-uppercase text-muted" style="font-size: 0.65rem;">Datos Internos</span>
+                    <div class="mt-1">
+                        <ul class="list-unstyled small mb-0">
+                            <li class="mb-2 d-flex justify-content-between align-items-center border-bottom border-dark border-opacity-10 pb-1">
+                                <span class="text-muted">Área:</span>
+                                <span class="fw-bold text-dark text-end">{{ orden.area|default:"Administración" }}</span>
+                            </li>
+                            <li class="mb-2 d-flex justify-content-between align-items-center border-bottom border-dark border-opacity-10 pb-1">
+                                <span class="text-muted">Rubro:</span>
+                                <span class="fw-bold text-dark text-end text-uppercase" style="font-size: 0.85rem;">
+                                    {{ orden.get_rubro_principal_display|default:"General" }}
+                                </span>
+                            </li>
+                            <li class="d-flex justify-content-between align-items-center pt-1">
+                                <span class="text-muted">Solicitó:</span>
+                                <span class="fw-bold text-dark text-end small">{{ orden.creado_por.get_full_name|default:orden.creado_por.username }}</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <table class="table table-bordered border-dark mb-0 table-sm" style="font-size: 0.95rem;">
+                <thead class="bg-dark text-white text-center text-uppercase small">
+                    <tr>
+                        <th style="width: 55%;" class="py-2">Descripción / Detalle</th>
+                        <th style="width: 25%;" class="py-2">Imputación</th>
+                        <th style="width: 20%;" class="py-2">Importe Est.</th>
+                    </tr>
+                </thead>
+                <tbody class="align-middle">
+                    {% for linea in orden.lineas.all %}
+                    <tr>
+                        <td class="ps-3 py-2 fw-medium text-dark">{{ linea.descripcion }}</td>
+                        <td class="text-center small text-muted">{{ linea.categoria.nombre }}</td>
+                        <td class="text-end pe-3 font-monospace fw-bold item-monto" data-val="{{ linea.monto|stringformat:'f' }}">
+                            ${{ linea.monto|intcomma }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    
+                    {% if orden.lineas.count < 5 %}
+                        <tr style="height: 30px;"><td class="bg-light opacity-10"></td><td></td><td></td></tr>
+                        <tr style="height: 30px;"><td class="bg-light opacity-10"></td><td></td><td></td></tr>
+                        <tr style="height: 30px;"><td class="bg-light opacity-10"></td><td></td><td></td></tr>
+                    {% endif %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="2" class="text-end fw-bold text-uppercase pe-3 bg-light border-top-2 border-dark align-middle">Total Estimado</td>
+                        <td class="text-end fw-bold bg-light pe-3 fs-5 font-monospace border-top-2 border-dark text-dark" id="totalGeneral">
+                            {% if total_oc > 0 %}
+                                ${{ total_oc|intcomma }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <div class="mb-5">
+            <div class="bg-light border border-dark px-3 py-1 fw-bold text-uppercase small d-flex justify-content-between">
+                <span>Observaciones / Instrucciones</span>
+                <i class="bi bi-pencil-fill opacity-25"></i>
+            </div>
+            <div class="border border-dark border-top-0 p-3" style="min-height: 80px;">
+                <p class="mb-0 small text-dark fst-italic">
+                    {{ orden.observaciones|default:"Sin observaciones particulares."|linebreaksbr }}
+                </p>
+            </div>
+        </div>
+
+        <div class="row mt-auto pt-5 align-items-end justify-content-center">
+            <div class="col-12 text-center small text-muted border-top pt-2">
+                Documento generado el {{ orden.fecha_oc|date:"d/m/Y" }} por el sistema de gestión. 
+                <br> Válido como compromiso de compra.
+            </div>
+        </div>
+
+        {% if orden.estado == 'ANULADA' %}
+        <div class="position-absolute top-50 start-50 translate-middle text-danger opacity-25" 
+             style="transform: translate(-50%, -50%) rotate(-45deg); font-size: 8rem; font-weight: 900; z-index: 0; pointer-events: none; border: 10px solid currentColor; padding: 20px;">
+            ANULADA
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+
+<style>
+    /* Estilos Impresión PRO - OCULTAR TODO */
+    @media print {
+        /* 1. Ocultar TODO por defecto y bloquear scroll */
+        html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            height: 100%;
+            overflow: hidden; 
+        }
+
+        body * {
+            visibility: hidden; 
+            height: 0; 
+        }
+
+        /* 2. Ocultar Bootstrap intrusivo */
+        .navbar, nav, header, footer, .btn, .breadcrumb, .alert {
+            display: none !important;
+        }
+
+        /* 3. Hacer visible SOLO nuestra hoja A4 */
+        #printableArea, #printableArea * {
+            visibility: visible;
+            height: auto;
+            overflow: visible;
+        }
+
+        /* 4. Posicionar la hoja A4 cubriendo todo */
+        #printableArea {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            background-color: white !important;
+            min-height: auto !important; /* Dejar que el contenido mande */
+            z-index: 9999;
+        }
+
+        /* 5. Ajustes de la hoja real */
+        @page {
+            size: A4;
+            margin: 10mm; /* Margen físico de la impresora */
+        }
+        
+        .bg-dark { background-color: #212529 !important; color: white !important; -webkit-print-color-adjust: exact; }
+        .bg-light { background-color: #f8f9fa !important; -webkit-print-color-adjust: exact; }
+        
+        tr { page-break-inside: avoid; }
+    }
+    
+    .font-monospace { font-family: 'Consolas', 'Monaco', 'Courier New', monospace; letter-spacing: -0.5px; }
+    .ls-1 { letter-spacing: 1px; }
+    .hover-lift { transition: transform 0.2s; }
+    .hover-lift:hover { transform: translateY(-2px); }
+</style>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const totalDisplay = document.getElementById('totalGeneral');
+        if (totalDisplay && totalDisplay.innerText.trim().replace(/[^\d]/g, '') === '') {
+            let total = 0;
+            document.querySelectorAll('.item-monto').forEach(el => {
+                const val = parseFloat(el.getAttribute('data-val').replace(',', '.'));
+                if (!isNaN(val)) total += val;
+            });
+            if (total > 0) {
+                const formatter = new Intl.NumberFormat('es-AR', {
+                    style: 'currency', currency: 'ARS', minimumFractionDigits: 2
+                });
+                totalDisplay.innerText = formatter.format(total);
+            }
+        }
+    });
+</script>
+
+{% endblock %}

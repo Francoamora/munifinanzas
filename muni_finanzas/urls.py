@@ -32,6 +32,9 @@ urlpatterns = [
 
     # Rutas principales de la aplicación de finanzas
     path("", include("finanzas.urls", namespace="finanzas")),
+
+    # Inventario
+    path('inventario/', include('inventario.urls')),
 ]
 
 # Archivos de media en desarrollo

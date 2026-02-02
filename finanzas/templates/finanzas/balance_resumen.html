@@ -1,592 +1,460 @@
 {% extends "finanzas/base.html" %}
 {% load humanize %}
-{% load finanzas_extras %}
+{% load static %}
+{% load finanzas_extras %} 
+{% block title %}Balance General - {{ titulo_periodo }}{% endblock %}
 
-{% block title %}Balances – Comuna de Tacuarendí{% endblock %}
+{% block extra_css %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+    /* === KPI CARDS === */
+    .kpi-card {
+        background: white;
+        border-radius: 16px;
+        padding: 1.75rem;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        transition: transform 0.2s, box-shadow 0.2s;
+        height: 100%;
+        position: relative;
+        overflow: hidden;
+    }
+    .kpi-card:hover { transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+    
+    .kpi-label { font-size: 0.75rem; text-transform: uppercase; font-weight: 800; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+    .kpi-value { font-size: 2.25rem; font-weight: 800; letter-spacing: -0.025em; line-height: 1; margin-bottom: 0.5rem; }
+    .kpi-sub { font-size: 0.875rem; color: #64748b; font-weight: 500; }
+
+    /* === TABLAS PRO === */
+    .table-clean th { 
+        font-size: 0.7rem; 
+        text-transform: uppercase; 
+        color: #64748b; 
+        font-weight: 700; 
+        border-bottom: 1px solid #e2e8f0; 
+        padding-bottom: 0.75rem; 
+        letter-spacing: 0.5px;
+    }
+    .table-clean td { 
+        padding: 1rem 0.75rem; 
+        border-bottom: 1px solid #f8fafc; 
+        vertical-align: middle; 
+        font-size: 0.9rem; 
+    }
+    .table-clean tr:last-child td { border-bottom: none; }
+    
+    /* Rankings */
+    .rank-badge {
+        width: 24px; height: 24px; border-radius: 50%;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 0.75rem; font-weight: 800;
+    }
+    .rank-1 { background-color: #fbbf24; color: #78350f; } /* Oro */
+    .rank-2 { background-color: #94a3b8; color: #fff; }    /* Plata */
+    .rank-3 { background-color: #b45309; color: #fff; }    /* Bronce */
+    .rank-N { background-color: #f1f5f9; color: #64748b; } /* Resto */
+
+    /* === FILTROS === */
+    .filter-bar {
+        background: white;
+        padding: 0.75rem;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        margin-bottom: 2.5rem;
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        flex-wrap: wrap;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+    /* === PRINT CONFIG === */
+    @media print {
+        @page { size: A4; margin: 1cm; }
+        body { background: white !important; font-family: 'Inter', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 9pt; }
+        .no-print, header, nav, .sidebar, .navbar, .filter-bar, .btn { display: none !important; }
+        .container-fluid { padding: 0 !important; max-width: 100% !important; margin: 0 !important; }
+        .row { display: flex; flex-wrap: wrap; margin-right: -10px; margin-left: -10px; }
+        .col-md-4 { width: 33%; } .col-lg-6 { width: 50%; } .col-lg-8 { width: 66%; } .col-lg-4 { width: 33%; } .col-lg-7 { width: 60%; } .col-lg-5 { width: 40%; }
+        .card, .kpi-card { border: 1px solid #ccc !important; box-shadow: none !important; break-inside: avoid; margin-bottom: 1rem; border-radius: 6px !important; }
+        canvas { max-width: 100% !important; }
+        .bg-light { background-color: #f8fafc !important; }
+        .text-white { color: #000 !important; }
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <div>
-    <h1 class="h4 mb-0">Resumen general de balances</h1>
-    <div class="text-muted small">
-      Corte al día {{ hoy|date:"d/m/Y" }} — solo se contabilizan movimientos aprobados.
-    </div>
-  </div>
 
-  {% if request.user.is_staff %}
-    <a href="{% url 'finanzas:movimiento_create' %}" class="btn btn-primary btn-sm">
-      + Nuevo movimiento
-    </a>
-  {% endif %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 animate-fade-in gap-3">
+    <div>
+        <h1 class="h3 fw-bold text-dark mb-1">
+            <i class="bi bi-pie-chart-fill me-2 text-primary"></i>Balance General
+        </h1>
+        <p class="text-secondary mb-0 small fw-medium">
+            Reporte Financiero y Operativo | Periodo: <strong class="text-dark bg-warning bg-opacity-10 px-2 rounded">{{ titulo_periodo }}</strong>
+        </p>
+    </div>
+    
+    <div class="d-flex gap-2 no-print">
+        <button onclick="window.print()" class="btn btn-dark shadow-sm fw-bold rounded-pill px-4 hover-lift">
+            <i class="bi bi-printer-fill me-2"></i>Imprimir
+        </button>
+    </div>
 </div>
 
-{# ================== CARDS DE TOTALES GLOBALES ================== #}
-<div class="row g-3 mb-3">
-  <div class="col-12 col-md-4">
-    <div class="card border-success-subtle shadow-sm h-100">
-      <div class="card-body">
-        <div class="small text-muted text-uppercase mb-1">
-          Ingresos acumulados
-        </div>
-        <div class="fs-4 fw-bold text-success">
-          ${{ total_ingresos|default:0|formato_pesos }}
-        </div>
-        <div class="small text-muted mt-1">
-          Entradas registradas en el sistema.
-        </div>
-        {% if total_servicios %}
-          <div class="small text-muted mt-1">
-            De los cuales ${{ total_servicios|formato_pesos }} provienen de servicios municipales.
-          </div>
-        {% endif %}
-      </div>
+<form method="get" class="filter-bar shadow-sm no-print animate-fade-in">
+    <div class="btn-group shadow-sm rounded-3" role="group">
+        <button type="submit" name="periodo" value="hoy" class="btn btn-sm px-3 {% if periodo_seleccionado == 'hoy' %}btn-dark fw-bold{% else %}btn-white text-secondary hover-bg-light{% endif %}">Hoy</button>
+        <button type="submit" name="periodo" value="ayer" class="btn btn-sm px-3 {% if periodo_seleccionado == 'ayer' %}btn-dark fw-bold{% else %}btn-white text-secondary hover-bg-light{% endif %}">Ayer</button>
+        <button type="submit" name="periodo" value="semana" class="btn btn-sm px-3 {% if periodo_seleccionado == 'semana' %}btn-dark fw-bold{% else %}btn-white text-secondary hover-bg-light{% endif %}">Semana</button>
+        <button type="submit" name="periodo" value="mes" class="btn btn-sm px-3 {% if periodo_seleccionado == 'mes' %}btn-dark fw-bold{% else %}btn-white text-secondary hover-bg-light{% endif %}">Este Mes</button>
+        <button type="submit" name="periodo" value="anio" class="btn btn-sm px-3 {% if periodo_seleccionado == 'anio' %}btn-dark fw-bold{% else %}btn-white text-secondary hover-bg-light{% endif %}">Año</button>
     </div>
-  </div>
-  <div class="col-12 col-md-4">
-    <div class="card border-danger-subtle shadow-sm h-100">
-      <div class="card-body">
-        <div class="small text-muted text-uppercase mb-1">
-          Gastos acumulados
-        </div>
-        <div class="fs-4 fw-bold text-danger">
-          ${{ total_gastos|default:0|formato_pesos }}
-        </div>
-        <div class="small text-muted mt-1">
-          Egresos totales (todas las categorías de gasto).
-        </div>
-        {% if total_personal %}
-          <div class="small text-muted mt-1">
-            Incluye ${{ total_personal|formato_pesos }} en sueldos / jornales / changas.
-          </div>
-        {% endif %}
-      </div>
+    
+    <div class="vr mx-3 text-muted opacity-25"></div>
+    
+    <div class="d-flex align-items-center gap-2 bg-light rounded-3 p-1 px-2 border">
+        <input type="date" name="fecha_desde" class="form-control form-control-sm border-0 bg-transparent py-0 text-secondary fw-bold" value="{{ fecha_desde|date:'Y-m-d' }}" style="max-width: 130px;">
+        <i class="bi bi-arrow-right-short text-muted"></i>
+        <input type="date" name="fecha_hasta" class="form-control form-control-sm border-0 bg-transparent py-0 text-secondary fw-bold" value="{{ fecha_hasta|date:'Y-m-d' }}" style="max-width: 130px;">
+        <button type="submit" name="periodo" value="custom" class="btn btn-sm btn-primary rounded-circle shadow-sm" style="width: 28px; height: 28px; padding: 0;" title="Aplicar Filtro"><i class="bi bi-search" style="font-size: 0.8rem;"></i></button>
     </div>
-  </div>
-  <div class="col-12 col-md-4">
-    <div class="card border-secondary-subtle shadow-sm h-100">
-      <div class="card-body">
-        <div class="small text-muted text-uppercase mb-1">
-          Saldo global
+</form>
+
+<div class="row g-4 mb-4">
+    <div class="col-12 col-md-4">
+        <div class="kpi-card border-bottom border-4 border-success">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <div class="kpi-label text-success">Ingresos</div>
+                <div class="bg-success bg-opacity-10 text-success rounded-circle p-2 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;"><i class="bi bi-graph-up-arrow fs-5"></i></div>
+            </div>
+            <div class="kpi-value text-dark font-monospace tracking-tight">${{ ingresos_periodo|floatformat:2|intcomma }}</div>
+            <div class="kpi-sub d-flex align-items-center gap-2">
+                <i class="bi bi-calendar-check"></i> <span>Recaudación del periodo</span>
+            </div>
         </div>
-        <div class="fs-4 fw-bold {% if saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
-          ${{ saldo|default:0|formato_pesos }}
-        </div>
-        <div class="small text-muted mt-1">
-          Ingresos menos gastos. Movimientos registrados: {{ cantidad_movimientos|default:0 }}.
-        </div>
-      </div>
     </div>
-  </div>
+
+    <div class="col-12 col-md-4">
+        <div class="kpi-card border-bottom border-4 border-danger">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <div class="kpi-label text-danger">Gastos</div>
+                <div class="bg-danger bg-opacity-10 text-danger rounded-circle p-2 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;"><i class="bi bi-graph-down-arrow fs-5"></i></div>
+            </div>
+            <div class="kpi-value text-dark font-monospace tracking-tight">-${{ gastos_periodo|floatformat:2|intcomma }}</div>
+            <div class="kpi-sub d-flex align-items-center gap-2">
+                <i class="bi bi-wallet2"></i> <span>Egresos del periodo</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-4">
+        <div class="kpi-card bg-primary bg-opacity-10 border-primary border-opacity-25">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <div class="kpi-label text-primary-emphasis">Saldo Real en Caja</div>
+                <div class="bg-white text-primary rounded-circle p-2 d-flex align-items-center justify-content-center shadow-sm" style="width: 40px; height: 40px;"><i class="bi bi-safe2-fill fs-5"></i></div>
+            </div>
+            <div class="kpi-value text-primary-emphasis font-monospace tracking-tight">${{ saldo_caja|floatformat:2|intcomma }}</div>
+            <div class="kpi-sub text-primary-emphasis opacity-75 d-flex align-items-center gap-2">
+                <i class="bi bi-clock-history"></i> <span>Acumulado histórico disponible</span>
+            </div>
+        </div>
+    </div>
 </div>
 
-{# ================== TOTALES DEL MES ACTUAL ================== #}
-<h2 class="h6 text-uppercase text-muted mb-2">
-  Mes actual ({{ primer_dia_mes|date:"d/m" }} al {{ hoy|date:"d/m" }})
-</h2>
-<div class="row g-3 mb-4">
-  <div class="col-12 col-md-4">
-    <div class="card border-success-subtle shadow-sm h-100">
-      <div class="card-body">
-        <div class="small text-muted text-uppercase mb-1">
-          Ingresos del mes
+<div class="row g-4 mb-5">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-header bg-white py-3 px-4 border-bottom">
+                <h6 class="mb-0 fw-bold text-uppercase small ls-1 text-secondary">Flujo Financiero</h6>
+            </div>
+            <div class="card-body">
+                <div style="height: 250px;"><canvas id="balanceChart"></canvas></div>
+            </div>
         </div>
-        <div class="fs-5 fw-bold text-success">
-          ${{ total_ingresos_mes|default:0|formato_pesos }}
-        </div>
-        <div class="small text-muted mt-1">
-          Desde el {{ primer_dia_mes|date:"d/m" }} hasta hoy.
-        </div>
-        {% if total_servicios_mes %}
-          <div class="small text-muted mt-1">
-            De los cuales ${{ total_servicios_mes|formato_pesos }} por servicios municipales.
-          </div>
-        {% endif %}
-      </div>
     </div>
-  </div>
-  <div class="col-12 col-md-4">
-    <div class="card border-danger-subtle shadow-sm h-100">
-      <div class="card-body">
-        <div class="small text-muted text-uppercase mb-1">
-          Gastos del mes
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-header bg-white py-3 px-4 border-bottom">
+                <h6 class="mb-0 fw-bold text-uppercase small ls-1 text-secondary">Distribución de Gastos</h6>
+            </div>
+            <div class="card-body">
+                <div style="height: 250px;"><canvas id="gastosChart"></canvas></div>
+            </div>
         </div>
-        <div class="fs-5 fw-bold text-danger">
-          ${{ total_gastos_mes|default:0|formato_pesos }}
-        </div>
-        <div class="small text-muted mt-1">
-          Incluye todas las salidas del período.
-        </div>
-        {% if total_personal_mes %}
-          <div class="small text-muted mt-1">
-            De los cuales ${{ total_personal_mes|formato_pesos }} en sueldos / jornales / changas.
-          </div>
-        {% endif %}
-      </div>
     </div>
-  </div>
-  <div class="col-12 col-md-4">
-    <div class="card border-secondary-subtle shadow-sm h-100">
-      <div class="card-body">
-        <div class="small text-muted text-uppercase mb-1">
-          Saldo del mes
-        </div>
-        <div class="fs-5 fw-bold {% if saldo_mes >= 0 %}text-success{% else %}text-danger{% endif %}">
-          ${{ saldo_mes|default:0|formato_pesos }}
-        </div>
-        <div class="small text-muted mt-1">
-          Movimientos del mes: {{ cantidad_movimientos_mes|default:0 }}.
-        </div>
-      </div>
-    </div>
-  </div>
 </div>
 
-{# ================== MÉTRICAS PRO ================== #}
-{% if total_ingresos or total_ayudas or total_servicios or total_personal %}
-  <div class="row g-3 mb-4">
-    {% if total_ingresos %}
-      {% widthratio total_gastos total_ingresos 100 as pct_gasto %}
-      <div class="col-12 col-md-6 col-xl-3">
-        <div class="card border-info-subtle shadow-sm h-100">
-          <div class="card-body">
-            <div class="small text-muted text-uppercase mb-1">
-              Relación gasto / ingreso
+<div class="row g-4 mb-5">
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
+            <div class="card-header bg-white py-3 px-4 border-bottom d-flex align-items-center justify-content-between">
+                <h6 class="mb-0 fw-bold text-uppercase small ls-1 text-secondary">Gastos por Rubro</h6>
             </div>
-            <div class="fs-4 fw-bold text-info">
-              {{ pct_gasto }}%
+            <div class="card-body p-0">
+                <table class="table table-clean mb-0 table-hover">
+                    <tbody>
+                        {% for item in top_categorias %}
+                        <tr>
+                            <td class="ps-4"><span class="fw-medium text-dark">{{ item.categoria__nombre|default:"General" }}</span></td>
+                            <td class="text-end pe-4"><span class="fw-bold text-dark font-monospace">${{ item.total|floatformat:2|intcomma }}</span></td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="2" class="text-center text-muted py-5 small">Sin movimientos</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
-            <div class="small text-muted mt-1">
-              Porcentaje de los ingresos totales que ya se gastaron.
-            </div>
-          </div>
         </div>
-      </div>
-    {% endif %}
-
-    {% if total_ayudas %}
-      <div class="col-12 col-md-6 col-xl-3">
-        <div class="card border-warning-subtle shadow-sm h-100">
-          <div class="card-body">
-            <div class="small text-muted text-uppercase mb-1">
-              Ayudas sociales acumuladas
-            </div>
-            <div class="fs-4 fw-bold text-warning">
-              ${{ total_ayudas|default:0|formato_pesos }}
-            </div>
-            {% if total_gastos %}
-              <div class="small text-muted mt-1">
-                Equivale al {{ porcentaje_ayudas_sobre_gastos|default:0|floatformat:1 }}%
-                del gasto acumulado.
-              </div>
-            {% else %}
-              <div class="small text-muted mt-1">
-                Aún no hay gastos registrados para calcular proporción.
-              </div>
-            {% endif %}
-            {% if total_ayudas_mes %}
-              <div class="small text-muted mt-1">
-                En el mes: ${{ total_ayudas_mes|formato_pesos }} en ayudas.
-              </div>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-    {% endif %}
-
-    {% if total_personal %}
-      <div class="col-12 col-md-6 col-xl-3">
-        <div class="card border-warning-subtle shadow-sm h-100">
-          <div class="card-body">
-            <div class="small text-muted text-uppercase mb-1">
-              Sueldos / jornales / changas
-            </div>
-            <div class="fs-4 fw-bold text-warning">
-              ${{ total_personal|default:0|formato_pesos }}
-            </div>
-            {% if total_gastos %}
-              {% widthratio total_personal total_gastos 100 as pct_personal %}
-              <div class="small text-muted mt-1">
-                Representa el {{ pct_personal }}% del gasto acumulado.
-              </div>
-            {% else %}
-              <div class="small text-muted mt-1">
-                Aún no hay gastos registrados para calcular proporción.
-              </div>
-            {% endif %}
-            {% if total_personal_mes %}
-              <div class="small text-muted mt-1">
-                En el mes: ${{ total_personal_mes|formato_pesos }} en sueldos / jornales / changas.
-              </div>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-    {% endif %}
-
-    {% if total_servicios %}
-      <div class="col-12 col-md-6 col-xl-3">
-        <div class="card border-primary-subtle shadow-sm h-100">
-          <div class="card-body">
-            <div class="small text-muted text-uppercase mb-1">
-              Ingresos por servicios
-            </div>
-            <div class="fs-4 fw-bold text-primary">
-              ${{ total_servicios|default:0|formato_pesos }}
-            </div>
-            {% if total_ingresos %}
-              {% widthratio total_servicios total_ingresos 100 as pct_servicios %}
-              <div class="small text-muted mt-1">
-                Equivale al {{ pct_servicios }}% de los ingresos acumulados.
-              </div>
-            {% else %}
-              <div class="small text-muted mt-1">
-                Aún no hay ingresos registrados para calcular proporción.
-              </div>
-            {% endif %}
-            {% if total_servicios_mes %}
-              <div class="small text-muted mt-1">
-                En el mes: ${{ total_servicios_mes|formato_pesos }} por servicios municipales.
-              </div>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-    {% endif %}
-  </div>
-{% endif %}
-
-{# ================== RANKINGS ================== #}
-<div class="row g-3">
-  <div class="col-12 col-lg-4">
-    <div class="card shadow-sm h-100">
-      <div class="card-header py-2 d-flex justify-content-between align-items-center">
-        <span class="small text-uppercase text-muted fw-semibold">
-          Categorías con más gasto
-        </span>
-        <span class="badge bg-light text-muted border small">
-          Top {{ top_categorias|length }}
-        </span>
-      </div>
-      <div class="card-body p-0">
-        {% if top_categorias %}
-          <table class="table table-sm mb-0 align-middle">
-            <thead class="table-light">
-              <tr>
-                <th>Categoría</th>
-                <th class="text-end">Total gastado</th>
-                <th class="text-end">Mov.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for cat in top_categorias %}
-                <tr>
-                  <td>{{ cat.categoria__nombre }}</td>
-                  <td class="text-end">
-                    ${{ cat.total|default:0|formato_pesos }}
-                  </td>
-                  <td class="text-end">
-                    {{ cat.cantidad }}
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% else %}
-          <div class="p-3 text-muted small">
-            Todavía no hay movimientos de gasto registrados.
-          </div>
-        {% endif %}
-      </div>
     </div>
-  </div>
 
-  <div class="col-12 col-lg-4">
-    <div class="card shadow-sm h-100">
-      <div class="card-header py-2 d-flex justify-content-between align-items-center">
-        <span class="small text-uppercase text-muted fw-semibold">
-          Áreas con más gasto
-        </span>
-        <span class="badge bg-light text-muted border small">
-          Top {{ top_areas|length }}
-        </span>
-      </div>
-      <div class="card-body p-0">
-        {% if top_areas %}
-          <table class="table table-sm mb-0 align-middle">
-            <thead class="table-light">
-              <tr>
-                <th>Área</th>
-                <th class="text-end">Total gastado</th>
-                <th class="text-end">Mov.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for a in top_areas %}
-                <tr>
-                  <td>{{ a.area__nombre }}</td>
-                  <td class="text-end">
-                    ${{ a.total|default:0|formato_pesos }}
-                  </td>
-                  <td class="text-end">
-                    {{ a.cantidad }}
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% else %}
-          <div class="p-3 text-muted small">
-            Todavía no hay gastos asociados a áreas.
-          </div>
-        {% endif %}
-      </div>
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
+            <div class="card-header bg-white py-3 px-4 border-bottom d-flex align-items-center justify-content-between">
+                <h6 class="mb-0 fw-bold text-uppercase small ls-1 text-secondary">Gastos por Área</h6>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-clean mb-0 table-hover">
+                    <tbody>
+                        {% for item in top_areas %}
+                        <tr>
+                            <td class="ps-4"><span class="fw-medium text-dark">{{ item.area__nombre|default:"Administración Central" }}</span></td>
+                            <td class="text-end pe-4"><span class="fw-bold text-dark font-monospace">${{ item.total|floatformat:2|intcomma }}</span></td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="2" class="text-center text-muted py-5 small">Sin movimientos</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
-  </div>
-
-  <div class="col-12 col-lg-4">
-    <div class="card shadow-sm h-100">
-      <div class="card-header py-2 d-flex justify-content-between align-items-center">
-        <span class="small text-uppercase text-muted fw-semibold">
-          Programas de ayuda con más gasto
-        </span>
-        <span class="badge bg-light text-muted border small">
-          Top {{ top_programas|length }}
-        </span>
-      </div>
-      <div class="card-body p-0">
-        {% if top_programas %}
-          <table class="table table-sm mb-0 align-middle">
-            <thead class="table-light">
-              <tr>
-                <th>Programa</th>
-                <th class="text-end">Total gastado</th>
-                <th class="text-end">Mov.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for p in top_programas %}
-                <tr>
-                  <td>{{ p.programa_ayuda_texto }}</td>
-                  <td class="text-end">
-                    ${{ p.total|default:0|formato_pesos }}
-                  </td>
-                  <td class="text-end">
-                    {{ p.cantidad }}
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% else %}
-          <div class="p-3 text-muted small">
-            No hay programas de ayuda registrados todavía.
-          </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
 </div>
 
-{# ================== BARRIOS Y BENEFICIARIOS ================== #}
-<div class="row g-3 mt-3">
-  <div class="col-12 col-lg-6">
-    <div class="card shadow-sm h-100">
-      <div class="card-header py-2 d-flex justify-content-between align-items-center">
-        <span class="small text-uppercase text-muted fw-semibold">
-          Barrios con más ayudas sociales
-        </span>
-        <span class="badge bg-light text-muted border small">
-          Top {{ top_barrios|length }}
-        </span>
-      </div>
-      <div class="card-body p-0">
-        {% if top_barrios %}
-          <table class="table table-sm mb-0 align-middle">
-            <thead class="table-light">
-              <tr>
-                <th>Barrio</th>
-                <th class="text-end">Total ayudas</th>
-                <th class="text-end">Mov.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for b in top_barrios %}
-                <tr>
-                  <td>{{ b.barrio }}</td>
-                  <td class="text-end">
-                    ${{ b.total|default:0|formato_pesos }}
-                  </td>
-                  <td class="text-end">
-                    {{ b.cantidad }}
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% else %}
-          <div class="p-3 text-muted small">
-            Todavía no hay ayudas sociales asociadas a barrios.
-          </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-
-  <div class="col-12 col-lg-6">
-    <div class="card shadow-sm h-100">
-      <div class="card-header py-2 d-flex justify-content-between align-items-center">
-        <span class="small text-uppercase text-muted fw-semibold">
-          Beneficiarios con más ayudas
-        </span>
-        <span class="badge bg-light text-muted border small">
-          Top {{ top_beneficiarios|length }}
-        </span>
-      </div>
-      <div class="card-body p-0">
-        {% if top_beneficiarios %}
-          <table class="table table-sm mb-0 align-middle">
-            <thead class="table-light">
-              <tr>
-                <th>DNI</th>
-                <th>Apellido y nombre</th>
-                <th class="text-end">Total ayudas</th>
-                <th class="text-end">Mov.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for ben in top_beneficiarios %}
-                <tr>
-                  <td>{{ ben.beneficiario__dni }}</td>
-                  <td>{{ ben.apellido }} {{ ben.nombre }}</td>
-                  <td class="text-end">
-                    ${{ ben.total|default:0|formato_pesos }}
-                  </td>
-                  <td class="text-end">
-                    {{ ben.cantidad }}
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% else %}
-          <div class="p-3 text-muted small">
-            Aún no hay beneficiarios con ayudas registradas.
-          </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-</div>
-
-{% if top_contribuyentes_servicios %}
-  <div class="row g-3 mt-3">
+<div class="row g-4 mb-5 animate-fade-in">
     <div class="col-12">
-      <div class="card shadow-sm h-100">
-        <div class="card-header py-2 d-flex justify-content-between align-items-center">
-          <span class="small text-uppercase text-muted fw-semibold">
-            Contribuyentes con más pagos de servicios
-          </span>
-          <span class="badge bg-light text-muted border small">
-            Top {{ top_contribuyentes_servicios|length }}
-          </span>
-        </div>
-        <div class="card-body p-0">
-          <table class="table table-sm mb-0 align-middle">
-            <thead class="table-light">
-              <tr>
-                <th>DNI</th>
-                <th>Apellido y nombre</th>
-                <th class="text-end">Total servicios</th>
-                <th class="text-end">Pagos</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for c in top_contribuyentes_servicios %}
-                <tr>
-                  <td>{{ c.beneficiario__dni }}</td>
-                  <td>{{ c.apellido }} {{ c.nombre }}</td>
-                  <td class="text-end">
-                    ${{ c.total|default:0|formato_pesos }}
-                  </td>
-                  <td class="text-end">
-                    {{ c.cantidad }}
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        <h6 class="text-uppercase text-secondary fw-bold small ls-1 mb-2 ps-1 border-start border-4 border-warning ps-2">
+            Impacto Social (Ayudas Directas)
+        </h6>
     </div>
-  </div>
-{% endif %}
 
-{# ================== ÚLTIMOS MOVIMIENTOS ================== #}
-<div class="card shadow-sm mt-4">
-  <div class="card-header py-2 d-flex justify-content-between align-items-center">
-    <span class="small text-uppercase text-muted fw-semibold">
-      Últimos movimientos registrados
-    </span>
-    <a href="{% url 'finanzas:movimiento_list' %}" class="small">
-      Ver todos
-    </a>
-  </div>
-  <div class="card-body p-0">
-    {% if ultimos_movimientos %}
-      <div class="table-responsive">
-        <table class="table table-sm mb-0 align-middle">
-          <thead class="table-light">
-            <tr>
-              <th style="width:90px;">Fecha</th>
-              <th>Tipo</th>
-              <th>Categoría</th>
-              <th>Área</th>
-              <th class="text-end">Monto</th>
-              <th>Detalle</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for m in ultimos_movimientos %}
-              <tr>
-                <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
-                <td>
-                  {% if m.tipo == m.TIPO_INGRESO %}
-                    <span class="badge bg-success-subtle text-success border border-success-subtle">
-                      Ingreso
-                    </span>
-                  {% elif m.tipo == m.TIPO_GASTO %}
-                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
-                      Gasto
-                    </span>
-                  {% else %}
-                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
-                      Transferencia
-                    </span>
-                  {% endif %}
-                </td>
-                <td>{{ m.categoria }}</td>
-                <td>{{ m.area|default:"-" }}</td>
-                <td class="text-end">
-                  ${{ m.monto|formato_pesos }}
-                </td>
-                <td>
-                  <a
-                    href="{% url 'finanzas:movimiento_detail' m.pk %}"
-                    class="text-decoration-none"
-                  >
-                    {{ m.descripcion|default:"(sin detalle)"|truncatechars:60 }}
-                  </a>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="p-3 text-muted small">
-        Todavía no hay movimientos cargados.
-      </div>
-    {% endif %}
-  </div>
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
+            <div class="card-header bg-white py-3 px-4 border-bottom d-flex justify-content-between align-items-center">
+                <span class="small fw-bold text-uppercase text-secondary">Ranking de Asistencia</span>
+                <span class="badge bg-warning text-dark border border-warning-subtle">Top Social</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-clean mb-0 align-middle table-hover">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4 text-center" style="width: 50px;">#</th>
+                                <th>Beneficiario / Vecino</th>
+                                <th class="text-center">Frecuencia</th>
+                                <th class="text-end pe-4">Monto Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for b in top_beneficiarios %}
+                            <tr>
+                                <td class="ps-4 text-center">
+                                    <span class="rank-badge {% if forloop.counter == 1 %}rank-1{% elif forloop.counter == 2 %}rank-2{% elif forloop.counter == 3 %}rank-3{% else %}rank-N{% endif %}">
+                                        {{ forloop.counter }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <div class="rounded-circle bg-light border d-flex align-items-center justify-content-center text-muted fw-bold me-2" style="width: 32px; height: 32px; font-size: 0.75rem;">
+                                            {{ b.beneficiario__apellido|slice:":1" }}{{ b.beneficiario__nombre|slice:":1" }}
+                                        </div>
+                                        <div>
+                                            <div class="fw-bold text-dark">{{ b.beneficiario__apellido }} {{ b.beneficiario__nombre }}</div>
+                                            <div class="small text-muted font-monospace" style="font-size: 0.75rem;">
+                                                DNI: {{ b.beneficiario__dni|default:"-" }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge bg-white text-dark border shadow-sm rounded-pill px-3">{{ b.cantidad }} ayudas</span>
+                                </td>
+                                <td class="text-end pe-4">
+                                    <span class="fw-bold text-dark font-monospace">${{ b.total|floatformat:2|intcomma }}</span>
+                                    <div class="progress mt-1" style="height: 3px;">
+                                        <div class="progress-bar bg-warning" role="progressbar" style="width: 50%" aria-valuenow="50" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="4" class="text-center py-5 text-muted small fst-italic">Sin registros de asistencia social directa.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card-footer bg-light p-2 text-center">
+                <small class="text-muted fst-italic" style="font-size: 0.75rem;">
+                    * Este ranking muestra solo ayudas directas.
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
+            <div class="card-header bg-white py-3 px-4 border-bottom">
+                <span class="small fw-bold text-uppercase text-secondary">Distribución Geográfica</span>
+            </div>
+            <div class="card-body p-0">
+                <ul class="list-group list-group-flush">
+                    {% for barrio in top_barrios %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-4 py-3 border-light hover-bg-light">
+                        <div class="d-flex align-items-start gap-3">
+                            <div class="mt-1 text-danger opacity-75"><i class="bi bi-geo-alt-fill"></i></div>
+                            <div>
+                                <div class="fw-bold text-dark">{{ barrio.beneficiario__direccion|default:"Zona no especificada"|truncatechars:30 }}</div>
+                                <div class="small text-muted" style="font-size: 0.8rem;">{{ barrio.ayudas }} asistencias</div>
+                            </div>
+                        </div>
+                        <span class="fw-bold text-dark font-monospace small border px-2 py-1 rounded bg-light">${{ barrio.total|floatformat:2|intcomma }}</span>
+                    </li>
+                    {% empty %}
+                    <li class="list-group-item text-center py-5 text-muted small fst-italic border-0">Sin datos de ubicación.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
 </div>
+
+<div class="row g-4 mb-5 animate-fade-in">
+    <div class="col-12">
+        <h6 class="text-uppercase text-secondary fw-bold small ls-1 mb-2 ps-1 border-start border-4 border-info ps-2">
+            Eficiencia Operativa
+        </h6>
+    </div>
+    <div class="col-md-6 col-lg-4">
+        <div class="card border-0 shadow-sm rounded-4 h-100 bg-white border-start border-4 border-info">
+            <div class="card-body p-4">
+                <div class="small text-uppercase text-muted fw-bold mb-3 ls-1">Logística</div>
+                <div class="d-flex align-items-center gap-3">
+                    <div class="bg-info bg-opacity-10 text-info rounded-circle p-3"><i class="bi bi-truck fs-3"></i></div>
+                    <div>
+                        <h2 class="mb-0 fw-bold text-dark">{{ total_viajes|default:0 }}</h2>
+                        <span class="text-muted small">viajes realizados</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-lg-4">
+        <div class="card border-0 shadow-sm rounded-4 h-100 bg-white border-start border-4 border-warning">
+            <div class="card-body p-4">
+                <div class="small text-uppercase text-muted fw-bold mb-3 ls-1">Combustible</div>
+                <div class="d-flex align-items-center gap-3">
+                    <div class="bg-warning bg-opacity-10 text-warning rounded-circle p-3"><i class="bi bi-fuel-pump fs-3"></i></div>
+                    <div>
+                        <h2 class="mb-0 fw-bold text-dark font-monospace fs-4">${{ gasto_combustible|floatformat:2|intcomma }}</h2>
+                        <span class="text-muted small">inversión total</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="d-none d-print-block mt-5 pt-5 break-avoid">
+    <div class="row text-center align-items-end" style="height: 100px;">
+        <div class="col-6">
+            <div class="border-top border-dark border-2 mx-auto mb-2" style="width: 60%;"></div>
+            <small class="text-uppercase fw-bold text-dark d-block">Secretaría de Hacienda</small>
+        </div>
+        <div class="col-6">
+            <div class="border-top border-dark border-2 mx-auto mb-2" style="width: 60%;"></div>
+            <small class="text-uppercase fw-bold text-dark d-block">Presidencia Comunal</small>
+        </div>
+    </div>
+    <div class="text-center mt-4 border-top pt-2">
+        <small class="text-muted fst-italic" style="font-size: 8pt;">Generado el {% now "d/m/Y H:i" %} - MuniFinanzas (Sistema de Gestión Integral Tacuarendí)</small>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // === CONFIGURACIÓN DE GRÁFICOS ===
+    // Aseguramos formato 'float' estándar para JS (1234.56)
+    const ingresos = parseFloat("{{ ingresos_periodo|stringformat:'f' }}") || 0;
+    const gastos = parseFloat("{{ gastos_periodo|stringformat:'f' }}") || 0;
+    
+    // Arrays para el gráfico circular
+    const categoriasLabels = [{% for item in top_categorias %}"{{ item.categoria__nombre }}",{% endfor %}];
+    const categoriasData = [{% for item in top_categorias %}{{ item.total|stringformat:'f' }},{% endfor %}];
+
+    // 1. Chart Balance (Barras)
+    const ctxBalance = document.getElementById('balanceChart');
+    if(ctxBalance) {
+        new Chart(ctxBalance.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: ['Ingresos', 'Gastos'],
+                datasets: [{
+                    label: 'Monto',
+                    data: [ingresos, gastos],
+                    backgroundColor: ['#10b981', '#ef4444'], // Verde Emerald, Rojo
+                    borderRadius: 6,
+                    barPercentage: 0.6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { 
+                    x: { grid: { display: false } },
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+    }
+
+    // 2. Chart Gastos (Doughnut)
+    const ctxGastos = document.getElementById('gastosChart');
+    if (ctxGastos && categoriasData.length > 0) {
+        new Chart(ctxGastos.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: categoriasLabels,
+                datasets: [{
+                    data: categoriasData,
+                    backgroundColor: ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#6366f1'],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '70%',
+                plugins: { 
+                    legend: { 
+                        position: 'right', 
+                        labels: { boxWidth: 10, font: { size: 10 }, padding: 15 } 
+                    } 
+                }
+            }
+        });
+    } else if (ctxGastos) {
+        // Fallback visual si no hay datos
+        ctxGastos.parentElement.innerHTML = `
+            <div class="h-100 d-flex flex-column align-items-center justify-content-center text-muted">
+                <i class="bi bi-pie-chart display-4 opacity-25 mb-2"></i>
+                <span class="small">Sin datos de gastos</span>
+            </div>`;
+    }
+});
+</script>
+
 {% endblock %}

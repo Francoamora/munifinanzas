@@ -1,0 +1,288 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+
+{% block title %}Nueva Hoja de Ruta{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center animate-fade-in" style="padding-bottom: 120px;">
+  <div class="col-12 col-md-10 col-lg-8">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <div class="d-flex align-items-center gap-3">
+        <div class="bg-dark text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 48px; height: 48px;">
+            <i class="bi bi-truck-front-fill fs-4"></i>
+        </div>
+        <div>
+            <h1 class="h4 fw-bold text-dark mb-0">Nueva Hoja de Ruta</h1>
+            <p class="text-secondary mb-0 small fw-medium">Registro de salida y control de flota.</p>
+        </div>
+      </div>
+      <a href="{% url 'finanzas:hoja_ruta_list' %}" class="btn btn-white border shadow-sm btn-sm px-4 fw-bold text-secondary hover-lift">
+        <i class="bi bi-x-lg me-1"></i> Cancelar
+      </a>
+    </div>
+
+    <div class="card border-0 shadow-lg rounded-4 overflow-hidden">
+      <div class="card-header bg-dark py-2"></div>
+
+      <div class="card-body p-4 p-md-5">
+        <form method="post" novalidate id="hojaRutaForm" 
+              data-url-personas="{% url 'finanzas:persona_autocomplete' %}"
+              data-url-vehiculo-base="{% url 'finanzas:api_vehiculo_detalle' 0 %}"> 
+              {% csrf_token %}
+
+          {% if form.errors %}
+          <div class="alert alert-danger border-0 shadow-sm rounded-3 mb-4">
+            <div class="d-flex align-items-start gap-3">
+              <i class="bi bi-exclamation-triangle-fill fs-4 mt-1"></i>
+              <div class="small">
+                <strong>Atención:</strong>
+                <ul class="mb-0 ps-3">
+                  {% for field in form %}
+                    {% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}
+                  {% endfor %}
+                  {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+                </ul>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+
+          <div class="mb-5">
+            <label class="form-label fw-bold text-dark text-uppercase ls-1 small mb-2">1. Vehículo Asignado *</label>
+            <div class="input-group shadow-sm">
+              <span class="input-group-text bg-light border-end-0"><i class="bi bi-car-front-fill"></i></span>
+              {{ form.vehiculo }}
+            </div>
+            <div id="vehiculo-feedback" class="form-text text-primary fw-bold mt-2 d-none transition-all">
+                <i class="bi bi-info-circle me-1"></i> Kilometraje recuperado: <span id="km-referencia"></span> km.
+            </div>
+          </div>
+
+          <div class="mb-5 p-4 bg-light bg-opacity-50 rounded-4 border border-secondary-subtle">
+            <label class="form-label fw-bold text-dark text-uppercase ls-1 small mb-3">2. Responsable de Conducción *</label>
+
+            <div class="mb-3">
+              <label class="form-label small fw-bold text-secondary">BUSCAR EN PERSONAL (Legajo/Nombre)</label>
+              <select name="chofer" id="id_chofer" class="form-select" required>
+                  <option value="">Buscar chofer...</option>
+              </select>
+            </div>
+
+            <div class="text-center position-relative my-3">
+              <hr class="border-secondary opacity-25 w-100 position-absolute top-50 translate-middle-y">
+              <span class="bg-light px-2 text-muted small position-relative fw-bold">O SI ES EXTERNO</span>
+            </div>
+
+            <div>
+              <label class="form-label small fw-bold text-secondary">NOMBRE MANUAL</label>
+              <div class="input-group">
+                <span class="input-group-text bg-white text-muted"><i class="bi bi-person"></i></span>
+                {{ form.chofer_nombre }}
+              </div>
+            </div>
+          </div>
+
+          <div class="row g-4 mb-4">
+            <div class="col-12">
+                <label class="form-label fw-bold text-dark text-uppercase ls-1 small border-bottom w-100 pb-2 mb-3">3. Datos de Salida</label>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-dark">FECHA</label>
+              <div class="input-group">
+                <span class="input-group-text bg-white text-secondary"><i class="bi bi-calendar-event"></i></span>
+                {{ form.fecha }}
+              </div>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label small fw-bold text-dark">HORA</label>
+              <div class="input-group">
+                <span class="input-group-text bg-white text-secondary"><i class="bi bi-clock"></i></span>
+                {{ form.hora_salida }}
+              </div>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label small fw-bold text-dark">KILOMETRAJE ACTUAL (SALIDA) *</label>
+              <div class="input-group input-group-lg shadow-sm">
+                <span class="input-group-text bg-dark text-white fw-bold border-0">KM</span>
+                {{ form.odometro_inicio }}
+              </div>
+              <div class="form-text small text-muted">No puede ser menor al último registrado.</div>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label fw-bold text-dark small text-uppercase">Notas / Observaciones</label>
+            {{ form.observaciones }}
+          </div>
+
+          <div class="d-grid gap-2 pt-3">
+            <button type="submit" class="btn btn-primary btn-lg fw-bold shadow hover-lift py-3">
+              <i class="bi bi-save2 me-2"></i>CONFIRMAR SALIDA
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<style>
+  /* ESTILOS PRO PARA FORMULARIOS */
+  .form-control, .form-select { 
+      border: 1px solid #cbd5e1; 
+      padding: 0.7rem 1rem; 
+      border-radius: 8px; 
+      font-size: 0.95rem; 
+  }
+  .form-control:focus, .form-select:focus { 
+      border-color: #0d6efd; 
+      box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15); 
+  }
+  .input-group-text { border-color: #cbd5e1; background-color: #f8fafc; }
+  
+  /* READONLY INPUTS */
+  input[readonly], input:disabled { background-color: #e2e8f0 !important; color: #64748b; }
+  
+  /* TRANSICIONES SUAVES */
+  .transition-all { transition: all 0.3s ease; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // --- VARIABLES ---
+    const $vehiculo = $('#id_vehiculo');
+    const $chofer = $('#id_chofer');
+    const $odometro = $('#id_odometro_inicio');
+    const $choferNombre = $('#id_chofer_nombre');
+    const $feedback = $('#vehiculo-feedback');
+    const $kmRef = $('#km-referencia');
+    
+    // URLs dinámicas desde el form
+    const urlPersonas = $('#hojaRutaForm').data('url-personas');
+    const urlVehiculoBase = $('#hojaRutaForm').data('url-vehiculo-base'); // URL con '/0/detalle/'
+
+    // --- 1. INICIALIZAR SELECT2 VEHÍCULO ---
+    // Usamos select2 básico para el vehículo (ya que son pocos comparado con personas)
+    $vehiculo.select2({
+        theme: 'bootstrap-5',
+        width: '100%',
+        placeholder: 'Seleccione un móvil...'
+    });
+
+    // --- 2. LÓGICA DE KILOMETRAJE AUTOMÁTICO ---
+    $vehiculo.on('select2:select', function(e) {
+        const vehiculoId = e.params.data.id;
+        
+        if (!vehiculoId) {
+            $feedback.addClass('d-none');
+            return;
+        }
+
+        // Construir URL real reemplazando el placeholder '0' o '/0/'
+        // La URL base viene como ".../api/vehiculos/0/detalle/"
+        const finalUrl = urlVehiculoBase.replace('/0/', '/' + vehiculoId + '/');
+
+        // Deshabilitar input mientras carga
+        $odometro.prop('readonly', true).addClass('opacity-50');
+
+        // Llamada a la API
+        fetch(finalUrl)
+            .then(response => {
+                if (!response.ok) throw new Error("Error API");
+                return response.json();
+            })
+            .then(data => {
+                console.log("Datos Vehículo:", data);
+                // Rellenar input
+                const km = data.kilometraje || 0;
+                $odometro.val(km);
+                
+                // Mostrar feedback visual
+                $kmRef.text(km);
+                $feedback.removeClass('d-none');
+                
+                // Efecto visual (flash verde)
+                $odometro.addClass('bg-success bg-opacity-10 border-success');
+                setTimeout(() => $odometro.removeClass('bg-success bg-opacity-10 border-success'), 1500);
+            })
+            .catch(err => {
+                console.error("Error cargando KM:", err);
+                // Si falla, permitir edición manual pero avisar en consola
+            })
+            .finally(() => {
+                // Habilitar siempre para permitir corrección manual si el odómetro real difiere
+                $odometro.prop('readonly', false).removeClass('opacity-50');
+            });
+    });
+
+    // --- 3. SELECT2 AJAX PARA CHOFER (LA SOLUCIÓN AL DESPLIEGUE GIGANTE) ---
+    $chofer.select2({
+        theme: 'bootstrap-5',
+        width: '100%',
+        placeholder: 'Buscar por nombre o DNI...',
+        allowClear: true,
+        ajax: {
+            url: urlPersonas,
+            dataType: 'json',
+            delay: 250,
+            data: function (params) {
+                return {
+                    q: params.term, // Término de búsqueda
+                    page: params.page
+                };
+            },
+            processResults: function (data) {
+                return {
+                    results: data.results // Formato que espera Select2 {id, text}
+                };
+            },
+            cache: true
+        },
+        minimumInputLength: 1, // Empieza a buscar al escribir 1 letra
+    });
+
+    // --- 4. LÓGICA CHOFER vs NOMBRE MANUAL ---
+    function toggleManualInput() {
+        const hayChofer = $chofer.val(); // Si hay valor seleccionado
+        
+        if (hayChofer) {
+            // Si eligió del padrón, bloqueamos el manual y lo limpiamos
+            $choferNombre.val('').prop('readonly', true).addClass('bg-light');
+        } else {
+            // Si no hay selección, permitimos escribir
+            $choferNombre.prop('readonly', false).removeClass('bg-light');
+        }
+    }
+
+    $chofer.on('change select2:select select2:clear', toggleManualInput);
+    
+    // Si escribe en manual, limpiamos el select2
+    $choferNombre.on('input', function() {
+        if ($(this).val().length > 0) {
+            $chofer.val(null).trigger('change.select2'); // No disparar evento 'change' recursivo
+        }
+    });
+
+    // --- 5. INICIALIZACIÓN ---
+    toggleManualInput();
+    
+    // Si es edición o recarga y ya hay vehículo seleccionado, traer el KM
+    if ($vehiculo.val() && !$odometro.val()) {
+        $vehiculo.trigger({
+            type: 'select2:select', 
+            params: { data: { id: $vehiculo.val() } }
+        });
+    }
+});
+</script>
+{% endblock %}

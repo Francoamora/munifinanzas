@@ -1,318 +1,319 @@
-{# templates/finanzas/persona_list.html #}
 {% extends "finanzas/base.html" %}
-{% load humanize %}
-{% load finanzas_extras %}
-
-{% block title %}Personas / Censo – Comuna de Tacuarendí{% endblock %}
+{% block title %}Padrón de Personas{% endblock %}
 
 {% block content %}
 
-{# CABECERA + CTA NUEVA PERSONA #}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <div>
-    <h1 class="h4 mb-1">Personas / Censo de beneficiarios</h1>
-    <div class="text-muted small">
-      Registro de personas vinculadas a ayudas sociales, servicios y situación social.
-      {% if rol_finanzas or rol_consulta_politica or user.is_superuser %}
-        <span class="ms-1">Ves montos de ayudas porque tenés rol de finanzas/consulta.</span>
-      {% elif rol_operador_social %}
-        <span class="ms-1">No se muestran montos de ayudas para este perfil.</span>
-      {% endif %}
-    </div>
-  </div>
+<style>
+  /* === ESTILO PRO === */
+  
+  /* Tabla Flotante */
+  .table-pro { border-collapse: separate; border-spacing: 0 8px; }
+  .table-pro tbody tr { background-color: #ffffff; box-shadow: 0 2px 5px rgba(0,0,0,0.02); transition: all 0.2s ease; }
+  .table-pro tbody tr:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.05); z-index: 10; position: relative; }
+  .table-pro td:first-child { border-top-left-radius: 10px; border-bottom-left-radius: 10px; }
+  .table-pro td:last-child { border-top-right-radius: 10px; border-bottom-right-radius: 10px; }
+  .table-pro td { border: none; vertical-align: middle; padding: 1rem 1.5rem; }
 
-  {% if rol_finanzas or rol_operador_social or user.is_superuser %}
-    <a href="{% url 'finanzas:persona_create' %}" class="btn btn-success btn-sm">
-      + Nueva persona
-    </a>
-  {% endif %}
+  /* Avatar & Status */
+  .avatar-container { position: relative; width: 45px; height: 45px; }
+  .avatar-img { 
+      width: 100%; height: 100%; border-radius: 50%; 
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 1.1rem; background: #f1f5f9; color: #475569;
+  }
+  .status-dot { position: absolute; bottom: -2px; right: -2px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; }
+  .status-active { background-color: #10b981; }
+  .status-inactive { background-color: #ef4444; }
+
+  /* Iconos Atributos */
+  .attr-icon { font-size: 0.85rem; margin-right: 8px; display: inline-flex; align-items: center; gap: 4px; color: #94a3b8; }
+  .attr-icon.active { color: #0f172a; font-weight: 600; }
+  
+  /* KPI Cards */
+  .kpi-clean { background: white; border-radius: 12px; padding: 1.2rem; border: 1px solid #f1f5f9; height: 100%; }
+  .kpi-clean .label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1px; color: #64748b; font-weight: 700; margin-bottom: 0.5rem; display: block; line-height: 1.2; }
+  .kpi-clean .value { font-size: 1.8rem; font-weight: 800; color: #0f172a; line-height: 1; }
+
+  /* Filtros Activos (Chips) */
+  .active-filter-chip {
+      background-color: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8;
+      font-size: 0.8rem; font-weight: 600; padding: 4px 10px; border-radius: 20px;
+      display: inline-flex; align-items: center; gap: 6px; text-decoration: none; transition: all 0.2s;
+  }
+  .active-filter-chip:hover { background-color: #dbeafe; color: #1e40af; border-color: #93c5fd; }
+</style>
+
+<div class="row g-3 mb-5 animate-fade-in">
+    <div class="col-6 col-lg-3">
+        <div class="kpi-clean d-flex justify-content-between align-items-center">
+            <div><span class="label">Padrón Total</span><div class="value">{{ count_total }}</div></div>
+            <i class="bi bi-people text-secondary opacity-25 fs-1"></i>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="kpi-clean d-flex justify-content-between align-items-center">
+            <div><span class="label text-success">Activos</span><div class="value">{{ count_activos }}</div></div>
+            <i class="bi bi-check-circle text-success opacity-25 fs-1"></i>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="kpi-clean d-flex justify-content-between align-items-center">
+            <div><span class="label text-primary">Con Relación Laboral</span><div class="value">{{ count_empleados }}</div></div>
+            <i class="bi bi-briefcase text-primary opacity-25 fs-1"></i>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="kpi-clean d-flex justify-content-between align-items-center">
+            <div><span class="label text-warning">Ayudas</span><div class="value">{{ count_beneficios }}</div></div>
+            <i class="bi bi-heart text-warning opacity-25 fs-1"></i>
+        </div>
+    </div>
 </div>
 
-{# ATAJOS RÁPIDOS (FLAGS) #}
-<div class="card shadow-sm mb-3">
-  <div class="card-body py-2">
-    <div class="d-flex flex-wrap gap-2 align-items-center">
-      <span class="small text-muted me-1">Filtrar por:</span>
+<div class="card border-0 shadow-sm rounded-pill mb-4 p-2 animate-fade-in bg-white">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        
+        <form method="get" class="flex-grow-1 position-relative" style="max-width: 400px;">
+            <input type="hidden" name="estado" value="{{ estado_actual }}">
+            {% if f_vinculo %}<input type="hidden" name="vinculo" value="{{ f_vinculo }}">{% endif %}
+            {% if f_beneficio %}<input type="hidden" name="beneficio" value="{{ f_beneficio }}">{% endif %}
+            {% if f_servicios %}<input type="hidden" name="servicios" value="{{ f_servicios }}">{% endif %}
+            
+            <i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
+            <input type="text" name="q" value="{{ q_actual }}" 
+                   class="form-control rounded-pill border-0 bg-light ps-5" 
+                   style="padding-top: 10px; padding-bottom: 10px;"
+                   placeholder="Buscar por nombre, DNI...">
+        </form>
 
-      <a
-        class="btn btn-sm {% if flag == 'beneficio' %}btn-info text-white active{% else %}btn-outline-info{% endif %}"
-        href="?q={{ q|urlencode }}&flag=beneficio"
-        aria-pressed="{% if flag == 'beneficio' %}true{% else %}false{% endif %}"
-        title="Personas que perciben beneficio"
-      >
-        Beneficio
-      </a>
+        <div class="d-flex align-items-center gap-2 pe-1">
+            
+            <div class="dropdown">
+                <button class="btn btn-white border rounded-pill fw-bold text-secondary d-flex align-items-center gap-2 px-3 py-2 hover-lift" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                    <i class="bi bi-funnel-fill {% if f_vinculo or f_beneficio or f_servicios or estado_actual != 'activos' %}text-primary{% endif %}"></i>
+                    <span>Filtros</span>
+                    {% if f_vinculo or f_beneficio or f_servicios or estado_actual != 'activos' %}
+                        <span class="badge bg-primary rounded-circle p-1" style="width: 8px; height: 8px;"></span>
+                    {% endif %}
+                </button>
+                
+                <ul class="dropdown-menu dropdown-menu-end border-0 shadow-lg p-3 rounded-4" style="min-width: 250px;">
+                    <li><h6 class="dropdown-header small">Estado</h6></li>
+                    <li>
+                        <div class="btn-group w-100 mb-3" role="group">
+                            <a href="?estado=activos{% if q_actual %}&q={{ q_actual }}{% endif %}{% if f_vinculo %}&vinculo={{ f_vinculo }}{% endif %}" 
+                               class="btn btn-sm {% if estado_actual == 'activos' %}btn-dark{% else %}btn-outline-light text-dark border{% endif %}">Activos</a>
+                            <a href="?estado=inactivos{% if q_actual %}&q={{ q_actual }}{% endif %}{% if f_vinculo %}&vinculo={{ f_vinculo }}{% endif %}" 
+                               class="btn btn-sm {% if estado_actual == 'inactivos' %}btn-dark{% else %}btn-outline-light text-dark border{% endif %}">Inactivos</a>
+                            <a href="?estado=todos{% if q_actual %}&q={{ q_actual }}{% endif %}{% if f_vinculo %}&vinculo={{ f_vinculo }}{% endif %}" 
+                               class="btn btn-sm {% if estado_actual == 'todos' %}btn-dark{% else %}btn-outline-light text-dark border{% endif %}">Todos</a>
+                        </div>
+                    </li>
+                    
+                    <li><h6 class="dropdown-header small">Condiciones</h6></li>
+                    
+                    <li>
+                        <a class="dropdown-item rounded-3 d-flex justify-content-between align-items-center mb-1 py-2 {% if f_vinculo == 'si' %}bg-primary bg-opacity-10 text-primary fw-bold{% endif %}" 
+                           href="?vinculo={% if f_vinculo == 'si' %}{% else %}si{% endif %}&estado={{ estado_actual }}{% if q_actual %}&q={{ q_actual }}{% endif %}">
+                            <span><i class="bi bi-briefcase me-2"></i>Es Empleado</span>
+                            {% if f_vinculo == 'si' %}<i class="bi bi-check-lg"></i>{% endif %}
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item rounded-3 d-flex justify-content-between align-items-center mb-1 py-2 {% if f_beneficio == 'si' %}bg-primary bg-opacity-10 text-primary fw-bold{% endif %}" 
+                           href="?beneficio={% if f_beneficio == 'si' %}{% else %}si{% endif %}&estado={{ estado_actual }}{% if q_actual %}&q={{ q_actual }}{% endif %}">
+                            <span><i class="bi bi-heart me-2"></i>Tiene Beneficio</span>
+                            {% if f_beneficio == 'si' %}<i class="bi bi-check-lg"></i>{% endif %}
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item rounded-3 d-flex justify-content-between align-items-center mb-1 py-2 {% if f_servicios == 'si' %}bg-primary bg-opacity-10 text-primary fw-bold{% endif %}" 
+                           href="?servicios={% if f_servicios == 'si' %}{% else %}si{% endif %}&estado={{ estado_actual }}{% if q_actual %}&q={{ q_actual }}{% endif %}">
+                            <span><i class="bi bi-lightning-charge me-2"></i>Paga Servicios</span>
+                            {% if f_servicios == 'si' %}<i class="bi bi-check-lg"></i>{% endif %}
+                        </a>
+                    </li>
 
-      <a
-        class="btn btn-sm {% if flag == 'servicios' %}btn-primary text-white active{% else %}btn-outline-primary{% endif %}"
-        href="?q={{ q|urlencode }}&flag=servicios"
-        aria-pressed="{% if flag == 'servicios' %}true{% else %}false{% endif %}"
-        title="Personas que pagan servicios"
-      >
-        Servicios
-      </a>
-
-      <a
-        class="btn btn-sm {% if flag == 'laboral' %}btn-warning text-dark active{% else %}btn-outline-warning{% endif %}"
-        href="?q={{ q|urlencode }}&flag=laboral"
-        aria-pressed="{% if flag == 'laboral' %}true{% else %}false{% endif %}"
-        title="Personas con vínculo laboral"
-      >
-        Laboral
-      </a>
-
-      <a
-        class="btn btn-sm {% if flag == 'sin_indicadores' %}btn-secondary text-white active{% else %}btn-outline-secondary{% endif %}"
-        href="?q={{ q|urlencode }}&flag=sin_indicadores"
-        aria-pressed="{% if flag == 'sin_indicadores' %}true{% else %}false{% endif %}"
-        title="Personas sin beneficio / servicios / laboral"
-      >
-        Sin indicadores
-      </a>
-
-      {% if flag %}
-        <span class="vr mx-1"></span>
-        <a class="btn btn-link btn-sm text-decoration-none px-1" href="?q={{ q|urlencode }}">
-          Limpiar filtros
-        </a>
-      {% endif %}
-    </div>
-  </div>
-</div>
-
-{# BUSCADOR #}
-<form method="get" class="card shadow-sm mb-3" role="search" aria-label="Buscar persona en el censo">
-  <div class="card-body py-2">
-    <div class="row g-2 align-items-end">
-      <div class="col-12 col-md-8">
-        <label class="form-label mb-1" for="persona-search">Buscar persona</label>
-        <input
-          id="persona-search"
-          type="text"
-          name="q"
-          value="{{ q }}"
-          class="form-control form-control-sm"
-          placeholder="Nombre, apellido, DNI, barrio, domicilio..."
-          autocomplete="off"
-        >
-        {% if flag %}
-          <input type="hidden" name="flag" value="{{ flag }}">
-        {% endif %}
-      </div>
-      <div class="col-12 col-md-4 d-flex align-items-end gap-2">
-        <button class="btn btn-primary btn-sm w-100">
-          Buscar
-        </button>
-      </div>
-    </div>
-  </div>
-</form>
-
-{# RESUMEN DEL RESULTADO #}
-<div class="d-flex justify-content-between align-items-center mb-2 small text-muted">
-  <div>
-    {% if q %}
-      Mostrando {{ page_obj.paginator.count }} persona{{ page_obj.paginator.count|pluralize:"s" }}
-      para "<strong>{{ q }}</strong>"
-    {% else %}
-      Total personas activas en el censo:
-      <strong>{{ page_obj.paginator.count }}</strong>
-    {% endif %}
-
-    {% if flag %}
-      <span class="ms-1">
-        · Filtro activo:
-        <strong>
-          {% if flag == "beneficio" %}
-            Beneficio
-          {% elif flag == "servicios" %}
-            Servicios
-          {% elif flag == "laboral" %}
-            Laboral
-          {% else %}
-            Sin indicadores
-          {% endif %}
-        </strong>
-      </span>
-    {% endif %}
-  </div>
-
-  <div class="d-none d-md-flex align-items-center gap-2">
-    {% if rol_finanzas or rol_consulta_politica or user.is_superuser %}
-      <span class="badge bg-success-subtle text-success border border-success-subtle">
-        Montos visibles
-      </span>
-    {% elif rol_operador_social %}
-      <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
-        Sin montos
-      </span>
-    {% endif %}
-  </div>
-</div>
-
-{# TABLA PRINCIPAL #}
-<div class="table-responsive shadow-sm bg-white rounded">
-  <table class="table table-sm align-middle mb-0 table-hover">
-    <caption class="visually-hidden">
-      Listado de personas y beneficiarios con indicadores sociales
-      {% if rol_finanzas or rol_consulta_politica or user.is_superuser %}y totales de ayudas{% endif %}
-    </caption>
-    <thead class="table-light">
-      <tr>
-        <th scope="col" style="width: 110px;">DNI</th>
-        <th scope="col">Apellido y nombre</th>
-        <th scope="col" style="width: 240px;">Beneficios / Servicios / Laboral</th>
-        <th scope="col" style="width: 160px;">Barrio</th>
-        <th scope="col">Domicilio</th>
-        <th scope="col" class="text-end" style="width: 120px;">Cant. ayudas</th>
-
-        {% if rol_finanzas or rol_consulta_politica or user.is_superuser %}
-          <th scope="col" class="text-end" style="width: 150px;">Total ayudas ($)</th>
-        {% endif %}
-
-        <th scope="col" style="width: 110px;"></th>
-      </tr>
-    </thead>
-
-    <tbody>
-      {% for p in personas %}
-        <tr>
-          <td class="text-nowrap">
-            {% if p.dni %}
-              <a
-                href="{% url 'finanzas:persona_detail' p.pk %}"
-                class="text-decoration-none fw-semibold"
-                aria-label="Ver detalle de {{ p.apellido }} {{ p.nombre }}"
-              >
-                {{ p.dni }}
-              </a>
-            {% else %}
-              <span class="text-muted">-</span>
-            {% endif %}
-          </td>
-
-          <td>
-            <a
-              href="{% url 'finanzas:persona_detail' p.pk %}"
-              class="text-decoration-none"
-            >
-              {{ p.apellido }}, {{ p.nombre }}
-            </a>
-          </td>
-
-          <td>
-            <div class="d-flex flex-wrap gap-1">
-              {% if p.percibe_beneficio %}
-                <span class="badge bg-info-subtle text-info border border-info-subtle">
-                  Recibe beneficio
-                </span>
-              {% endif %}
-              {% if p.paga_servicios %}
-                <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
-                  Paga servicios
-                </span>
-              {% endif %}
-              {% if p.tiene_vinculo_laboral %}
-                <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
-                  Vínculo laboral
-                </span>
-              {% endif %}
-              {% if not p.percibe_beneficio and not p.paga_servicios and not p.tiene_vinculo_laboral %}
-                <span class="text-muted small">Sin indicadores</span>
-              {% endif %}
+                    {% if f_vinculo or f_beneficio or f_servicios or estado_actual != 'activos' %}
+                    <li><hr class="dropdown-divider my-2"></li>
+                    <li>
+                        <a href="{% url 'finanzas:persona_list' %}" class="dropdown-item rounded-3 text-danger fw-bold text-center">
+                            Limpiar Filtros
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
             </div>
-          </td>
 
-          <td class="text-nowrap">
-            {% if p.barrio %}
-              <span class="badge bg-light text-muted border">
-                {{ p.barrio }}
-              </span>
-            {% else %}
-              <span class="text-muted">-</span>
-            {% endif %}
-          </td>
+            <div class="vr h-50 mx-1 bg-secondary opacity-25"></div>
 
-          <td class="text-truncate" style="max-width: 260px;">
-            {{ p.direccion|default:"-" }}
-          </td>
+            <button onclick="window.print()" class="btn btn-light rounded-circle shadow-sm border hover-lift" title="Imprimir" style="width: 40px; height: 40px;">
+                <i class="bi bi-printer"></i>
+            </button>
 
-          <td class="text-end">
-            <span class="badge bg-light text-muted border">
-              {{ p.cantidad_ayudas|default:"0" }}
-            </span>
-          </td>
-
-          {% if rol_finanzas or rol_consulta_politica or user.is_superuser %}
-            <td class="text-end">
-              {% if p.total_ayudas %}
-                <span class="fw-semibold text-success">
-                  ${{ p.total_ayudas|default:0|formato_pesos }}
-                </span>
-              {% else %}
-                <span class="text-muted">-</span>
-              {% endif %}
-            </td>
-          {% endif %}
-
-          <td class="text-end">
-            <a
-              href="{% url 'finanzas:persona_detail' p.pk %}"
-              class="btn btn-outline-primary btn-sm"
-            >
-              Ver detalle
+            <a href="{% url 'finanzas:persona_create' %}" class="btn btn-dark rounded-pill px-4 py-2 fw-bold shadow-sm d-flex align-items-center gap-2 hover-lift">
+                <i class="bi bi-plus-lg"></i> <span class="d-none d-md-inline">Nueva</span>
             </a>
-          </td>
-        </tr>
-      {% empty %}
-        <tr>
-          <td
-            colspan="{% if rol_finanzas or rol_consulta_politica or user.is_superuser %}8{% else %}7{% endif %}"
-            class="text-center py-3 text-muted"
-          >
-            No se encontraron personas para el criterio de búsqueda.
-          </td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+        </div>
+    </div>
 </div>
 
-{# PAGINACIÓN #}
-{% if is_paginated %}
-  <nav class="mt-3" aria-label="Paginación de personas">
-    <ul class="pagination pagination-sm">
-      {% if page_obj.has_previous %}
-        <li class="page-item">
-          <a
-            class="page-link"
-            href="?page={{ page_obj.previous_page_number }}&q={{ q|urlencode }}{% if flag %}&flag={{ flag }}{% endif %}"
-            rel="prev"
-          >
-            Anterior
-          </a>
-        </li>
-      {% endif %}
+{% if f_vinculo or f_beneficio or f_servicios or estado_actual != 'activos' or q_actual %}
+<div class="d-flex flex-wrap gap-2 mb-4 animate-fade-in align-items-center">
+    <span class="small fw-bold text-secondary text-uppercase me-1">Viendo:</span>
+    
+    {% if estado_actual != 'activos' %}
+        <a href="?estado=activos{% if q_actual %}&q={{ q_actual }}{% endif %}" class="active-filter-chip">
+            Estado: {{ estado_actual|title }} <i class="bi bi-x"></i>
+        </a>
+    {% endif %}
 
-      <li class="page-item disabled">
-        <span class="page-link">
-          Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
-        </span>
-      </li>
+    {% if f_vinculo == 'si' %}
+        <a href="?vinculo=&estado={{ estado_actual }}{% if q_actual %}&q={{ q_actual }}{% endif %}" class="active-filter-chip">
+            Es Empleado <i class="bi bi-x"></i>
+        </a>
+    {% endif %}
 
-      {% if page_obj.has_next %}
-        <li class="page-item">
-          <a
-            class="page-link"
-            href="?page={{ page_obj.next_page_number }}&q={{ q|urlencode }}{% if flag %}&flag={{ flag }}{% endif %}"
-            rel="next"
-          >
-            Siguiente
-          </a>
-        </li>
-      {% endif %}
-    </ul>
-  </nav>
+    {% if f_beneficio == 'si' %}
+        <a href="?beneficio=&estado={{ estado_actual }}{% if q_actual %}&q={{ q_actual }}{% endif %}" class="active-filter-chip">
+            Con Beneficio <i class="bi bi-x"></i>
+        </a>
+    {% endif %}
+
+    {% if f_servicios == 'si' %}
+        <a href="?servicios=&estado={{ estado_actual }}{% if q_actual %}&q={{ q_actual }}{% endif %}" class="active-filter-chip">
+            Pagador <i class="bi bi-x"></i>
+        </a>
+    {% endif %}
+    
+    <a href="{% url 'finanzas:persona_list' %}" class="btn btn-link btn-sm text-decoration-none text-muted small ms-auto">Borrar todo</a>
+</div>
 {% endif %}
+
+<div class="table-responsive animate-fade-in">
+    <table class="table table-pro w-100">
+        <thead class="text-uppercase text-muted small fw-bold" style="font-size: 0.7rem; letter-spacing: 1px;">
+            <tr>
+                <th class="ps-4">Persona / Identidad</th>
+                <th>Datos de Contacto</th>
+                <th>Ubicación</th>
+                <th class="text-end pe-4">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in personas %}
+            <tr onclick="window.location.href='{% url 'finanzas:persona_detail' p.pk %}'" style="cursor: pointer;">
+                
+                <td class="ps-4">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="avatar-container flex-shrink-0">
+                            <div class="avatar-img">
+                                {{ p.nombre|slice:":1" }}{{ p.apellido|slice:":1" }}
+                            </div>
+                            <div class="status-dot {% if p.activo %}status-active{% else %}status-inactive{% endif %}" 
+                                 title="{% if p.activo %}Activo{% else %}Inactivo{% endif %}" data-bs-toggle="tooltip"></div>
+                        </div>
+
+                        <div>
+                            <div class="fw-bold text-dark fs-6">{{ p.apellido }}, {{ p.nombre }}</div>
+                            <div class="d-flex align-items-center gap-3 mt-1">
+                                <span class="text-muted small font-monospace">{{ p.dni|default:"S/D" }}</span>
+                                
+                                {% if p.tipo_vinculo != 'NINGUNO' %}
+                                    <span class="attr-icon active" title="Relación Laboral: {{ p.get_tipo_vinculo_display }}" data-bs-toggle="tooltip">
+                                        <i class="bi bi-briefcase-fill text-primary"></i> 
+                                    </span>
+                                {% endif %}
+                                
+                                {% if p.percibe_beneficio %}
+                                    <span class="attr-icon active" title="Recibe Beneficio Social" data-bs-toggle="tooltip">
+                                        <i class="bi bi-heart-fill text-danger"></i>
+                                    </span>
+                                {% endif %}
+
+                                {% if p.paga_servicios %}
+                                    <span class="attr-icon active" title="Pagador de Servicios" data-bs-toggle="tooltip">
+                                        <i class="bi bi-lightning-charge-fill text-warning"></i>
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </td>
+
+                <td>
+                    {% if p.telefono %}
+                        <div class="d-flex align-items-center text-dark small">
+                            <div class="bg-success bg-opacity-10 text-success rounded-circle p-1 me-2 d-flex align-items-center justify-content-center" style="width: 24px; height: 24px;">
+                                <i class="bi bi-whatsapp" style="font-size: 0.7rem;"></i>
+                            </div>
+                            <span class="fw-medium">{{ p.telefono }}</span>
+                        </div>
+                    {% else %}
+                        <span class="text-muted small opacity-50">-</span>
+                    {% endif %}
+                </td>
+
+                <td>
+                    <div class="small">
+                        <div class="fw-bold text-dark">{{ p.barrio|default:"-" }}</div>
+                        <div class="text-secondary text-truncate" style="max-width: 150px;">{{ p.direccion|default:"" }}</div>
+                    </div>
+                </td>
+
+                <td class="text-end pe-4" onclick="event.stopPropagation();">
+                    <a href="{% url 'finanzas:persona_update' p.pk %}" class="btn btn-light btn-sm border rounded-circle hover-lift text-secondary" title="Editar">
+                        <i class="bi bi-pencil-fill"></i>
+                    </a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4" class="text-center py-5">
+                    <div class="opacity-25 mb-2"><i class="bi bi-person-x fs-1"></i></div>
+                    <p class="text-muted fw-bold">No encontramos a nadie con esos datos.</p>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if is_paginated %}
+<div class="d-flex justify-content-center mt-4">
+    <nav>
+        <ul class="pagination pagination-sm shadow-sm">
+            {% if page_obj.has_previous %}
+            <li class="page-item">
+                <a class="page-link border-0 text-dark fw-bold" href="?page={{ page_obj.previous_page_number }}&estado={{ estado_actual }}{% if q_actual %}&q={{ q_actual }}{% endif %}">
+                    <i class="bi bi-chevron-left me-1"></i> Anterior
+                </a>
+            </li>
+            {% endif %}
+            
+            <li class="page-item disabled">
+                <span class="page-link border-0 bg-transparent text-muted">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+            </li>
+
+            {% if page_obj.has_next %}
+            <li class="page-item">
+                <a class="page-link border-0 text-dark fw-bold" href="?page={{ page_obj.next_page_number }}&estado={{ estado_actual }}{% if q_actual %}&q={{ q_actual }}{% endif %}">
+                    Siguiente <i class="bi bi-chevron-right ms-1"></i>
+                </a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+</div>
+{% endif %}
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl)
+        })
+    });
+</script>
 
 {% endblock %}

@@ -12,19 +12,21 @@ from django.urls import reverse_lazy
 from .models import Tarea
 from .forms import TareaForm
 
-# Helpers de roles
-from finanzas.views import (
+# ==========================================================
+# IMPORTACIÓN DE PERMISOS (CORREGIDO)
+# ==========================================================
+# IMPORTANTE: Importamos desde 'finanzas.mixins', NO desde '.mixins'
+from finanzas.mixins import (
     es_admin_sistema,
     es_staff_finanzas,
     es_operador_finanzas,
     es_operador_social,
     es_consulta_politica,
-    _roles_ctx,
+    roles_ctx,
 )
 
-
 # ==========================================================
-# MIXINS
+# MIXINS LOCALES (Definidos aquí mismo para no crear otro archivo)
 # ==========================================================
 
 class AgendaAccessMixin(LoginRequiredMixin, UserPassesTestMixin):
@@ -38,7 +40,6 @@ class AgendaAccessMixin(LoginRequiredMixin, UserPassesTestMixin):
             or es_consulta_politica(u)
         )
 
-
 class AgendaEditMixin(LoginRequiredMixin, UserPassesTestMixin):
     def test_func(self):
         u = self.request.user
@@ -49,9 +50,8 @@ class AgendaEditMixin(LoginRequiredMixin, UserPassesTestMixin):
             or es_operador_social(u)
         )
 
-
 # ==========================================================
-# QUERYSET SEGÚN ROL
+# LÓGICA DE FILTRADO POR ROL
 # ==========================================================
 
 def qs_por_rol(user):
@@ -77,11 +77,13 @@ def qs_por_rol(user):
             Q(ambito__in=[Tarea.AMBITO_SOCIAL, Tarea.AMBITO_GENERAL])
         )
 
-    return qs
-
+    if es_consulta_politica(user):
+        return qs
+        
+    return qs.none()
 
 # ==========================================================
-# LISTADO
+# VISTAS
 # ==========================================================
 
 class AgendaListView(AgendaAccessMixin, ListView):
@@ -97,7 +99,6 @@ class AgendaListView(AgendaAccessMixin, ListView):
         tab = (self.request.GET.get("tab") or "todas").strip()
         hoy = timezone.localdate()
 
-        # SIEMPRE mostramos todas por defecto
         if tab == "hoy":
             qs = qs.filter(
                 fecha_vencimiento=hoy,
@@ -111,9 +112,7 @@ class AgendaListView(AgendaAccessMixin, ListView):
                 fecha_vencimiento__lt=hoy,
                 estado__in=[Tarea.ESTADO_PENDIENTE, Tarea.ESTADO_EN_PROCESO],
             )
-        elif tab == "todas":
-            pass  # No filtramos NADA
-
+        
         return qs.order_by("fecha_vencimiento", "-prioridad", "-id")
 
     def get_context_data(self, **kwargs):
@@ -126,12 +125,8 @@ class AgendaListView(AgendaAccessMixin, ListView):
             "PRIORIDAD_CHOICES": Tarea.PRIORIDAD_CHOICES,
             "AMBITO_CHOICES": Tarea.AMBITO_CHOICES,
         })
-        ctx.update(_roles_ctx(self.request.user))
+        ctx.update(roles_ctx(self.request.user))
         return ctx
-
-# ==========================================================
-# CREAR TAREA (MEJORA UX AUTOMÁTICA)
-# ==========================================================
 
 class AgendaCreateView(AgendaEditMixin, CreateView):
     model = Tarea
@@ -141,41 +136,27 @@ class AgendaCreateView(AgendaEditMixin, CreateView):
     def form_valid(self, form):
         tarea = form.save(commit=False)
         user = self.request.user
-
         tarea.creado_por = user
         tarea.actualizado_por = user
 
-        # reglas de rol para ámbito
         if es_operador_finanzas(user) and not es_staff_finanzas(user) and not es_admin_sistema(user):
             tarea.ambito = Tarea.AMBITO_FINANZAS
         if es_operador_social(user) and not es_staff_finanzas(user) and not es_admin_sistema(user):
             tarea.ambito = Tarea.AMBITO_SOCIAL
 
-        # responsable por defecto
         if not tarea.responsable:
             tarea.responsable = user
 
         tarea.save()
 
-        # Selección automática del TAB correcto
         hoy = timezone.localdate()
-
-        if tarea.fecha_vencimiento == hoy:
-            tab = "hoy"
-        elif tarea.fecha_vencimiento < hoy:
-            tab = "vencidas"
-        elif tarea.fecha_vencimiento <= hoy + timedelta(days=7):
-            tab = "7dias"
-        else:
-            tab = "todas"
+        if tarea.fecha_vencimiento == hoy: tab = "hoy"
+        elif tarea.fecha_vencimiento < hoy: tab = "vencidas"
+        elif tarea.fecha_vencimiento <= hoy + timedelta(days=7): tab = "7dias"
+        else: tab = "todas"
 
         messages.success(self.request, "Tarea creada correctamente.")
         return redirect(f"{reverse_lazy('agenda:agenda_list')}?tab={tab}")
-
-
-# ==========================================================
-# DETALLE
-# ==========================================================
 
 class AgendaDetailView(AgendaAccessMixin, DetailView):
     model = Tarea
@@ -184,11 +165,11 @@ class AgendaDetailView(AgendaAccessMixin, DetailView):
 
     def get_queryset(self):
         return qs_por_rol(self.request.user)
-
-
-# ==========================================================
-# EDITAR TAREA (CON LOGICA DE COMPLETADA)
-# ==========================================================
+    
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx.update(roles_ctx(self.request.user))
+        return ctx
 
 class AgendaUpdateView(AgendaEditMixin, UpdateView):
     model = Tarea
@@ -208,7 +189,6 @@ class AgendaUpdateView(AgendaEditMixin, UpdateView):
             return redirect("agenda:agenda_detail", pk=tarea.pk)
 
         tarea.actualizado_por = user
-
         if tarea.estado == Tarea.ESTADO_COMPLETADA and not tarea.fecha_completada:
             tarea.fecha_completada = timezone.now()
         elif tarea.estado != Tarea.ESTADO_COMPLETADA:
@@ -218,11 +198,6 @@ class AgendaUpdateView(AgendaEditMixin, UpdateView):
         messages.success(self.request, "Tarea actualizada correctamente.")
         return redirect(reverse_lazy("agenda:agenda_list") + "?tab=todas")
 
-
-# ==========================================================
-# MARCAR COMPLETADA
-# ==========================================================
-
 class AgendaMarcarCompletadaView(AgendaEditMixin, View):
     def post(self, request, pk):
         tarea = get_object_or_404(qs_por_rol(request.user), pk=pk)
@@ -231,6 +206,13 @@ class AgendaMarcarCompletadaView(AgendaEditMixin, View):
             messages.error(request, "No tenés permisos para completar tareas.")
             return redirect("agenda:agenda_detail", pk=tarea.pk)
 
-        tarea.marcar_completada(user=request.user)
+        if hasattr(tarea, 'marcar_completada'):
+             tarea.marcar_completada(user=request.user)
+        else:
+             tarea.estado = Tarea.ESTADO_COMPLETADA
+             tarea.fecha_completada = timezone.now()
+             tarea.actualizado_por = request.user
+             tarea.save()
+
         messages.success(request, "Tarea marcada como COMPLETADA.")
         return redirect(reverse_lazy("agenda:agenda_list") + "?tab=todas")

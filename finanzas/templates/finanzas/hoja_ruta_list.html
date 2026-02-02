@@ -1,0 +1,122 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+
+{% block title %}Hojas de Ruta – Flota{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h1 class="h3 mb-1 fw-bold text-dark">
+      <i class="bi bi-map me-2 text-primary"></i>Hojas de Ruta
+    </h1>
+    <p class="text-muted mb-0 small">Control de salidas, choferes y kilometraje diario.</p>
+  </div>
+
+  {% if rol_staff_finanzas or rol_operador_finanzas or rol_operador_social %}
+  <a href="{% url 'finanzas:hoja_ruta_create' %}" class="btn btn-primary shadow-sm">
+    <i class="bi bi-plus-lg me-1"></i> Iniciar Jornada
+  </a>
+  {% endif %}
+</div>
+
+<div class="card border-0 shadow-sm overflow-hidden">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="bg-light small text-uppercase text-muted">
+        <tr>
+          <th class="ps-4 py-3">Fecha / ID</th>
+          <th>Estado</th>
+          <th>Vehículo</th>
+          <th>Chofer</th>
+          <th>Odómetro (Inicio/Fin)</th>
+          <th>Km Recorridos</th>
+          <th class="text-end pe-4">Acción</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for h in hojas %}
+        <tr>
+          <td class="ps-4">
+            <div class="fw-bold text-dark">{{ h.fecha|date:"d/m/Y" }}</div>
+            <div class="small text-muted">#{{ h.id }}</div>
+          </td>
+
+          <td>
+            {% if h.estado == 'ABIERTA' %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill animate-pulse">EN CURSO</span>
+            {% else %}
+              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill">CERRADA</span>
+            {% endif %}
+          </td>
+
+          <td>
+            <div class="d-flex align-items-center">
+              <div class="bg-light rounded p-1 me-2 border text-muted">
+                <i class="bi bi-truck"></i>
+              </div>
+              <div>
+                <div class="fw-medium text-dark">{{ h.vehiculo.patente }}</div>
+                <div class="small text-muted">{{ h.vehiculo.descripcion|truncatechars:20 }}</div>
+              </div>
+            </div>
+          </td>
+
+          <td>
+            {% if h.chofer %}
+              <a href="{% url 'finanzas:persona_detail' h.chofer.pk %}" class="text-decoration-none text-dark">
+                {{ h.chofer }}
+              </a>
+            {% else %}
+              <span class="text-muted fst-italic">{{ h.chofer_nombre|default:"Sin asignar" }}</span>
+            {% endif %}
+          </td>
+
+          <td class="small font-monospace">
+            <div>I: {{ h.odometro_inicio|intcomma }}</div>
+            {% if h.odometro_fin %}
+              <div>F: {{ h.odometro_fin|intcomma }}</div>
+            {% else %}
+              <div class="text-muted">--</div>
+            {% endif %}
+          </td>
+
+          <td>
+            {% if h.km_recorridos > 0 %}
+              <span class="fw-bold text-primary">+{{ h.km_recorridos|intcomma }} km</span>
+            {% else %}
+              <span class="text-muted">-</span>
+            {% endif %}
+          </td>
+
+          <td class="text-end pe-4">
+            <a href="{% url 'finanzas:hoja_ruta_detail' h.pk %}" class="btn btn-sm btn-outline-secondary">
+              Gestionar <i class="bi bi-chevron-right ms-1"></i>
+            </a>
+          </td>
+        </tr>
+
+        {% empty %}
+        <tr>
+          <td colspan="7" class="text-center py-5">
+            <div class="text-muted opacity-50 mb-3"><i class="bi bi-cone-striped fs-1"></i></div>
+            <p class="mb-0 text-muted">No hay hojas de ruta registradas.</p>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card-footer bg-white border-top-0 py-3">
+    {% include "finanzas/components/pagination.html" %}
+  </div>
+</div>
+
+<style>
+@keyframes pulse { 0%{opacity:1} 50%{opacity:.6} 100%{opacity:1} }
+.animate-pulse { animation: pulse 2s infinite; }
+</style>
+
+{% endblock %}

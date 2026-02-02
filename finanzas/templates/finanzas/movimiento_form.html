@@ -1,487 +1,521 @@
 {% extends "finanzas/base.html" %}
 {% load static %}
 {% load humanize %}
-{% load finanzas_extras %}
 
 {% block title %}
-  {% if form.instance.pk %}
-    Editar movimiento – Comuna de Tacuarendí
-  {% else %}
-    Nuevo movimiento – Comuna de Tacuarendí
-  {% endif %}
+  {% if form.instance.pk %}Editar Operación{% else %}Nueva Operación{% endif %}
 {% endblock %}
 
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
-  <div>
-    <h1 class="h4 mb-1">
-      {% if form.instance.pk %}
-        Editar movimiento
-      {% else %}
-        Nuevo movimiento
-      {% endif %}
-    </h1>
-    <p id="tipo-hint" class="small text-muted mb-0">
-      Seleccioná el tipo de movimiento y completá fecha, cuentas y monto.
-      Para cobros de servicios usá categorías marcadas como <strong>servicio</strong>;
-      para ayudas sociales, sueldos y changas, usá categorías de <strong>ayudas</strong> o <strong>personal</strong>.
-      Si vinculás una persona, podés indicar si el pago es <strong>sueldo</strong> o <strong>changa/jornal</strong>.
-    </p>
-  </div>
+<div class="row justify-content-center animate-fade-in" style="padding-bottom: 140px;">
+  <div class="col-12 col-xl-9">
 
-  <div class="d-flex flex-column align-items-end gap-2">
-    {% if form.instance.pk %}
-      {% if form.instance.estado %}
-        <span class="badge
-          {% if form.instance.esta_borrador %}
-            bg-warning-subtle text-warning border border-warning-subtle
-          {% elif form.instance.esta_rechazado %}
-            bg-danger-subtle text-danger border border-danger-subtle
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h1 class="h3 fw-bold text-dark mb-1">
+          {% if form.instance.pk %}
+            <i class="bi bi-pencil-square me-2 text-primary"></i>Editar Operación
           {% else %}
-            bg-success-subtle text-success border border-success-subtle
+            <i class="bi bi-plus-circle-fill me-2 text-primary"></i>Registrar Operación
           {% endif %}
-        ">
-          Estado: {{ form.instance.get_estado_display }}
-        </span>
-      {% endif %}
-
-      <div class="d-flex flex-wrap justify-content-end gap-1 small">
-        <span class="badge rounded-pill bg-light text-secondary border border-secondary-subtle">
-          Tipo: {{ form.instance.get_tipo_display }}
-        </span>
-        {% if form.instance.categoria %}
-          <span class="badge rounded-pill bg-light text-secondary border border-secondary-subtle">
-            Categoría: {{ form.instance.categoria }}
-          </span>
-        {% endif %}
-        {% if form.instance.area %}
-          <span class="badge rounded-pill bg-light text-secondary border border-secondary-subtle">
-            Área: {{ form.instance.area }}
-          </span>
-        {% endif %}
+        </h1>
+        <p class="text-secondary mb-0 fw-medium small">
+          Gestión de Caja. <span class="text-danger">* Obligatorio.</span>
+        </p>
       </div>
-    {% else %}
-      <span class="badge bg-light text-secondary border border-secondary-subtle">
-        Estado inicial: Borrador (no impacta en saldos ni balances hasta que sea aprobado)
-      </span>
+      <a href="{% url 'finanzas:movimiento_list' %}" class="btn btn-white border shadow-sm btn-sm px-4 fw-bold text-secondary hover-lift">
+        <i class="bi bi-x-lg me-1"></i> Cancelar
+      </a>
+    </div>
+
+    {% if form.instance.pk and form.instance.esta_aprobado %}
+      <div class="alert alert-warning border-0 shadow-sm d-flex align-items-center mb-4 rounded-3 text-dark">
+        <i class="bi bi-lock-fill fs-4 me-3 text-warning-emphasis"></i>
+        <div>
+          <strong class="text-warning-emphasis">Operación Cerrada.</strong> Ya impactó en caja.
+        </div>
+      </div>
     {% endif %}
 
-    <a href="{% url 'finanzas:movimiento_list' %}" class="btn btn-outline-secondary btn-sm">
-      Volver al listado
-    </a>
+    <form method="post" class="needs-validation form-pro" novalidate id="movimientoForm" 
+          data-categorias-url="{% url 'finanzas:categorias_por_tipo' %}">
+      {% csrf_token %}
+
+      {% if form.errors %}
+        <div class="alert alert-danger border-0 shadow-sm mb-4 rounded-3">
+          <div class="d-flex align-items-start gap-3">
+            <i class="bi bi-exclamation-triangle-fill fs-4 text-danger"></i>
+            <div>
+              <div class="fw-bold text-danger">Atención</div>
+              <ul class="mb-0 small text-danger-emphasis ps-3">
+                {% for field in form %}
+                  {% if field.errors %}<li><strong>{{ field.label }}:</strong> {{ field.errors|striptags }}</li>{% endif %}
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
+        <div class="card-body p-4 p-lg-5">
+          <h6 class="text-uppercase text-primary fw-bold mb-4 ls-1 border-bottom pb-2">
+            <i class="bi bi-wallet2 me-2"></i>Datos Financieros
+          </h6>
+          
+          <div class="row g-4">
+            <div class="col-md-4">
+                <label class="form-label small fw-bold text-secondary">TIPO OPERACIÓN *</label>
+                {{ form.tipo }}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-bold text-secondary">FECHA *</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-light border-end-0"><i class="bi bi-calendar-event text-muted"></i></span>
+                    {{ form.fecha_operacion }}
+                </div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-bold text-success">MONTO TOTAL *</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-success-subtle text-success border-success-subtle fw-bold">$</span>
+                    {{ form.monto }}
+                </div>
+            </div>
+
+            <div class="col-12"><hr class="border-light m-0"></div>
+
+            <div class="col-md-6">
+                <label class="form-label small fw-bold text-secondary">CATEGORÍA / RUBRO *</label>
+                <div class="position-relative">
+                    <select name="{{ form.categoria.name }}" id="id_categoria" class="form-select no-select2" required>
+                        <option value="">---------</option>
+                        {% if form.instance.pk and form.instance.categoria %}
+                            <option value="{{ form.instance.categoria.id }}" selected 
+                                    data-ayuda="{{ form.instance.categoria.es_ayuda_social|yesno:'true,false' }}"
+                                    data-combustible="{{ form.instance.categoria.es_combustible|yesno:'true,false' }}">
+                                {{ form.instance.categoria.nombre }}
+                            </option>
+                        {% endif %}
+                    </select>
+                    <div id="catLoading" class="position-absolute top-50 end-0 translate-middle-y me-4 d-none">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    </div>
+                </div>
+                <div class="mt-2 d-flex align-items-center">
+                    <span id="catBadge" class="badge bg-secondary d-none"></span>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label small fw-bold text-secondary">ÁREA SOLICITANTE</label>
+                {{ form.area }}
+            </div>
+
+            <div class="col-md-6" id="cuentaOrigenWrap">
+                <label class="form-label small fw-bold text-secondary">CUENTA ORIGEN</label>
+                {{ form.cuenta_origen_texto }}
+            </div>
+            <div class="col-md-6" id="cuentaDestinoWrap">
+                <label class="form-label small fw-bold text-secondary">CUENTA DESTINO</label>
+                {{ form.cuenta_destino_texto }}
+            </div>
+
+            <div class="col-12">
+                <label class="form-label small fw-bold text-secondary">DESCRIPCIÓN PÚBLICA *</label>
+                {{ form.descripcion }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden" id="personaCard">
+        <div class="card-body p-4 p-lg-5">
+          <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
+             <h6 class="text-uppercase text-indigo fw-bold mb-0 ls-1"><i class="bi bi-person-badge me-2"></i>Persona Vinculada</h6>
+             <span class="badge bg-light text-secondary border" id="personaBadge">Opcional</span>
+          </div>
+          <div class="row g-3">
+            <div class="col-12">
+                <label class="form-label small fw-bold text-dark">BUSCAR EN PADRÓN</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-primary"></i></span>
+                    {{ form.beneficiario }}
+                </div>
+            </div>
+            <div class="col-md-8">
+                <label class="form-label small fw-bold text-muted" style="font-size:0.7rem;">NOMBRE</label>
+                {{ form.beneficiario_nombre }}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-bold text-muted" style="font-size:0.7rem;">DNI</label>
+                {{ form.beneficiario_dni }}
+            </div>
+            
+            <div class="col-12 mt-3">
+                <button class="btn btn-sm btn-outline-primary w-100 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#personaNuevaBox">
+                    <i class="bi bi-person-plus-fill me-1"></i>Cargar Persona Nueva (Express)
+                </button>
+                <div id="personaNuevaBox" class="collapse mt-2">
+                    <div class="card card-body bg-light border-0">
+                        <div class="row g-2">
+                            <div class="col-md-3"><label class="small text-muted">DNI</label>{{ form.persona_nueva_dni }}</div>
+                            <div class="col-md-5"><label class="small text-muted">Apellidos</label>{{ form.persona_nueva_apellido }}</div>
+                            <div class="col-md-4"><label class="small text-muted">Nombres</label>{{ form.persona_nueva_nombre }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden" id="assignCard">
+        <div class="card-header bg-white p-0 border-bottom">
+          <ul class="nav nav-tabs nav-justified border-0" id="assignTab" role="tablist">
+            <li class="nav-item">
+                <button class="nav-link active py-3 text-uppercase" id="proveedor-tab" data-bs-toggle="tab" data-bs-target="#proveedor-pane" type="button">
+                    <i class="bi bi-shop me-2"></i>Proveedor
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link py-3 text-uppercase" id="ayuda-tab" data-bs-toggle="tab" data-bs-target="#ayuda-pane" type="button">
+                    <i class="bi bi-heart me-2"></i>Ayuda Social
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link py-3 text-uppercase" id="vehiculo-tab" data-bs-toggle="tab" data-bs-target="#vehiculo-pane" type="button">
+                    <i class="bi bi-fuel-pump me-2"></i>Combustible
+                </button>
+            </li>
+          </ul>
+        </div>
+        <div class="card-body p-4 bg-light bg-opacity-25">
+          <div class="tab-content">
+            
+            <div class="tab-pane fade show active" id="proveedor-pane">
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label small fw-bold text-dark">BUSCAR PROVEEDOR</label>
+                        {{ form.proveedor }}
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label small fw-bold text-muted">RAZÓN SOCIAL</label>
+                        {{ form.proveedor_nombre }}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold text-muted">CUIT</label>
+                        {{ form.proveedor_cuit }}
+                    </div>
+
+                    <div class="col-12 mt-3">
+                        <button class="btn btn-sm btn-outline-primary w-100 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#provNuevoBox">
+                            <i class="bi bi-shop me-1"></i>Cargar Proveedor Nuevo (Express)
+                        </button>
+                        <div id="provNuevoBox" class="collapse mt-2">
+                            <div class="card card-body bg-light border-0">
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-md-5">
+                                        <label class="small text-muted">Razón Social *</label>
+                                        <input type="text" id="new_prov_nombre" class="form-control" placeholder="Ej: Ferretería El Norte">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="small text-muted">CUIT (Opcional)</label>
+                                        <input type="text" id="new_prov_cuit" class="form-control" placeholder="Solo números">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <button type="button" id="btnGuardarProv" class="btn btn-dark w-100 fw-bold">
+                                            <i class="bi bi-save me-1"></i> Guardar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="ayuda-pane">
+                <div class="row g-3">
+                    <div class="col-md-6"><label class="form-label small fw-bold text-dark">PROGRAMA</label>{{ form.programa_ayuda }}</div>
+                    <div class="col-md-6"><label class="form-label small fw-bold text-dark">MODALIDAD</label>{{ form.tipo_pago_persona }}</div>
+                    <div class="col-12"><label class="form-label small fw-bold text-dark">DETALLE</label>{{ form.programa_ayuda_texto }}</div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="vehiculo-pane">
+                <div class="row g-3">
+                    <div class="col-md-6"><label class="form-label small fw-bold text-dark">VEHÍCULO</label>{{ form.vehiculo }}</div>
+                    <div class="col-md-3"><label class="form-label small fw-bold text-dark">LITROS</label>{{ form.litros }}</div>
+                    <div class="col-md-3"><label class="form-label small fw-bold text-dark">TIPO</label>{{ form.tipo_combustible }}</div>
+                    <div class="col-md-6"><label class="form-label small fw-bold text-dark">PRECIO UNIT.</label>{{ form.precio_unitario }}</div>
+                    <div class="col-md-6"><label class="form-label small fw-bold text-muted">INFO</label>{{ form.vehiculo_texto }}</div>
+                </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm rounded-4 mb-5">
+        <div class="card-body p-4">
+            <label class="form-label small fw-bold text-dark">NOTAS INTERNAS</label>
+            {{ form.observaciones }}
+        </div>
+      </div>
+
+      <div class="fixed-bottom bg-white border-top shadow-lg py-3" style="z-index: 1020;">
+        <div class="container d-flex justify-content-end gap-2">
+            <button type="submit" name="accion" value="borrador" class="btn btn-white border shadow-sm fw-bold text-secondary px-4">Borrador</button>
+            <button type="submit" name="accion" value="aprobar" class="btn btn-success px-5 fw-bold shadow-sm">Aprobar Operación</button>
+        </div>
+      </div>
+
+    </form>
   </div>
 </div>
-
-{% if form.instance.pk and form.instance.esta_aprobado %}
-  <div class="alert alert-warning py-2 small" role="alert">
-    Este movimiento ya está <strong>aprobado</strong>.  
-    Usá esta pantalla principalmente para corregir la <strong>clasificación contable</strong>, el <strong>área</strong>,
-    los datos de <strong>persona / programa</strong> y las <strong>notas</strong>.
-    Por prolijidad contable se recomienda no modificar <strong>tipo, fecha, monto ni cuentas</strong>.
-  </div>
-{% endif %}
-
-<form method="post" class="card shadow-sm">
-  <div class="card-body">
-    {% csrf_token %}
-
-    {% if form.non_field_errors %}
-      <div class="alert alert-danger py-2" role="alert">
-        {{ form.non_field_errors }}
-      </div>
-    {% endif %}
-
-    {# ========== BLOQUE 1: DATOS GENERALES ========== #}
-    <h2 class="h6 text-uppercase text-muted mb-2">Datos generales</h2>
-    <div class="row g-3 mb-3">
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.tipo.id_for_label }}">Tipo</label>
-        {{ form.tipo }}
-        {% if form.tipo.errors %}
-          <div class="text-danger small mt-1">{{ form.tipo.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.fecha_operacion.id_for_label }}">Fecha</label>
-        {{ form.fecha_operacion }}
-        {% if form.fecha_operacion.errors %}
-          <div class="text-danger small mt-1">{{ form.fecha_operacion.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.monto.id_for_label }}">Monto</label>
-        {{ form.monto }}
-        {% if form.monto.errors %}
-          <div class="text-danger small mt-1">{{ form.monto.errors|join:", " }}</div>
-        {% endif %}
-        <div class="form-text">Ingresá el monto en pesos. El formato se ajusta automáticamente.</div>
-      </div>
-    </div>
-
-    {# ========== BLOQUE 2: CLASIFICACIÓN CONTABLE ========== #}
-    <h2 class="h6 text-uppercase text-muted mb-2">Clasificación contable</h2>
-    <div class="row g-3 mb-1">
-      <div class="col-12 col-md-6">
-        <label class="form-label mb-1" for="{{ form.categoria.id_for_label }}">Categoría</label>
-        {{ form.categoria }}
-        {% if form.categoria.errors %}
-          <div class="text-danger small mt-1">{{ form.categoria.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-      <div class="col-12 col-md-6">
-        <label class="form-label mb-1" for="{{ form.area.id_for_label }}">Área</label>
-        {{ form.area }}
-        {% if form.area.errors %}
-          <div class="text-danger small mt-1">{{ form.area.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-    </div>
-    <p class="text-muted small mb-3">
-      Recordá marcar en el maestro de categorías cuáles son <strong>servicios</strong>, <strong>ayudas sociales</strong>,
-      <strong>personal</strong> o <strong>combustible</strong> para que los reportes y la ficha de cada persona se armen solos.
-    </p>
-
-    {# ========== BLOQUE 3: CUENTAS ========== #}
-    <h2 class="h6 text-uppercase text-muted mb-2">Cuentas</h2>
-    <div class="row g-3 mb-3">
-      <div class="col-12 col-md-6">
-        <label class="form-label mb-1" for="{{ form.cuenta_origen_texto.id_for_label }}">Cuenta origen</label>
-        {{ form.cuenta_origen_texto }}
-        {% if form.cuenta_origen_texto.errors %}
-          <div class="text-danger small mt-1">{{ form.cuenta_origen_texto.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-      <div class="col-12 col-md-6">
-        <label class="form-label mb-1" for="{{ form.cuenta_destino_texto.id_for_label }}">Cuenta destino</label>
-        {{ form.cuenta_destino_texto }}
-        {% if form.cuenta_destino_texto.errors %}
-          <div class="text-danger small mt-1">{{ form.cuenta_destino_texto.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-    </div>
-
-    {# ========== BLOQUE 4: PROGRAMA DE AYUDA ========== #}
-    <h2 class="h6 text-uppercase text-muted mb-2">Programa de ayuda</h2>
-    <div class="row g-3 mb-3">
-      {% if form.programa_ayuda %}
-        <div class="col-12 col-md-6">
-          <label class="form-label mb-1" for="{{ form.programa_ayuda.id_for_label }}">Programa (catálogo)</label>
-          {{ form.programa_ayuda }}
-          {% if form.programa_ayuda.errors %}
-            <div class="text-danger small mt-1">{{ form.programa_ayuda.errors|join:", " }}</div>
-          {% endif %}
-        </div>
-      {% endif %}
-      <div class="col-12 col-md-6">
-        <label class="form-label mb-1" for="{{ form.programa_ayuda_texto.id_for_label }}">Detalle del programa</label>
-        {{ form.programa_ayuda_texto }}
-        {% if form.programa_ayuda_texto.errors %}
-          <div class="text-danger small mt-1">{{ form.programa_ayuda_texto.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-    </div>
-
-    {# ========== BLOQUE 5: PROVEEDOR (OPCIONAL) ========== #}
-    <div class="d-flex align-items-center justify-content-between mb-1">
-      <h2 class="h6 text-uppercase text-muted mb-0">Proveedor / Comercio</h2>
-      <div class="form-check form-switch small">
-        <input
-          class="form-check-input"
-          type="checkbox"
-          id="toggle-proveedor"
-          {% if form.proveedor_cuit.value or form.proveedor_nombre.value or form.instance.proveedor %}
-            checked
-          {% endif %}
-        >
-        <label class="form-check-label" for="toggle-proveedor">
-          Compra / pago a proveedor
-        </label>
-      </div>
-    </div>
-    <p class="text-muted small mb-2">
-      Activá si este movimiento es una compra o pago a un comercio/proveedor.
-    </p>
-
-    {% with cuit=form.proveedor_cuit.value nombre=form.proveedor_nombre.value proveedor_inst=form.instance.proveedor %}
-      <div
-        id="proveedor-section"
-        class="mb-3 {% if not cuit and not nombre and not proveedor_inst %}d-none{% endif %}"
-        data-proveedor-cuit-url="{% url 'finanzas:oc_proveedor_por_cuit' %}"
-        data-proveedor-search-url="{% url 'finanzas:oc_proveedores_suggest' %}"
-      >
-        <div id="proveedor-alert" class="alert alert-info py-2 mb-2 d-none small" role="alert"></div>
-
-        <div class="row g-3">
-          <div class="col-12 col-md-4">
-            <label class="form-label mb-1" for="{{ form.proveedor_cuit.id_for_label }}">CUIT</label>
-            {{ form.proveedor_cuit }}
-            {% if form.proveedor_cuit.errors %}
-              <div class="text-danger small mt-1">{{ form.proveedor_cuit.errors|join:", " }}</div>
-            {% endif %}
-            <div class="form-text small">
-              Escribí el CUIT y el sistema intentará traer los datos desde el padrón de proveedores.
-            </div>
-          </div>
-          <div class="col-12 col-md-8">
-            <label class="form-label mb-1" for="{{ form.proveedor_nombre.id_for_label }}">Nombre / razón social</label>
-            <div class="position-relative">
-              {{ form.proveedor_nombre }}
-              <div
-                id="proveedor-suggestions"
-                class="mv-autocomplete-list list-group position-absolute w-100 d-none shadow-sm border bg-white"
-                style="z-index: 1050; max-height: 260px; overflow-y: auto;"
-              ></div>
-            </div>
-            {% if form.proveedor_nombre.errors %}
-              <div class="text-danger small mt-1">{{ form.proveedor_nombre.errors|join:", " }}</div>
-            {% endif %}
-            <div class="form-text small">
-              Escribí al menos 2 letras para buscar en el padrón de proveedores.
-            </div>
-          </div>
-        </div>
-      </div>
-    {% endwith %}
-
-    {# ========== BLOQUE 6: BENEFICIARIO / PERSONA (OPCIONAL) ========== #}
-    <div class="d-flex align-items-center justify-content-between mb-1">
-      <h2 class="h6 text-uppercase text-muted mb-0">Beneficiario / Persona</h2>
-      <div class="form-check form-switch small">
-        <input
-          class="form-check-input"
-          type="checkbox"
-          id="toggle-beneficiario"
-          {% if form.beneficiario_dni.value or form.beneficiario_nombre.value or form.instance.beneficiario %}
-            checked
-          {% endif %}
-        >
-        <label class="form-check-label" for="toggle-beneficiario">
-          Este movimiento tiene persona vinculada (ayuda / trabajo / servicios)
-        </label>
-      </div>
-    </div>
-    <p class="text-muted small mb-2">
-      Usá este bloque para ayudas sociales, pagos de sueldos/changas o cobros de servicios
-      vinculados a una persona. Se integra con el censo por DNI.
-    </p>
-
-    {% with dni=form.beneficiario_dni.value nombre=form.beneficiario_nombre.value persona_inst=form.instance.beneficiario %}
-      <div
-        id="beneficiario-section"
-        class="mb-3 {% if not dni and not nombre and not persona_inst %}d-none{% endif %}"
-        data-persona-dni-url="{% url 'finanzas:persona_buscar_dni' %}"
-        data-persona-search-url="{% url 'finanzas:persona_suggest' %}"
-      >
-        <div id="beneficiario-alert" class="alert alert-info py-2 mb-2 d-none small" role="alert"></div>
-
-        <div class="row g-3">
-          <div class="col-12 col-md-4">
-            <label class="form-label mb-1" for="{{ form.beneficiario_dni.id_for_label }}">DNI</label>
-            {{ form.beneficiario_dni }}
-            {% if form.beneficiario_dni.errors %}
-              <div class="text-danger small mt-1">{{ form.beneficiario_dni.errors|join:", " }}</div>
-            {% endif %}
-          </div>
-          <div class="col-12 col-md-8">
-            <label class="form-label mb-1" for="{{ form.beneficiario_nombre.id_for_label }}">Apellido y nombre</label>
-            <div class="position-relative">
-              {{ form.beneficiario_nombre }}
-              <div
-                id="beneficiario-suggestions"
-                class="mv-autocomplete-list list-group position-absolute w-100 d-none shadow-sm border bg-white"
-                style="z-index: 1050; max-height: 260px; overflow-y: auto;"
-              ></div>
-            </div>
-            {% if form.beneficiario_nombre.errors %}
-              <div class="text-danger small mt-1">{{ form.beneficiario_nombre.errors|join:", " }}</div>
-            {% endif %}
-          </div>
-          <div class="col-12 col-md-6">
-            <label class="form-label mb-1" for="{{ form.beneficiario_direccion.id_for_label }}">Domicilio</label>
-            {{ form.beneficiario_direccion }}
-            {% if form.beneficiario_direccion.errors %}
-              <div class="text-danger small mt-1">{{ form.beneficiario_direccion.errors|join:", " }}</div>
-            {% endif %}
-          </div>
-          <div class="col-12 col-md-6">
-            <label class="form-label mb-1" for="{{ form.beneficiario_barrio.id_for_label }}">Barrio</label>
-            {{ form.beneficiario_barrio }}
-            {% if form.beneficiario_barrio.errors %}
-              <div class="text-danger small mt-1">{{ form.beneficiario_barrio.errors|join:", " }}</div>
-            {% endif %}
-          </div>
-
-          <div class="col-12 mt-2">
-            <label class="form-label mb-1" for="{{ form.tipo_pago_persona.id_for_label }}">
-              Tipo de pago a la persona (opcional)
-            </label>
-            {{ form.tipo_pago_persona }}
-            <div class="form-text small">
-              Elegí <strong>"Pago de sueldo (planta permanente)"</strong> para sueldos mensuales de personal
-              y <strong>"Pago de changa / jornal / eventual"</strong> para trabajos puntuales o semanales.
-              Dejá <strong>"Ninguno / genérico"</strong> si se trata de una ayuda social u otro movimiento
-              que solo vincula a la persona.
-            </div>
-            {% if form.tipo_pago_persona.errors %}
-              <div class="text-danger small mt-1">{{ form.tipo_pago_persona.errors|join:", " }}</div>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-    {% endwith %}
-
-    {# ========== BLOQUE 7: COMBUSTIBLE / VEHÍCULO (OPCIONAL) ========== #}
-    <div class="d-flex align-items-center justify-content-between mb-1">
-      <h2 class="h6 text-uppercase text-muted mb-0">Combustible / Vehículo</h2>
-      <div class="form-check form-switch small">
-        <input
-          class="form-check-input"
-          type="checkbox"
-          id="toggle-combustible"
-          {% if form.vehiculo_texto.value or form.litros.value or form.precio_unitario.value or form.tipo_combustible.value or form.instance.vehiculo %}
-            checked
-          {% endif %}
-        >
-        <label class="form-check-label" for="toggle-combustible">
-          Es un gasto de combustible / vehículo
-        </label>
-      </div>
-    </div>
-    <p class="text-muted small mb-2">
-      Activá solo si el movimiento corresponde a carga de combustible o gasto del vehículo.
-    </p>
-
-    {% with vehiculo_txt=form.vehiculo_texto.value litros=form.litros.value precio=form.precio_unitario.value tipo_comb=form.tipo_combustible.value vehiculo_inst=form.instance.vehiculo %}
-      <div
-        id="combustible-section"
-        class="row g-3 mb-3 {% if not vehiculo_txt and not litros and not precio and not tipo_comb and not vehiculo_inst %}d-none{% endif %}"
-        data-vehiculo-search-url="{% url 'finanzas:vehiculo_autocomplete' %}"
-      >
-        {{ form.vehiculo }}
-
-        <div class="col-12 col-md-6">
-          <label class="form-label mb-1" for="{{ form.vehiculo_texto.id_for_label }}">Vehículo / detalle</label>
-          <div class="position-relative">
-            {{ form.vehiculo_texto }}
-            <div
-              id="vehiculo-suggestions"
-              class="mv-autocomplete-list list-group position-absolute w-100 d-none shadow-sm border bg-white"
-              style="z-index: 1050; max-height: 260px; overflow-y: auto;"
-            ></div>
-          </div>
-          {% if form.vehiculo_texto.errors %}
-            <div class="text-danger small mt-1">{{ form.vehiculo_texto.errors|join:", " }}</div>
-          {% endif %}
-        </div>
-        <div class="col-12 col-md-2">
-          <label class="form-label mb-1" for="{{ form.litros.id_for_label }}">Litros</label>
-          {{ form.litros }}
-          {% if form.litros.errors %}
-            <div class="text-danger small mt-1">{{ form.litros.errors|join:", " }}</div>
-          {% endif %}
-        </div>
-        <div class="col-12 col-md-2">
-          <label class="form-label mb-1" for="{{ form.precio_unitario.id_for_label }}">Precio unit.</label>
-          {{ form.precio_unitario }}
-          {% if form.precio_unitario.errors %}
-            <div class="text-danger small mt-1">{{ form.precio_unitario.errors|join:", " }}</div>
-          {% endif %}
-        </div>
-        <div class="col-12 col-md-2">
-          <label class="form-label mb-1" for="{{ form.tipo_combustible.id_for_label }}">Tipo comb.</label>
-          {{ form.tipo_combustible }}
-          {% if form.tipo_combustible.errors %}
-            <div class="text-danger small mt-1">{{ form.tipo_combustible.errors|join:", " }}</div>
-          {% endif %}
-        </div>
-      </div>
-    {% endwith %}
-
-    {# ========== BLOQUE 8: DETALLE / NOTAS ========== #}
-    <h2 class="h6 text-uppercase text-muted mb-2">Detalle</h2>
-    <div class="row g-3">
-      <div class="col-12 col-md-6">
-        <label class="form-label mb-1" for="{{ form.descripcion.id_for_label }}">Descripción</label>
-        {{ form.descripcion }}
-        {% if form.descripcion.errors %}
-          <div class="text-danger small mt-1">{{ form.descripcion.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-      <div class="col-12 col-md-6">
-        {% if form.notas_internas %}
-          <label class="form-label mb-1" for="{{ form.notas_internas.id_for_label }}">
-            Notas internas (no se imprimen)
-          </label>
-          {{ form.notas_internas }}
-          {% if form.notas_internas.errors %}
-            <div class="text-danger small mt-1">{{ form.notas_internas.errors|join:", " }}</div>
-          {% endif %}
-        {% elif form.observaciones %}
-          <label class="form-label mb-1" for="{{ form.observaciones.id_for_label }}">
-            Notas internas (no se imprimen)
-          </label>
-          {{ form.observaciones }}
-          {% if form.observaciones.errors %}
-            <div class="text-danger small mt-1">{{ form.observaciones.errors|join:", " }}</div>
-          {% endif %}
-        {% endif %}
-      </div>
-    </div>
-
-    {# Campos ocultos (ids internos, excepto vehiculo que ya se imprime arriba) #}
-    {% for field in form.hidden_fields %}
-      {% if field.name != "vehiculo" %}
-        {{ field }}
-      {% endif %}
-    {% endfor %}
-  </div>
-
-  <div class="card-footer d-flex justify-content-between align-items-center">
-    <a href="{% url 'finanzas:movimiento_list' %}" class="btn btn-outline-secondary btn-sm">
-      Cancelar
-    </a>
-
-    <div class="d-flex flex-wrap gap-2">
-      {% if not form.instance.pk or form.instance.esta_borrador %}
-        <button
-          type="submit"
-          name="accion"
-          value="borrador"
-          class="btn btn-outline-secondary btn-sm"
-        >
-          Guardar como borrador
-        </button>
-        <button
-          type="submit"
-          name="accion"
-          value="aprobar"
-          class="btn btn-primary btn-sm"
-          onclick="return confirm('¿Guardar y aprobar este movimiento? Quedará incluido en saldos y balances si tu usuario tiene permisos para aprobar.');"
-        >
-          Guardar y aprobar
-        </button>
-      {% else %}
-        <button type="submit" class="btn btn-primary btn-sm">
-          Guardar cambios
-        </button>
-      {% endif %}
-    </div>
-  </div>
-</form>
-
-{% if categoria_tipos_json %}
-  <script id="categoria-tipos-data" type="application/json">
-    {{ categoria_tipos_json|safe }}
-  </script>
-{% endif %}
 
 {% endblock %}
 
 {% block extra_js %}
-  {{ block.super }}
-  <script src="{% static 'finanzas/js/movimiento_form.js' %}"></script>
-  <script src="{% static 'finanzas/js/movimiento_proveedor.js' %}"></script>
+<style>
+    .text-indigo { color: #4f46e5 !important; }
+    
+    .form-control, .form-select { 
+        border: 1px solid #cbd5e1; padding: 0.65rem 0.8rem; border-radius: 8px; 
+    }
+    .form-control:focus, .form-select:focus { 
+        border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); 
+    }
+    
+    /* Tabs */
+    #assignTab .nav-link { 
+        color: #000000 !important; font-weight: 800 !important; font-size: 1rem;
+        letter-spacing: 0.5px; border: none; border-bottom: 4px solid transparent;
+        transition: all 0.2s ease-in-out; opacity: 0.6;
+    }
+    #assignTab .nav-link:hover { background-color: #f8fafc; opacity: 1; }
+    #assignTab .nav-link.active { 
+        color: #000000 !important; opacity: 1; background: transparent; border-bottom-color: #0d6efd;
+    }
+    #assignTab #ayuda-tab.active { border-bottom-color: #dc3545; }
+    #assignTab #vehiculo-tab.active { border-bottom-color: #0dcaf0; }
+    
+    input[readonly].bg-light { background-color: #e2e8f0 !important; color: #000 !important; font-weight: 600; border-color: #cbd5e1; }
+</style>
+
+<script>
+    (function($) {
+        "use strict";
+
+        $(document).ready(function() {
+            // VARIABLES
+            const $tipo = $('#id_tipo');
+            const $cat = $('#id_categoria');
+            const urlApi = $('#movimientoForm').data('categorias-url');
+            const $loading = $('#catLoading');
+            const $badge = $('#catBadge');
+            let currentAjaxRequest = null;
+
+            // --- 1. PROVEEDOR EXPRESS ---
+            $('#btnGuardarProv').click(function() {
+                const nombre = $('#new_prov_nombre').val().trim();
+                const cuit = $('#new_prov_cuit').val().trim();
+                const btn = $(this);
+
+                if (!nombre) {
+                    Swal.fire("Falta nombre", "Debes ingresar la Razón Social", "warning");
+                    return;
+                }
+
+                btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+
+                $.ajax({
+                    url: "{% url 'finanzas:proveedor_create_express' %}",
+                    type: "POST",
+                    data: {
+                        'razon_social': nombre,
+                        'cuit': cuit,
+                        'csrfmiddlewaretoken': $('input[name=csrfmiddlewaretoken]').val()
+                    },
+                    success: function(response) {
+                        var newOption = new Option(response.text, response.id, true, true);
+                        $('#id_proveedor').append(newOption).trigger('change');
+                        $('#id_proveedor_nombre').val(response.razon_social);
+                        $('#id_proveedor_cuit').val(response.cuit);
+                        $('#provNuevoBox').collapse('hide');
+                        $('#new_prov_nombre').val('');
+                        $('#new_prov_cuit').val('');
+                        Swal.fire({
+                            icon: 'success', title: '¡Creado!',
+                            text: 'Proveedor agregado correctamente',
+                            timer: 1500, showConfirmButton: false
+                        });
+                    },
+                    error: function(xhr) {
+                        let msg = "Error desconocido";
+                        if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                        Swal.fire("Error", msg, "error");
+                    },
+                    complete: function() {
+                        btn.prop('disabled', false).html('<i class="bi bi-save me-1"></i> Guardar');
+                    }
+                });
+            });
+
+            // --- 2. AUTOCOMPLETADOS ---
+            
+            // PERSONA
+            $('#id_beneficiario').on('select2:select', function(e) {
+                var data = e.params.data;
+                var nombre = data.nombre && data.apellido ? data.apellido + ", " + data.nombre : data.text.split('(')[0].trim();
+                var dni = data.dni || data.documento || (data.text.match(/\(([^)]+)\)/) || [])[1] || '';
+                $('#id_beneficiario_nombre').val(nombre);
+                $('#id_beneficiario_dni').val(dni);
+            });
+            $('#id_beneficiario').on('select2:clear', function() {
+                $('#id_beneficiario_nombre').val(''); $('#id_beneficiario_dni').val('');
+            });
+
+            // PROVEEDOR
+            $('#id_proveedor').on('select2:select', function(e) {
+                var data = e.params.data;
+                var nombre = data.text.split('(')[0].trim();
+                var cuit = data.cuit || (data.text.match(/\(([^)]+)\)/) || [])[1] || '';
+                $('#id_proveedor_nombre').val(nombre);
+                $('#id_proveedor_cuit').val(cuit);
+            });
+            $('#id_proveedor').on('select2:clear', function() {
+                $('#id_proveedor_nombre').val(''); $('#id_proveedor_cuit').val('');
+            });
+
+            // --- 3. LÓGICA CATEGORÍAS ---
+            function cargarCategorias() {
+                const tipoValor = $tipo.val();
+                if (currentAjaxRequest) currentAjaxRequest.abort();
+
+                if (!tipoValor) {
+                    $cat.empty().append(new Option("---------", ""));
+                    return;
+                }
+
+                $loading.removeClass('d-none');
+                $cat.prop('disabled', true);
+
+                currentAjaxRequest = $.ajax({
+                    url: urlApi,
+                    data: { 'tipo': tipoValor },
+                    dataType: 'json',
+                    success: function(data) {
+                        $cat.empty().append(new Option("---------", ""));
+                        data.results.forEach(function(item) {
+                            const option = new Option(item.text, item.id, false, false);
+                            $(option).data('ayuda', item.es_ayuda_social);
+                            $(option).data('combustible', item.es_combustible);
+                            $cat.append(option);
+                        });
+
+                        if ($cat.hasClass("select2-hidden-accessible")) $cat.select2('destroy');
+                        
+                        $cat.select2({
+                            theme: 'bootstrap-5', width: '100%',
+                            placeholder: 'Seleccione una categoría',
+                            dropdownParent: $cat.parent()
+                        });
+                        actualizarInterfaz();
+                    },
+                    complete: function() {
+                        $loading.addClass('d-none');
+                        $cat.prop('disabled', false);
+                        currentAjaxRequest = null;
+                    }
+                });
+            }
+
+            // === LÓGICA DE VISIBILIDAD (CORREGIDA) ===
+            function actualizarInterfaz() {
+                const tipoTexto = ($tipo.val() || "").toUpperCase();
+                const esIngreso = tipoTexto.includes("INGRESO");
+                const esTransferencia = tipoTexto.includes("TRANSFERENCIA");
+                
+                // GASTO se asume si no es ninguno de los otros dos y hay algo seleccionado
+                const esGasto = (!esIngreso && !esTransferencia && tipoTexto !== "");
+
+                // 1. PERSONA: Visible en INGRESO y GASTO. Oculta SOLO en TRANSFERENCIA.
+                if (esTransferencia) {
+                    $('#personaCard').addClass('d-none');
+                } else {
+                    $('#personaCard').removeClass('d-none');
+                }
+                
+                // 2. PROVEEDOR / AYUDA / COMBUSTIBLE: Visible SOLO en GASTO.
+                // (En ingresos, solo necesitamos la persona que paga, no proveedores)
+                if (esGasto) {
+                    $('#assignCard').removeClass('d-none');
+                } else {
+                    $('#assignCard').addClass('d-none');
+                }
+
+                // 3. CUENTAS
+                // Origen: Oculto en INGRESO (la plata "aparece" en la cuenta destino)
+                if (esIngreso) {
+                    $('#cuentaOrigenWrap').addClass('d-none');
+                } else {
+                    $('#cuentaOrigenWrap').removeClass('d-none');
+                }
+
+                // Destino: Oculto en GASTO (la plata sale de la cuenta origen)
+                if (esGasto) {
+                    $('#cuentaDestinoWrap').addClass('d-none');
+                } else {
+                    $('#cuentaDestinoWrap').removeClass('d-none');
+                }
+
+                // 4. PESTAÑAS AUTOMÁTICAS (Solo para Gastos)
+                if (esGasto) {
+                    let esAyuda = false;
+                    let esComb = false;
+                    try {
+                        const dataSelect2 = $cat.select2('data');
+                        if (dataSelect2 && dataSelect2.length > 0) {
+                            esAyuda = dataSelect2[0].es_ayuda_social === true;
+                            esComb = dataSelect2[0].es_combustible === true;
+                        }
+                        if (!esAyuda && !esComb) {
+                            const $opt = $cat.find(':selected');
+                            esAyuda = $opt.data('ayuda') === true;
+                            esComb = $opt.data('combustible') === true;
+                        }
+                    } catch(e) {}
+
+                    if (esAyuda) {
+                        $badge.removeClass('d-none bg-secondary bg-info').addClass('bg-danger').html('<i class="bi bi-heart"></i> Ayuda Social');
+                        new bootstrap.Tab('#ayuda-tab').show();
+                    } else if (esComb) {
+                        $badge.removeClass('d-none bg-secondary bg-danger').addClass('bg-info text-dark').html('<i class="bi bi-fuel-pump"></i> Combustible');
+                        new bootstrap.Tab('#vehiculo-tab').show();
+                    } else {
+                        $badge.addClass('d-none');
+                        new bootstrap.Tab('#proveedor-tab').show();
+                    }
+                } else {
+                    $badge.addClass('d-none');
+                }
+            }
+
+            $tipo.on('change', function() { cargarCategorias(); });
+            $cat.on('change', function() { actualizarInterfaz(); });
+
+            $('#id_beneficiario, #id_proveedor, #id_vehiculo').select2({ theme: 'bootstrap-5', width: '100%' });
+
+            const esEdicion = "{{ form.instance.pk|default:'' }}" !== "";
+            if (!esEdicion && $tipo.val()) {
+                cargarCategorias();
+            } else {
+                $cat.select2({ theme: 'bootstrap-5', width: '100%' });
+            }
+            actualizarInterfaz();
+        });
+    })(jQuery);
+</script>
 {% endblock %}

@@ -1,443 +1,399 @@
 {% extends "finanzas/base.html" %}
 {% load humanize %}
-{% load finanzas_extras %}
+{% load static %}
 
-{% block title %}Inicio – Comuna de Tacuarendí{% endblock %}
+{% block title %}Tablero de Control{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* === HEADER PRO === */
+    .dashboard-header {
+        background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+        border-radius: 24px;
+        padding: 3rem 2.5rem;
+        color: #ffffff;
+        position: relative;
+        box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.5);
+        margin-bottom: 2.5rem;
+        overflow: hidden;
+    }
+    
+    /* Efecto Aurora Sutil */
+    .dashboard-header::before {
+        content: ''; position: absolute; top: -100px; right: -50px;
+        width: 500px; height: 500px;
+        background: radial-gradient(circle, rgba(59, 130, 246, 0.2) 0%, rgba(0,0,0,0) 70%);
+        border-radius: 50%; pointer-events: none;
+        z-index: 0;
+    }
+
+    /* === MINI STATS (ENCABEZADO) === */
+    .mini-stat-box {
+        background: rgba(255,255,255,0.08);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 16px;
+        padding: 1rem 1.5rem;
+        min-width: 150px;
+        transition: transform 0.2s, background 0.2s;
+    }
+    .mini-stat-box:hover { transform: translateY(-3px); background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.3); }
+    .mini-stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; opacity: 0.8; font-weight: 700; color: #cbd5e1; }
+    .mini-stat-value { font-size: 1.8rem; font-weight: 800; line-height: 1; margin-top: 0.4rem; color: #fff; }
+
+    /* === TARJETAS KPI === */
+    .kpi-card {
+        background: #ffffff;
+        border-radius: 20px;
+        padding: 1.75rem;
+        height: 100%;
+        border: 1px solid #f1f5f9;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        display: flex; flex-direction: column; position: relative; overflow: hidden;
+    }
+    .kpi-card:hover { transform: translateY(-5px); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.08); border-color: #cbd5e1; }
+
+    /* KPI DESTACADA (Principal) */
+    .kpi-card.featured {
+        background: linear-gradient(145deg, #2563eb, #1e40af);
+        border: none; color: white;
+    }
+    .kpi-card.featured .kpi-label { color: rgba(255,255,255,0.9); }
+    .kpi-card.featured .kpi-value { color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+    .kpi-card.featured .small { color: rgba(255,255,255,0.8); }
+    
+    .glass-icon {
+        width: 50px; height: 50px;
+        border-radius: 14px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.5rem;
+        background: rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(4px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: white;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    .kpi-label { font-size: 0.75rem; text-transform: uppercase; font-weight: 700; margin-bottom: 0.5rem; letter-spacing: 0.5px; color: #64748b; }
+    .kpi-value { font-size: 2.1rem; font-weight: 800; line-height: 1; letter-spacing: -0.5px; margin-bottom: 0.5rem;}
+    .kpi-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; margin-bottom: 0.5rem; }
+
+    /* BOTONES ACCESO RÁPIDO */
+    .btn-glass { 
+        background: rgba(255, 255, 255, 0.1); 
+        border: 1px solid rgba(255, 255, 255, 0.25); 
+        color: #ffffff; font-weight: 600; font-size: 0.9rem;
+        backdrop-filter: blur(4px); transition: all 0.2s; 
+    }
+    .btn-glass:hover { background: #ffffff; color: #0f172a; border-color: #fff; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+
+    .animate-in { opacity: 0; animation: fadeIn 0.8s ease-out forwards; }
+    @keyframes fadeIn { to { opacity: 1; } }
+    
+    .progress-thin { height: 6px; border-radius: 10px; background-color: #f1f5f9; }
+</style>
+{% endblock %}
 
 {% block content %}
 
-{# ===== Héroe principal ===== #}
-<div class="row align-items-center mb-3">
-  <div class="col-12 col-lg-8">
-    <h1 class="h3 mb-1">
-      Hola {{ request.user.get_short_name|default:request.user.username }}, ¿qué hacemos hoy?
-    </h1>
-    <p class="text-muted mb-0">
-      Panel de trabajo de la <strong>Comuna de Tacuarendí</strong>. Elegí una acción rápida
-      {% if rol_staff_finanzas or rol_operador_finanzas or rol_consulta_politica %}
-        o revisá el resumen del mes.
-      {% endif %}
-    </p>
-  </div>
-  <div class="col-12 col-lg-4 text-lg-end mt-3 mt-lg-0">
-    <span class="badge bg-light text-secondary border rounded-pill px-3 py-2">
-      {{ hoy|date:"l d \\d\\e F Y"|capfirst }}
-    </span>
-  </div>
+<div class="dashboard-header animate-in">
+    <div class="row align-items-center gy-4 position-relative z-1">
+        
+        <div class="col-lg-5">
+            <div class="d-inline-flex bg-black bg-opacity-25 rounded-pill p-1 mb-3 border border-white border-opacity-10 backdrop-blur">
+                <a href="?ver=mes" class="btn btn-sm rounded-pill px-3 fw-bold transition-all {% if filtro_activo != 'gestion' %}bg-white text-dark shadow-sm{% else %}text-white opacity-75 hover-opacity-100{% endif %}">
+                    Mes Actual
+                </a>
+                <a href="?ver=gestion" class="btn btn-sm rounded-pill px-3 fw-bold transition-all {% if filtro_activo == 'gestion' %}bg-white text-dark shadow-sm{% else %}text-white opacity-75 hover-opacity-100{% endif %}">
+                    Gestión (Desde 10/12)
+                </a>
+            </div>
+            
+            <h1 class="fw-bold mb-1 display-6 text-white">
+                Hola, {{ request.user.first_name|default:request.user.username }}
+            </h1>
+            <p class="mb-0 text-white opacity-75 fw-light">
+                Viendo datos de: <strong class="text-white opacity-100">{{ titulo_periodo }}</strong>
+            </p>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="d-flex flex-wrap gap-3 justify-content-lg-end">
+                <div class="mini-stat-box text-center text-lg-start">
+                    <div class="mini-stat-label">Atenciones Hoy</div>
+                    <div class="mini-stat-value">{{ atenciones_hoy|default:"0" }}</div>
+                </div>
+                <div class="mini-stat-box text-center text-lg-start">
+                    <div class="mini-stat-label">Flota Hoy</div>
+                    <div class="mini-stat-value">{{ viajes_hoy|default:"0" }}</div>
+                </div>
+                <div class="mini-stat-box text-center text-lg-start">
+                    <div class="mini-stat-label">Compras Hoy</div>
+                    <div class="mini-stat-value">{{ ocs_hoy|default:"0" }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 mt-4 pt-3 border-top border-white border-opacity-10 d-flex gap-3 overflow-x-auto pb-1 no-scrollbar">
+            <a href="{% url 'finanzas:movimiento_create' %}" class="btn btn-glass rounded-pill px-4 text-nowrap">
+                <i class="bi bi-currency-dollar me-2"></i>Cargar Caja
+            </a>
+            <a href="{% url 'finanzas:hoja_ruta_create' %}" class="btn btn-glass rounded-pill px-4 text-nowrap">
+                <i class="bi bi-truck me-2"></i>Hoja Ruta
+            </a>
+            <a href="{% url 'finanzas:atencion_create' %}" class="btn btn-glass rounded-pill px-4 text-nowrap">
+                <i class="bi bi-people me-2"></i>Atención
+            </a>
+            <a href="{% url 'finanzas:orden_trabajo_create' %}" class="btn btn-glass rounded-pill px-4 text-nowrap">
+                <i class="bi bi-cone-striped me-2"></i>Orden Trabajo
+            </a>
+            <a href="{% url 'inventario:movimiento_create' %}" class="btn btn-glass rounded-pill px-4 text-nowrap">
+                <i class="bi bi-box-seam me-2"></i>Pañol
+            </a>
+        </div>
+    </div>
 </div>
 
-{# ===== Atajos rápidos ===== #}
-<nav class="d-flex flex-wrap align-items-center gap-2 mb-4" aria-label="Atajos rápidos">
-  <span class="small text-muted me-1">Atajos rápidos:</span>
-
-  {# --- Finanzas básicas --- #}
-  {% if rol_staff_finanzas or rol_operador_finanzas %}
-    <a href="{% url 'finanzas:movimiento_create' %}"
-       class="btn btn-success btn-sm btn-quick btn-quick-active">
-      + Registrar movimiento
-    </a>
-  {% endif %}
-
-  {% if rol_staff_finanzas or rol_operador_finanzas or rol_consulta_politica %}
-    <a href="{% url 'finanzas:movimiento_list' %}?tipo=INGRESO"
-       class="btn btn-outline-secondary btn-sm btn-quick">
-      Ver ingresos
-    </a>
-
-    <a href="{% url 'finanzas:movimiento_list' %}?tipo=GASTO"
-       class="btn btn-outline-secondary btn-sm btn-quick">
-      Ver gastos
-    </a>
-
-    <a href="{% url 'finanzas:movimiento_list' %}?tipo=TRANSFERENCIA"
-       class="btn btn-outline-secondary btn-sm btn-quick">
-      Transferencias
-    </a>
-  {% endif %}
-
-  {% if rol_staff_finanzas or rol_operador_finanzas or rol_consulta_politica %}
-    <a href="{% url 'finanzas:dashboard' %}"
-       class="btn btn-outline-secondary btn-sm btn-quick">
-      Ver tablero
-    </a>
-  {% endif %}
-
-  {# --- Órdenes y compras --- #}
-  {% if rol_staff_finanzas or rol_operador_finanzas %}
-    <a href="{% url 'finanzas:orden_pago_create' %}"
-       class="btn btn-outline-secondary btn-sm btn-quick">
-      + Nueva orden de pago
-    </a>
-
-    <a href="{% url 'finanzas:oc_create' %}"
-       class="btn btn-outline-secondary btn-sm btn-quick">
-      + Nueva OC
-    </a>
-  {% endif %}
-
-  {% if rol_staff_finanzas or rol_operador_finanzas or rol_consulta_politica %}
-    <a href="{% url 'finanzas:orden_pago_list' %}"
-       class="btn btn-outline-secondary btn-sm btn-quick">
-      Órdenes de pago
-    </a>
-  {% endif %}
-
-  {# --- Flota y vehículos --- #}
-  {% if rol_staff_finanzas or rol_operador_finanzas or rol_consulta_politica or rol_operador_social %}
-    <a href="{% url 'finanzas:viaje_vehiculo_list' %}"
-       class="btn btn-outline-secondary btn-sm btn-quick">
-      Viajes / flota
-    </a>
-  {% endif %}
-
-  {% if rol_staff_finanzas or rol_operador_finanzas or rol_consulta_politica %}
-    <a href="{% url 'finanzas:flota_combustible_resumen' %}"
-       class="btn btn-outline-secondary btn-sm btn-quick">
-      Consumo de combustible
-    </a>
-  {% endif %}
-
-  {# --- Personas / ayudas sociales --- #}
-  {% if rol_staff_finanzas or rol_operador_finanzas or rol_operador_social or rol_consulta_politica %}
-    <a href="{% url 'finanzas:persona_list' %}"
-       class="btn btn-outline-secondary btn-sm btn-quick">
-      Ayudas sociales
-    </a>
-  {% endif %}
-
-  {# --- Agenda / pendientes --- #}
-  <a href="{% url 'agenda:agenda_list' %}"
-     class="btn btn-outline-secondary btn-sm btn-quick">
-    Agenda de tareas
-  </a>
-</nav>
-
-{# ===== Acciones principales (tarjetas grandes) ===== #}
-<div class="row g-3 mb-4">
-
-  {# Movimientos #}
-  {% if rol_staff_finanzas or rol_operador_finanzas or rol_consulta_politica %}
-    <div class="col-12 col-md-4">
-      <a href="{% url 'finanzas:movimiento_list' %}" class="text-decoration-none text-reset">
-        <div class="card h-100 shadow-sm border-0">
-          <div class="card-body d-flex flex-column">
-            <div class="mb-2">
-              <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
-                Movimientos
-              </span>
+<div class="row g-4 mb-5">
+    
+    <div class="col-12 col-md-6 col-xl-3 animate-in" style="animation-delay: 0.1s;">
+        <div class="kpi-card featured">
+            <div class="d-flex justify-content-between align-items-start w-100 mb-2">
+                <div class="glass-icon">
+                    <i class="bi bi-wallet2"></i>
+                </div>
+                <a href="{% url 'finanzas:balance_resumen' %}" class="text-white opacity-75 hover-opacity-100"><i class="bi bi-arrow-right"></i></a>
             </div>
-            <h2 class="h6 mb-2">Ver y gestionar movimientos</h2>
-            <p class="small text-muted mb-3">
-              Listá, filtrá y analizá ingresos, gastos y transferencias de la comuna.
-            </p>
-            <div class="mt-auto small text-muted">
-              Saldo del mes (aprobados): <strong>${{ saldo_mes|formato_pesos }}</strong>
+            <div class="mt-auto">
+                <div class="kpi-label">Saldo Neto</div>
+                <div class="kpi-value counter-anim" data-target="{{ saldo_mes|stringformat:'f' }}">$0,00</div>
+                <div class="mt-2 small opacity-75 fw-light">
+                    <i class="bi bi-calendar-check me-1"></i>{{ titulo_periodo }}
+                </div>
             </div>
-          </div>
         </div>
-      </a>
     </div>
-  {% endif %}
 
-  {# Personas / censo #}
-  {% if rol_staff_finanzas or rol_operador_finanzas or rol_operador_social or rol_consulta_politica %}
-    <div class="col-12 col-md-4">
-      <a href="{% url 'finanzas:persona_list' %}" class="text-decoration-none text-reset">
-        <div class="card h-100 shadow-sm border-0">
-          <div class="card-body d-flex flex-column">
-            <div class="mb-2">
-              <span class="badge bg-success-subtle text-success border border-success-subtle">
-                Personas
-              </span>
+    <div class="col-12 col-md-6 col-xl-3 animate-in" style="animation-delay: 0.2s;">
+        <div class="kpi-card">
+            <div class="d-flex justify-content-between align-items-start w-100 mb-2">
+                <div class="kpi-icon bg-danger-subtle text-danger rounded-3">
+                    <i class="bi bi-heart-fill"></i>
+                </div>
             </div>
-            <h2 class="h6 mb-2">Censo de beneficiarios</h2>
-            <p class="small text-muted mb-3">
-              Consultá y actualizá datos de contacto y ayudas sociales otorgadas.
-            </p>
-            <div class="mt-auto small text-muted">
-              {% if rol_staff_finanzas or rol_operador_finanzas or rol_consulta_politica %}
-                Ayudas sociales del mes (aprobadas): <strong>${{ ayudas_mes|formato_pesos }}</strong>
-              {% else %}
-                Acceso al padrón de beneficiarios y ayudas según los permisos de tu rol.
-              {% endif %}
+            <div class="mt-auto">
+                <div class="kpi-label">Ayuda Social</div>
+                <div class="kpi-value text-dark counter-anim" data-target="{{ ayudas_mes_monto|stringformat:'f' }}">$0,00</div>
+                <div class="mt-3 pt-3 border-top d-flex justify-content-between small text-muted">
+                    <span>Asistencias</span>
+                    <span class="fw-bold text-danger">{{ ayudas_mes_cant }} personas</span>
+                </div>
             </div>
-          </div>
         </div>
-      </a>
     </div>
-  {% endif %}
 
-  {# Balances #}
-  {% if rol_staff_finanzas or rol_consulta_politica %}
-    <div class="col-12 col-md-4">
-      <a href="{% url 'finanzas:balance_resumen' %}" class="text-decoration-none text-reset">
-        <div class="card h-100 shadow-sm border-0">
-          <div class="card-body d-flex flex-column">
-            <div class="mb-2">
-              <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
-                Balances
-              </span>
+    <div class="col-12 col-md-6 col-xl-3 animate-in" style="animation-delay: 0.3s;">
+        <div class="kpi-card">
+            <div class="d-flex justify-content-between align-items-start w-100 mb-2">
+                <div class="kpi-icon bg-info-subtle text-info rounded-3">
+                    <i class="bi bi-fuel-pump-fill"></i>
+                </div>
             </div>
-            <h2 class="h6 mb-2">Ver balances y resumen</h2>
-            <p class="small text-muted mb-3">
-              Analizá en detalle ingresos, gastos, áreas y categorías con más movimiento.
-            </p>
-            <div class="mt-auto small text-muted">
-              Ingresos mes (aprobados): <strong>${{ total_ingresos_mes|formato_pesos }}</strong><br>
-              Gastos mes (aprobados): <strong>${{ total_gastos_mes|formato_pesos }}</strong>
+            <div class="mt-auto">
+                <div class="kpi-label">Combustible</div>
+                <div class="kpi-value text-dark counter-anim" data-target="{{ combustible_mes|stringformat:'f' }}">$0,00</div>
+                <div class="mt-3 pt-3 border-top d-flex justify-content-between small text-muted">
+                    <span>Flota</span>
+                    <span class="fw-bold text-info">{{ viajes_mes }} viajes</span>
+                </div>
             </div>
-          </div>
         </div>
-      </a>
     </div>
-  {% endif %}
 
-  {# Flota / vehículos #}
-  {% if rol_staff_finanzas or rol_operador_finanzas or rol_consulta_politica or rol_operador_social %}
-    <div class="col-12 col-md-4">
-      <a href="{% url 'finanzas:flota_combustible_resumen' %}" class="text-decoration-none text-reset">
-        <div class="card h-100 shadow-sm border-0">
-          <div class="card-body d-flex flex-column">
-            <div class="mb-2">
-              <span class="badge bg-info-subtle text-info border border-info-subtle">
-                Flota y viajes
-              </span>
+    <div class="col-12 col-md-6 col-xl-3 animate-in" style="animation-delay: 0.4s;">
+        <div class="kpi-card">
+            <div class="d-flex justify-content-between align-items-start w-100 mb-2">
+                <div class="kpi-icon bg-warning-subtle text-warning-emphasis rounded-3">
+                    <i class="bi bi-hourglass-split"></i>
+                </div>
             </div>
-            <h2 class="h6 mb-2">Vehículos y consumo de combustible</h2>
-            <p class="small text-muted mb-3">
-              Seguí los viajes, km recorridos y el gasto en combustible de cada vehículo.
-            </p>
-            <div class="mt-auto small text-muted">
-              Viajes mes: <strong>{{ viajes_mes|default:0|intcomma }}</strong><br>
-              Km cargados: <strong>{{ total_km_mes|default:0|floatformat:1|intcomma }} km</strong>
-              {% if not rol_operador_social %}
-                <br>
-                Combustible mes: <strong>${{ combustible_mes|default_if_none:0|formato_pesos }}</strong>
-              {% endif %}
+            <div class="mt-auto">
+                <div class="kpi-label">A Pagar</div>
+                <div class="kpi-value text-dark">{{ cantidad_ordenes_pendientes }}</div>
+                <div class="mt-3 pt-3 border-top">
+                    <a href="{% url 'finanzas:orden_pago_list' %}?estado=BORRADOR" class="d-block text-decoration-none small fw-bold text-primary">
+                        Gestionar Pagos <i class="bi bi-arrow-right ms-1"></i>
+                    </a>
+                </div>
             </div>
-          </div>
         </div>
-      </a>
     </div>
-  {% endif %}
-
-  {# Órdenes de pago / compras #}
-  {% if rol_staff_finanzas or rol_operador_finanzas %}
-    <div class="col-12 col-md-4">
-      <a href="{% url 'finanzas:orden_pago_list' %}" class="text-decoration-none text-reset">
-        <div class="card h-100 shadow-sm border-0">
-          <div class="card-body d-flex flex-column">
-            <div class="mb-2">
-              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
-                Órdenes
-              </span>
-            </div>
-            <h2 class="h6 mb-2">Órdenes de pago y compras</h2>
-            <p class="small text-muted mb-3">
-              Controlá obligaciones pendientes y el circuito de compras de la comuna.
-            </p>
-            <div class="mt-auto small text-muted">
-              OP pendientes: <strong>{{ cantidad_ordenes_pendientes|default:0 }}</strong><br>
-              Monto comprometido: <strong>${{ total_ordenes_pendientes|default:0|formato_pesos }}</strong>
-            </div>
-          </div>
-        </div>
-      </a>
-    </div>
-  {% endif %}
-
-  {# Agenda / tareas #}
-  <div class="col-12 col-md-4">
-    <a href="{% url 'agenda:agenda_list' %}" class="text-decoration-none text-reset">
-      <div class="card h-100 shadow-sm border-0">
-        <div class="card-body d-flex flex-column">
-          <div class="mb-2">
-            <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
-              Agenda
-            </span>
-          </div>
-          <h2 class="h6 mb-2">Tareas y vencimientos</h2>
-          <p class="small text-muted mb-3">
-            Organizá vencimientos de impuestos, órdenes, ayudas y recordatorios operativos.
-          </p>
-          <div class="mt-auto small text-muted">
-            Tareas pendientes asignadas: <strong>{{ tareas_pendientes_usuario|default:0 }}</strong>
-          </div>
-        </div>
-      </div>
-    </a>
-  </div>
-
 </div>
 
-{# ===== Resumen del mes + últimos movimientos ===== #}
-{% if rol_staff_finanzas or rol_operador_finanzas or rol_consulta_politica %}
-  <div class="row g-3">
-    <div class="col-12 col-lg-6">
-      <h2 class="h6 mb-1">Resumen del mes</h2>
-      <p class="small text-muted mb-2">
-        Basado únicamente en movimientos aprobados.
-      </p>
-      <div class="row g-2">
-        <div class="col-12 col-sm-4">
-          <div class="card border-success-subtle shadow-sm home-summary-card home-summary-card--ingresos">
-            <div class="card-body py-3">
-              <div class="small text-muted text-uppercase">Ingresos</div>
-              <div class="fw-bold text-success fs-6">
-                ${{ total_ingresos_mes|formato_pesos }}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="col-12 col-sm-4">
-          <div class="card border-danger-subtle shadow-sm home-summary-card home-summary-card--gastos">
-            <div class="card-body py-3">
-              <div class="small text-muted text-uppercase">Gastos</div>
-              <div class="fw-bold text-danger fs-6">
-                ${{ total_gastos_mes|formato_pesos }}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="col-12 col-sm-4">
-          <div class="card border-primary-subtle shadow-sm home-summary-card home-summary-card--saldo">
-            <div class="card-body py-3">
-              <div class="small text-muted text-uppercase">Saldo</div>
-              <div class="fw-bold fs-6 {% if saldo_mes >= 0 %}text-primary{% else %}text-danger{% endif %}">
-                ${{ saldo_mes|formato_pesos }}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {% if rol_staff_finanzas %}
-          <div class="col-12">
-            <div class="card border-info-subtle shadow-sm mt-2 home-summary-card home-summary-card--ayudas">
-              <div class="card-body py-3">
-                <div class="small text-muted text-uppercase mb-1">
-                  Ayudas, sueldos y servicios del mes
-                </div>
-                <p class="mb-1 small">
-                  <span class="text-muted">Ayudas sociales:</span>
-                  <span class="fw-bold text-info">${{ ayudas_mes|formato_pesos }}</span>
-                </p>
-                <p class="mb-1 small">
-                  <span class="text-muted">Sueldos / jornales / changas:</span>
-                  <span class="fw-bold text-warning">
-                    ${{ personal_mes|default:0|formato_pesos }}
-                  </span>
-                </p>
-                <p class="mb-0 small">
-                  <span class="text-muted">Servicios cobrados:</span>
-                  <span class="fw-bold text-primary">
-                    ${{ servicios_mes|default:0|formato_pesos }}
-                  </span>
-                </p>
-                <div class="small text-muted mt-2">
-                  Basado en movimientos aprobados y en categorías marcadas como ayuda social, personal y servicios.
-                </div>
-              </div>
-            </div>
-
-            <div class="card border-primary-subtle shadow-sm mt-2 home-summary-card home-summary-card--ordenes">
-              <div class="card-body py-3">
-                <div class="small text-muted text-uppercase mb-1">
-                  Órdenes de pago pendientes
-                </div>
-                <p class="mb-1 small">
-                  <span class="text-muted">Cantidad:</span>
-                  <span class="fw-bold">
-                    {{ cantidad_ordenes_pendientes|default:0 }}
-                  </span>
-                </p>
-                <p class="mb-0 small">
-                  <span class="text-muted">Monto comprometido:</span>
-                  <span class="fw-bold text-primary">
-                    ${{ total_ordenes_pendientes|default:0|formato_pesos }}
-                  </span>
-                </p>
-              </div>
-            </div>
-          </div>
-        {% endif %}
-      </div>
-    </div>
-
-    {# ===== Últimos movimientos (lista moderna) ===== #}
-    <div class="col-12 col-lg-6">
-      <div class="card shadow-sm mv-activity-card">
-        <div class="card-header py-2 d-flex justify-content-between align-items-center">
-          <div>
-            <span class="small text-uppercase text-muted fw-semibold d-block">
-              Últimos movimientos
-            </span>
-            <span class="small text-muted">
-              Últimos 5 registros aprobados cargados en el sistema.
-            </span>
-          </div>
-          <a href="{% url 'finanzas:movimiento_list' %}" class="small text-decoration-none">
-            Ver todos
-          </a>
-        </div>
-        <div class="card-body">
-          {% if ultimos_movimientos %}
-            <ul class="mv-activity-list" aria-label="Últimos movimientos aprobados">
-              {% for m in ultimos_movimientos %}
-                <li class="mv-activity-item">
-                  <a
-                    href="{% url 'finanzas:movimiento_detail' m.pk %}"
-                    class="mv-activity-link"
-                  >
-                    <div class="mv-activity-pill
-                      {% if m.tipo == m.TIPO_INGRESO %}
-                        mv-activity-pill--ingreso
-                      {% elif m.tipo == m.TIPO_GASTO %}
-                        mv-activity-pill--gasto
-                      {% else %}
-                        mv-activity-pill--transferencia
-                      {% endif %}
-                    ">
-                      {{ m.get_tipo_display }}
+<div class="row g-4 animate-in" style="animation-delay: 0.5s;">
+    
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
+            <div class="card-body p-4 d-flex flex-column">
+                <h6 class="fw-bold text-secondary text-uppercase small ls-1 mb-4">Balance: {{ titulo_periodo }}</h6>
+                
+                {% if total_ingresos_mes == 0 and total_gastos_mes == 0 %}
+                    <div class="m-auto text-center py-5 text-muted">
+                        <i class="bi bi-pie-chart fs-1 opacity-25 mb-2"></i>
+                        <p class="small mb-0 fst-italic">Sin movimientos en este periodo.</p>
+                    </div>
+                {% else %}
+                    <div style="height: 200px; position: relative;" class="mb-3">
+                        <canvas id="balanceChart"></canvas>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mb-2 px-1">
+                        <span class="small fw-bold text-muted"><i class="bi bi-circle-fill text-success me-2" style="font-size: 6px;"></i>Ingresos</span>
+                        <span class="fw-bold text-dark font-monospace" style="font-size: 0.9rem;">${{ total_ingresos_mes|floatformat:2|intcomma }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between px-1 mb-3">
+                        <span class="small fw-bold text-muted"><i class="bi bi-circle-fill text-danger me-2" style="font-size: 6px;"></i>Gastos</span>
+                        <span class="fw-bold text-dark font-monospace" style="font-size: 0.9rem;">${{ total_gastos_mes|floatformat:2|intcomma }}</span>
                     </div>
 
-                    <div class="flex-grow-1">
-                      <div class="d-flex justify-content-between align-items-baseline mb-1">
-                        <div class="mv-activity-title">
-                          {{ m.categoria|default:"Sin categoría" }}
+                    <div class="pt-3 border-top mt-auto">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-bold text-secondary" style="font-size: 0.7rem;">RATIO DE GASTO</span>
+                            <span class="small fw-bold text-dark" id="ratio-text">0%</span>
                         </div>
-                        <div class="mv-activity-amount
-                          {% if m.tipo == m.TIPO_INGRESO %}
-                            text-success
-                          {% elif m.tipo == m.TIPO_GASTO %}
-                            text-danger
-                          {% else %}
-                            text-secondary
-                          {% endif %}
-                        ">
-                          {% if m.tipo == m.TIPO_INGRESO %}+{% elif m.tipo == m.TIPO_GASTO %}-{% endif %}
-                          ${{ m.monto|formato_pesos }}
+                        <div class="progress progress-thin">
+                            <div class="progress-bar bg-primary" role="progressbar" id="ratio-bar" style="width: 0%"></div>
                         </div>
-                      </div>
-                      <div class="d-flex justify-content-between mv-activity-meta">
-                        <span>{{ m.fecha_operacion|date:"d/m/Y" }}</span>
-                        <span>
-                          {{ m.descripcion|default:"(sin detalle)"|truncatechars:40 }}
-                        </span>
-                      </div>
+                        <p class="mt-2 mb-0 text-muted fst-italic" style="font-size: 0.75rem;">
+                            Porcentaje de ingresos consumidos por gastos operativos.
+                        </p>
                     </div>
-                  </a>
-                </li>
-              {% endfor %}
-            </ul>
-          {% else %}
-            <div class="p-3 small text-muted">
-              Todavía no hay movimientos cargados.
+                {% endif %}
             </div>
-          {% endif %}
         </div>
-      </div>
     </div>
-  </div>
-{% endif %}
 
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
+            <div class="card-header bg-white py-3 px-4 border-bottom d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-bold text-secondary text-uppercase small ls-1">Últimos Movimientos</h6>
+                <a href="{% url 'finanzas:movimiento_list' %}" class="btn btn-sm btn-light border rounded-pill px-3 fw-bold small hover-lift">Ver Todo</a>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for m in ultimos_movimientos %}
+                <a href="{% url 'finanzas:movimiento_detail' m.pk %}" class="list-group-item list-group-item-action py-3 px-4 border-bottom-0 border-top bg-transparent">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 shadow-sm border border-white {% if m.tipo == 'INGRESO' %}bg-success text-white{% else %}bg-white text-danger border-danger-subtle{% endif %}" style="width: 40px; height: 40px;">
+                            {% if m.tipo == 'INGRESO' %}<i class="bi bi-arrow-down-left"></i>{% else %}<i class="bi bi-arrow-up-right"></i>{% endif %}
+                        </div>
+                        <div class="flex-grow-1 overflow-hidden">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <h6 class="mb-0 text-truncate fw-bold text-dark" style="max-width: 350px; font-size: 0.9rem;">{{ m.descripcion|default:"Sin descripción" }}</h6>
+                                <span class="fw-bold font-monospace {% if m.tipo == 'INGRESO' %}text-success{% else %}text-danger{% endif %} text-nowrap">
+                                    {% if m.tipo == 'INGRESO' %}+{% else %}-{% endif %} ${{ m.monto|floatformat:2|intcomma }}
+                                </span>
+                            </div>
+                            <div class="d-flex align-items-center gap-2 small text-secondary">
+                                <span class="badge bg-light text-secondary border fw-normal">{{ m.categoria.nombre }}</span>
+                                <span class="opacity-50">•</span>
+                                <span>{{ m.fecha_operacion|date:"d/m/Y" }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </a>
+                {% empty %}
+                <div class="text-center py-5 text-muted">
+                    <p class="small mb-0">No hay movimientos recientes.</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // 1. ANIMACIÓN DE NÚMEROS
+    const counters = document.querySelectorAll('.counter-anim');
+    const formatter = new Intl.NumberFormat('es-AR', { 
+        style: 'currency', currency: 'ARS', minimumFractionDigits: 2 
+    });
+
+    counters.forEach(counter => {
+        // Obtenemos el valor crudo formateado para JS (sin comas de miles)
+        let raw = counter.getAttribute('data-target'); 
+        if(!raw) return;
+        
+        let target = parseFloat(raw.replace(',', '.')); // Aseguramos formato punto decimal
+        if(isNaN(target)) target = 0;
+        
+        let start = 0;
+        const duration = 1200; // ms
+        const startTime = performance.now();
+
+        function update(currentTime) {
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            // Easing function (cubic out)
+            const ease = 1 - Math.pow(1 - progress, 3);
+            
+            const current = start + (target - start) * ease;
+            counter.innerText = formatter.format(current);
+
+            if (progress < 1) requestAnimationFrame(update);
+            else counter.innerText = formatter.format(target);
+        }
+        requestAnimationFrame(update);
+    });
+
+    // 2. GRÁFICO + CÁLCULO DE RATIO
+    const ctx = document.getElementById('balanceChart');
+    if (ctx) {
+        // Usamos stringformat:"f" para obtener el número limpio tipo 1234.56
+        const ing = {{ total_ingresos_mes|stringformat:"f" }};
+        const gas = {{ total_gastos_mes|stringformat:"f" }};
+
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Ingresos', 'Gastos'],
+                datasets: [{
+                    data: [ing, gas],
+                    backgroundColor: ['#10b981', '#ef4444'], // Verde Emerald, Rojo
+                    borderWidth: 0, hoverOffset: 5
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, cutout: '75%',
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // CÁLCULO DE LA BARRA DE EFICIENCIA
+        if (ing > 0) {
+            let ratio = (gas / ing) * 100;
+            let displayRatio = ratio.toFixed(1);
+            if (ratio > 100) ratio = 100; // Tope visual de la barra
+            
+            const bar = document.getElementById('ratio-bar');
+            const txt = document.getElementById('ratio-text');
+            
+            bar.style.width = ratio + "%";
+            txt.innerText = displayRatio + "%";
+
+            // Cambiar color según salud financiera
+            if (ratio > 100) {
+                bar.classList.remove('bg-primary'); bar.classList.add('bg-danger');
+            } else if (ratio > 80) {
+                bar.classList.remove('bg-primary'); bar.classList.add('bg-warning');
+            }
+        }
+    }
+});
+</script>
 {% endblock %}

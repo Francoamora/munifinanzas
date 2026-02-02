@@ -1,262 +1,84 @@
 {% extends "finanzas/base.html" %}
+{% load humanize %}
 
-{% block title %}
-  Atenciones de {{ beneficiario }} – Comuna de Tacuarendí
-{% endblock %}
+{% block title %}Atenciones de {{ beneficiario }}{% endblock %}
 
 {% block content %}
-
-<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
   <div>
-    <h1 class="h4 mb-1">
-      Atenciones a {{ beneficiario.apellido }}, {{ beneficiario.nombre }}
-    </h1>
+    <h1 class="h3 fw-bold text-dark mb-1">Atenciones</h1>
     <div class="text-muted small">
-      Historial de atenciones sociales, gestiones y acompañamiento registrado para esta persona.
-    </div>
-    <div class="text-muted small mt-1">
-      DNI: {{ beneficiario.dni|default:"-" }}
-      {% if beneficiario.barrio %}
-        · Barrio: {{ beneficiario.barrio }}
-      {% endif %}
+      Historial de <strong>{{ beneficiario.apellido }}, {{ beneficiario.nombre }}</strong>
+      {% if beneficiario.dni %}— DNI {{ beneficiario.dni }}{% endif %}
     </div>
   </div>
-
-  <div class="d-flex flex-wrap gap-2">
-    <a
-      href="{% url 'finanzas:persona_detail' beneficiario.id %}"
-      class="btn btn-outline-secondary btn-sm"
-    >
-      Volver a la ficha de persona
-    </a>
-    <a
-      href="{% url 'finanzas:atencion_list' %}"
-      class="btn btn-outline-secondary btn-sm"
-    >
-      Ver todas las atenciones
-    </a>
-    <a
-      href="{% url 'finanzas:atencion_create' %}?persona={{ beneficiario.id }}"
-      class="btn btn-primary btn-sm"
-    >
-      Registrar nueva atención a esta persona
+  <div class="d-flex gap-2">
+    <a href="{% url 'finanzas:persona_detail' beneficiario.pk %}" class="btn btn-outline-secondary">Volver a Persona</a>
+    <a href="{% url 'finanzas:atencion_create' %}?persona={{ beneficiario.pk }}&next={{ request.path|urlencode }}"
+       class="btn btn-primary shadow-sm">
+      <i class="bi bi-plus-lg me-1"></i> Nueva Atención
     </a>
   </div>
 </div>
 
-<div class="row g-3 mb-3">
-  <div class="col-12 col-md-6 col-lg-4">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body py-3">
-        <div class="text-muted small mb-1">
-          Atenciones registradas
-        </div>
-        <div class="h5 mb-0">
-          {{ atenciones|length }}
-        </div>
-        <div class="text-muted small mt-1">
-          Cantidad de atenciones sociales, gestiones y pedidos cargados para esta persona.
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-4">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body py-3">
-        <div class="text-muted small mb-1">
-          Atenciones con seguimiento
-        </div>
-        <div class="h5 mb-0">
-          {{ total_con_seguimiento|default:"0" }}
-        </div>
-        <div class="text-muted small mt-1">
-          Casos en curso o con seguimiento activo, como trámites en proceso o visitas pendientes.
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="card shadow-sm border-0 mb-3">
-  <div class="card-header bg-body border-0 pb-1">
-    <h2 class="h6 mb-0">Historial de atenciones sociales</h2>
-    <div class="text-muted small">
-      Qué vino a pedir la persona, qué se hizo, qué quedó pendiente y por qué área se trabajó.
-    </div>
-  </div>
-
-  <div class="card-body pt-2">
-    {% if atenciones %}
-      <div class="list-group list-group-flush">
-        {% for atencion in atenciones %}
-          <div class="list-group-item px-0">
-            <div class="d-flex justify-content-between align-items-start gap-3">
-              <div class="flex-grow-1">
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
-                  <span class="badge rounded-pill bg-body-secondary text-muted border">
-                    {% if atencion.fecha_atencion %}
-                      {{ atencion.fecha_atencion|date:"d/m/Y" }}
-                    {% elif atencion.fecha_operacion %}
-                      {{ atencion.fecha_operacion|date:"d/m/Y" }}
-                    {% else %}
-                      Sin fecha
-                    {% endif %}
-                  </span>
-
-                  {% with motivo=atencion.get_motivo_principal_display|default:atencion.motivo_principal %}
-                    {% if motivo %}
-                      <span class="badge rounded-pill bg-primary-subtle text-primary border border-primary-subtle">
-                        {{ motivo }}
-                      </span>
-                    {% endif %}
-                  {% endwith %}
-
-                  {% if atencion.canal %}
-                    <span class="badge rounded-pill bg-info-subtle text-info border border-info-subtle">
-                      {{ atencion.get_canal_display|default:atencion.canal }}
-                    </span>
-                  {% endif %}
-
-                  {% if atencion.area %}
-                    <span class="badge rounded-pill bg-body-tertiary text-muted border">
-                      Área: {{ atencion.area.nombre|default:atencion.area }}
-                    </span>
-                  {% endif %}
-
-                  {% if atencion.origen_interno %}
-                    <span class="badge rounded-pill bg-body-secondary text-muted border">
-                      Origen: {{ atencion.origen_interno }}
-                    </span>
-                  {% endif %}
-                </div>
-
-                <div class="small">
-                  {% if atencion.descripcion %}
-                    {{ atencion.descripcion }}
-                  {% elif atencion.resultado %}
-                    {{ atencion.resultado }}
-                  {% else %}
-                    <span class="text-muted">Sin detalle de la situación.</span>
-                  {% endif %}
-                </div>
-
-                {% if atencion.resultado %}
-                  <div class="text-muted small mt-1">
-                    <strong>Resultado / acciones:</strong>
-                    {{ atencion.resultado }}
-                  </div>
-                {% endif %}
-
-                {% if atencion.tarea_seguimiento %}
-                  <div class="text-muted small mt-1">
-                    <i class="bi bi-calendar-check"></i>
-                    Seguimiento en agenda:
-                    <strong>
-                      {{ atencion.tarea_seguimiento.titulo|default:atencion.tarea_seguimiento }}
-                    </strong>
-                  </div>
-                {% endif %}
-              </div>
-
-              <div class="text-end small flex-shrink-0">
-                {% if atencion.estado %}
-                  <div class="mb-1">
-                    <span class="badge
-                      {% if atencion.estado == 'cerrada' %}
-                        bg-success-subtle text-success border border-success-subtle
-                      {% elif atencion.estado == 'en_curso' %}
-                        bg-warning-subtle text-warning border border-warning-subtle
-                      {% else %}
-                        bg-secondary-subtle text-secondary border border-secondary-subtle
-                      {% endif %}
-                    ">
-                      {{ atencion.get_estado_display|default:atencion.estado }}
-                    </span>
-                  </div>
-                {% endif %}
-
-                {% if atencion.prioridad %}
-                  <div>
-                    <span class="badge bg-body-secondary text-muted border">
-                      Prioridad: {{ atencion.get_prioridad_display|default:atencion.prioridad }}
-                    </span>
-                  </div>
-                {% endif %}
-
-                {% if atencion.requiere_seguimiento %}
-                  <div class="mt-1 text-warning-emphasis small">
-                    <i class="bi bi-flag-fill"></i>
-                    Requiere seguimiento
-                  </div>
-                {% endif %}
-              </div>
-            </div>
-          </div>
+<div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="bg-light small text-uppercase text-muted">
+        <tr>
+          <th class="ps-4">Fecha</th>
+          <th>Motivo</th>
+          <th>Estado</th>
+          <th>Área</th>
+          <th class="text-end pe-4">Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in atenciones %}
+        <tr>
+          <td class="ps-4">
+            <div class="fw-bold text-dark">{{ a.fecha_atencion|date:"d/m/Y" }}</div>
+            <div class="small text-muted">#{{ a.id }}</div>
+          </td>
+          <td>
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+              {{ a.get_motivo_principal_display }}
+            </span>
+            {% if a.descripcion %}
+              <div class="small text-muted mt-1">{{ a.descripcion|truncatechars:80 }}</div>
+            {% endif %}
+          </td>
+          <td>
+            {% if a.estado == "ABIERTA" %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle">ABIERTA</span>
+            {% elif a.estado == "EN_SEGUIMIENTO" %}
+              <span class="badge bg-warning-subtle text-warning border border-warning-subtle">SEGUIMIENTO</span>
+            {% else %}
+              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">CERRADA</span>
+            {% endif %}
+          </td>
+          <td>{{ a.area|default:"-" }}</td>
+          <td class="text-end pe-4">
+            <a href="{% url 'finanzas:atencion_update' a.pk %}?next={{ request.path|urlencode }}"
+               class="btn btn-sm btn-outline-secondary">
+              Editar <i class="bi bi-chevron-right ms-1"></i>
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="5" class="text-center py-5">
+            <div class="text-muted opacity-50 mb-3"><i class="bi bi-journal-x fs-1"></i></div>
+            <p class="mb-0 text-muted">Todavía no hay atenciones para esta persona.</p>
+          </td>
+        </tr>
         {% endfor %}
-      </div>
+      </tbody>
+    </table>
+  </div>
 
-      {% if is_paginated %}
-        <div class="d-flex justify-content-between align-items-center mt-3">
-          <div class="text-muted small">
-            Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
-          </div>
-          <nav>
-            <ul class="pagination pagination-sm mb-0">
-              {% if page_obj.has_previous %}
-                <li class="page-item">
-                  <a class="page-link" href="?page={{ page_obj.previous_page_number }}">
-                    Anterior
-                  </a>
-                </li>
-              {% else %}
-                <li class="page-item disabled">
-                  <span class="page-link">Anterior</span>
-                </li>
-              {% endif %}
-
-              <li class="page-item active">
-                <span class="page-link">
-                  {{ page_obj.number }}
-                </span>
-              </li>
-
-              {% if page_obj.has_next %}
-                <li class="page-item">
-                  <a class="page-link" href="?page={{ page_obj.next_page_number }}">
-                    Siguiente
-                  </a>
-                </li>
-              {% else %}
-                <li class="page-item disabled">
-                  <span class="page-link">Siguiente</span>
-                </li>
-              {% endif %}
-            </ul>
-          </nav>
-        </div>
-      {% endif %}
-    {% else %}
-      <div class="text-center py-4">
-        <div class="mb-2">
-          <i class="bi bi-people text-muted" style="font-size: 1.8rem;"></i>
-        </div>
-        <p class="mb-1">
-          Todavía no hay atenciones sociales registradas para esta persona.
-        </p>
-        <p class="text-muted small mb-3">
-          Podés cargarlas desde el módulo de atenciones sociales
-          o usando el botón <strong>“Registrar nueva atención a esta persona”</strong>.
-        </p>
-        <a
-          href="{% url 'finanzas:atencion_create' %}?persona={{ beneficiario.id }}"
-          class="btn btn-primary btn-sm"
-        >
-          Registrar primera atención a esta persona
-        </a>
-      </div>
-    {% endif %}
+  <div class="card-footer bg-white border-top-0 py-3">
+    {% include "finanzas/components/pagination.html" %}
   </div>
 </div>
-
 {% endblock %}

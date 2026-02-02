@@ -1,0 +1,316 @@
+{% extends "finanzas/base.html" %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}
+    {% if orden %}Editar OT #{{ orden.id }}{% else %}Nueva Orden de Trabajo{% endif %}
+{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center animate-fade-in" style="padding-bottom: 140px;">
+    <div class="col-12 col-xl-11">
+
+        <form method="post" novalidate id="otForm">
+            {% csrf_token %}
+            
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-5 gap-3">
+                <div>
+                    <h1 class="h3 fw-bold text-dark mb-1">
+                        {% if orden %}
+                            <i class="bi bi-pencil-square me-2 text-warning"></i>Editar OT <span class="text-muted">#{{ orden.id }}</span>
+                        {% else %}
+                            <i class="bi bi-tools me-2 text-warning"></i>Nueva Orden de Trabajo
+                        {% endif %}
+                    </h1>
+                    <p class="text-secondary mb-0 small fw-medium">Planificación de tareas, asignación de recursos y costos.</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="{% url 'finanzas:orden_trabajo_list' %}" class="btn btn-white border shadow-sm px-3 fw-bold text-secondary">
+                        Cancelar
+                    </a>
+                    {% if not orden or orden.estado != 'FINALIZADA' %}
+                    <button type="submit" class="btn btn-warning shadow-sm fw-bold px-4 hover-lift">
+                        <i class="bi bi-save2 me-2"></i>Guardar Orden
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if form.errors or materiales.errors %}
+                <div class="alert alert-danger shadow-sm border-0 mb-4 rounded-3">
+                    <div class="d-flex align-items-start gap-3">
+                        <i class="bi bi-exclamation-triangle-fill fs-4 mt-1"></i>
+                        <div>
+                            <strong class="d-block mb-1">Revisa los siguientes errores:</strong>
+                            <ul class="mb-0 ps-3 small">
+                                {% for field in form %}
+                                    {% for error in field.errors %}<li><strong>{{ field.label }}:</strong> {{ error }}</li>{% endfor %}
+                                {% endfor %}
+                                {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+                                {% for dict in materiales.errors %}
+                                    {% for field, error in dict.items %}
+                                        <li><strong>Materiales:</strong> {{ error|striptags }}</li>
+                                    {% endfor %}
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+
+            <div class="row g-4">
+                
+                <div class="col-lg-8">
+                    
+                    <div class="card border-0 shadow-sm mb-4 rounded-4 overflow-hidden">
+                        <div class="card-header bg-white py-3 border-bottom">
+                            <h6 class="mb-0 fw-bold text-dark text-uppercase small ls-1">
+                                <i class="bi bi-clipboard-data me-2 text-primary"></i>Datos del Trabajo
+                            </h6>
+                        </div>
+                        <div class="card-body p-4 bg-light bg-opacity-25">
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label class="form-label small fw-bold text-dark">DESCRIPCIÓN TAREA *</label>
+                                    {{ form.descripcion }}
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small fw-bold text-dark">TIPO</label>
+                                    {{ form.tipo_trabajo }}
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small fw-bold text-dark">PRIORIDAD</label>
+                                    {{ form.prioridad }}
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small fw-bold text-dark">FECHA SOLICITUD</label>
+                                    {{ form.fecha_ot }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm mb-4 rounded-4 overflow-hidden">
+                        <div class="card-header bg-dark text-white py-3 px-4 d-flex justify-content-between align-items-center">
+                            <span class="fw-bold text-uppercase small ls-1"><i class="bi bi-box-seam me-2"></i>Materiales e Insumos</span>
+                            <div class="bg-white text-dark rounded-pill px-3 py-1 fw-bold shadow-sm d-flex align-items-center gap-2" style="font-size: 0.85rem;">
+                                <span class="small text-secondary text-uppercase">Total Est:</span>
+                                <span id="totalDisplay" class="font-monospace">$ 0,00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0 align-middle" id="tablaMateriales">
+                                <thead class="bg-light text-secondary small text-uppercase fw-bold">
+                                    <tr>
+                                        <th style="width: 40%;" class="ps-4">Material / Insumo</th>
+                                        <th style="width: 15%;">Cant.</th>
+                                        <th style="width: 10%;">Unidad</th>
+                                        <th style="width: 20%;">Costo Unit.</th>
+                                        <th style="width: 10%;" class="text-end pe-3">Subtotal</th>
+                                        <th style="width: 5%;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="materiales-container">
+                                    {{ materiales.management_form }}
+                                    {% for form in materiales %}
+                                        <tr class="material-row bg-white">
+                                            {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+                                            <td class="ps-4">{{ form.descripcion }}</td>
+                                            <td>{{ form.cantidad }}</td>
+                                            <td>{{ form.unidad }}</td>
+                                            <td>
+                                                <div class="input-group input-group-sm">
+                                                    <span class="input-group-text bg-light border-end-0 text-muted">$</span>
+                                                    {{ form.costo_unitario }}
+                                                </div>
+                                            </td>
+                                            <td class="text-end pe-3 font-monospace fw-bold text-muted subtotal-cell">
+                                                $ 0,00
+                                            </td>
+                                            <td class="text-center">
+                                                {% if materiales.can_delete %}
+                                                    <div class="d-none">{{ form.DELETE }}</div>
+                                                    <button type="button" class="btn btn-sm btn-outline-danger border-0 btn-delete-row shadow-none">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <div class="p-3 bg-light border-top text-center">
+                            <button type="button" id="add-row" class="btn btn-outline-dark btn-sm fw-bold border-2 rounded-pill px-4 hover-lift">
+                                <i class="bi bi-plus-lg me-1"></i> AGREGAR ÍTEM
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm rounded-4 mb-4">
+                        <div class="card-body p-4">
+                            <label class="form-label small fw-bold text-dark text-uppercase">Informe Técnico / Resolución</label>
+                            {{ form.trabajos_realizados }}
+                            <div class="form-text small">Completar detalles de la ejecución al finalizar el trabajo.</div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="col-lg-4">
+                    <div class="card border-0 shadow-sm rounded-4 sticky-top" style="top: 100px;">
+                        <div class="card-header bg-primary text-white py-3 fw-bold text-uppercase small ls-1">
+                            <i class="bi bi-person-gear me-2"></i>Recursos
+                        </div>
+                        <div class="card-body p-4">
+                            
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold text-dark">RESPONSABLE / CAPATAZ</label>
+                                {{ form.responsable }}
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold text-dark">SOLICITANTE</label>
+                                {{ form.solicitante }}
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold text-dark">ÁREA</label>
+                                {{ form.area }}
+                            </div>
+
+                            <hr class="border-light my-4">
+
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold text-dark">VEHÍCULO</label>
+                                <div class="input-group shadow-sm">
+                                    <span class="input-group-text bg-white border-end-0"><i class="bi bi-truck text-success"></i></span>
+                                    {{ form.vehiculo }}
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold text-dark">N° INTERNO (Ref)</label>
+                                {{ form.numero }}
+                            </div>
+
+                            <div class="mb-2">
+                                <label class="form-label small fw-bold text-dark">ESTADO</label>
+                                {{ form.estado }}
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </form>
+    </div>
+</div>
+
+<table style="display:none">
+    <tbody id="empty-row">
+        <tr class="material-row bg-white animate-fade-in">
+            {% with materiales.empty_form as form %}
+                {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+                <td class="ps-4">{{ form.descripcion }}</td>
+                <td>{{ form.cantidad }}</td>
+                <td>{{ form.unidad }}</td>
+                <td>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-light border-end-0 text-muted">$</span>
+                        {{ form.costo_unitario }}
+                    </div>
+                </td>
+                <td class="text-end pe-3 font-monospace fw-bold text-muted subtotal-cell">$ 0,00</td>
+                <td class="text-center">
+                    <div class="d-none">{{ form.DELETE }}</div>
+                    <button type="button" class="btn btn-sm btn-outline-danger border-0 btn-delete-row shadow-none">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            {% endwith %}
+        </tr>
+    </tbody>
+</table>
+
+{% endblock %}
+
+{% block extra_js %}
+<style>
+    .form-control, .form-select { border: 1px solid #cbd5e1; padding: 0.6rem 0.8rem; border-radius: 8px; font-size: 0.9rem; }
+    .form-control:focus, .form-select:focus { border-color: #ffc107; box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.25); }
+    .table input.form-control { border: 1px solid #f1f5f9; background: #f8fafc; font-size: 0.9rem; }
+    .table input.form-control:focus { background: #fff; border-color: #ffc107; }
+    .hover-lift:hover { transform: translateY(-2px); transition: 0.2s; }
+</style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    
+    // 1. SELECT2 AJAX
+    const selectConfig = { theme: 'bootstrap-5', width: '100%', allowClear: true, language: "es", minimumInputLength: 0 };
+    
+    $('.select2-ajax').each(function() {
+        const $el = $(this);
+        const url = $el.data('ajax-url');
+        $el.select2({
+            ...selectConfig,
+            ajax: {
+                url: url, dataType: 'json', delay: 250,
+                data: params => ({ q: params.term }),
+                processResults: data => ({ results: data.results }),
+            },
+            placeholder: $el.data('placeholder') || 'Buscar...'
+        });
+    });
+
+    // 2. LOGICA FORMSET Y CÁLCULOS
+    const $container = $('#materiales-container');
+    const $totalForms = $('#id_materiales-TOTAL_FORMS');
+    const $emptyRow = $('#empty-row').html();
+    const $totalDisplay = $('#totalDisplay');
+
+    function calcularTotal() {
+        let totalGeneral = 0;
+        $container.find('tr:visible').each(function() {
+            const $row = $(this);
+            const cantVal = parseFloat($row.find('input[name$="-cantidad"]').val().replace(',', '.')) || 0;
+            const precioVal = parseFloat($row.find('input[name$="-costo_unitario"]').val().replace(',', '.')) || 0;
+            
+            const subtotal = cantVal * precioVal;
+            totalGeneral += subtotal;
+            
+            // Actualizar celda subtotal
+            const fmtSub = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(subtotal);
+            $row.find('.subtotal-cell').text(fmtSub);
+        });
+        
+        $totalDisplay.text(new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(totalGeneral));
+    }
+
+    // Eventos para cálculo en vivo
+    $container.on('input', 'input[name$="-cantidad"], input[name$="-costo_unitario"]', calcularTotal);
+
+    $('#add-row').click(function() {
+        const formIdx = parseInt($totalForms.val());
+        const newRow = $emptyRow.replace(/__prefix__/g, formIdx);
+        $container.append(newRow);
+        $totalForms.val(formIdx + 1);
+    });
+
+    $container.on('click', '.btn-delete-row', function() {
+        const $row = $(this).closest('tr');
+        $row.find('input[name$="-DELETE"]').prop('checked', true);
+        $row.hide();
+        calcularTotal();
+    });
+
+    // Calcular al inicio por si es edición
+    calcularTotal();
+});
+</script>
+{% endblock %}

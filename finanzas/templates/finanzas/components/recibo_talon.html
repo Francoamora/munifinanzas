@@ -1,0 +1,90 @@
+{% load humanize %}
+
+<div class="recibo-box">
+    <div class="d-flex justify-content-between align-items-start mb-4">
+        <div class="d-flex gap-3 align-items-center">
+            {% if logo_url %}
+                <img src="{{ logo_url }}" alt="Logo" style="height: 60px; width: auto; max-width: 60px; object-fit: contain;">
+            {% else %}
+                <div style="width: 60px; height: 60px; background: #eee; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                    <i class="bi bi-building fs-2 text-secondary"></i>
+                </div>
+            {% endif %}
+            
+            <div class="brand-section">
+                <h1>{{ municipio }}</h1>
+                <p>{{ direccion }}</p>
+                <p>{{ provincia }} • CUIT: {{ cuit_municipio }}</p>
+            </div>
+        </div>
+        <div class="recibo-badge">
+            <span class="recibo-tipo">{{ tipo }}</span>
+            <span class="recibo-num">N° {{ mov.id|stringformat:"06d" }}</span>
+            <div class="small mt-1">{{ mov.fecha_operacion|date:"d/m/Y" }}</div>
+        </div>
+    </div>
+
+    <div class="info-row">
+        <div class="info-label">Recibí de:</div>
+        <div class="info-value text-uppercase">
+            {# LÓGICA DE PRIORIDADES PARA EL NOMBRE #}
+            {% if mov.beneficiario %}
+                {# 1. Si hay objeto Beneficiario vinculado #}
+                {{ mov.beneficiario.apellido }}, {{ mov.beneficiario.nombre }}
+                <span class="ms-2 small text-muted">(DNI: {{ mov.beneficiario.dni }})</span>
+            
+            {% elif mov.beneficiario_nombre %}
+                {# 2. Si se borró el vínculo pero quedó el texto guardado #}
+                {{ mov.beneficiario_nombre }}
+                {% if mov.beneficiario_dni %} <span class="ms-2 small text-muted">(DNI: {{ mov.beneficiario_dni }})</span>{% endif %}
+            
+            {% elif mov.proveedor %}
+                {# 3. Si es un proveedor vinculado #}
+                {{ mov.proveedor.nombre }} (PROVEEDOR)
+            
+            {% elif mov.proveedor_nombre %}
+                {# 4. Texto de proveedor #}
+                {{ mov.proveedor_nombre }}
+            
+            {% else %}
+                {# 5. Fallback final #}
+                CONTRIBUYENTE OCASIONAL
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="info-row">
+        <div class="info-label">La suma de:</div>
+        <div class="info-value fst-italic">{{ monto_letras }}</div>
+    </div>
+
+    <div class="info-row">
+        <div class="info-label">Concepto:</div>
+        <div class="info-value">
+            <span class="fw-bold">{{ mov.categoria.nombre|upper }}</span>
+            {% if mov.descripcion %} — {{ mov.descripcion }}{% endif %}
+        </div>
+    </div>
+
+    <div class="info-row">
+        <div class="info-label">Forma Pago:</div>
+        <div class="info-value">{{ mov.medio_pago|default:"Efectivo"|upper }}</div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-end mt-4">
+        <div class="text-center" style="width: 200px;">
+            <div style="border-bottom: 1px solid #000; height: 30px; margin-bottom: 5px;"></div>
+            <div class="small fw-bold">FIRMA Y SELLO TESORERÍA</div>
+            <div class="small text-muted" style="font-size: 0.6rem;">Cajero: {{ request.user.username|upper }}</div>
+        </div>
+        
+        <div class="total-box">
+            ${{ mov.monto|floatformat:2|intcomma }}
+        </div>
+    </div>
+
+    <div class="footer-legal">
+        <span>Documento válido como recibo de ingreso municipal.</span>
+        <span>Impreso el {{ hoy|date:"d/m/Y H:i" }}</span>
+    </div>
+</div>

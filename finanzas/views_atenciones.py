@@ -1,81 +1,56 @@
 # finanzas/views_atenciones.py
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Q, Count
 from django.shortcuts import get_object_or_404
-from django.urls import reverse
-from django.views.generic import ListView, CreateView
+from django.views.generic import ListView, CreateView, UpdateView
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.urls import reverse_lazy, reverse
+from django.db.models import Q
+from django.contrib import messages
 
-from .models import (
-    Atencion,
-    Beneficiario,
-    Area,
-)
-from .forms import AtencionForm
+from .models import Atencion, Beneficiario, Area
+from .forms_atenciones import AtencionForm  # <-- nuevo archivo (abajo)
+
+# =========================================================
+# MIXINS DE SEGURIDAD
+# =========================================================
+
+class StaffRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
+    def test_func(self):
+        # si querés, acá después lo cambiamos por roles (OPERADOR_SOCIAL, etc.)
+        return self.request.user.is_staff or self.request.user.is_superuser
 
 
-class AtencionBaseMixin(LoginRequiredMixin):
-    """
-    Mixin base para vistas de ATENCIONES SOCIALES.
+# =========================================================
+# VISTAS DE ATENCIONES
+# =========================================================
 
-    - Trabaja sobre el modelo Atencion (módulo social, sin montos).
-    """
+class AtencionListView(StaffRequiredMixin, ListView):
     model = Atencion
-
-    def get_base_queryset(self):
-        return (
-            Atencion.objects
-            .select_related(
-                "persona",
-                "area",
-                "tarea_seguimiento",
-            )
-        )
-
-
-class AtencionListView(AtencionBaseMixin, ListView):
-    """
-    Listado general de ATENCIONES SOCIALES (sin montos).
-
-    Filtros soportados por GET:
-    - q               → texto libre (persona, DNI, descripción, resultado)
-    - persona         → ID de Beneficiario
-    - area            → ID de Area
-    - estado          → valor de choices de estado
-    - prioridad       → valor de choices de prioridad
-    - canal           → valor de choices de canal
-    - motivo          → valor de choices de motivo_principal
-    - seguimiento=1   → solo atenciones que requieren seguimiento
-    """
-
     template_name = "finanzas/atencion_list.html"
     context_object_name = "atenciones"
-    paginate_by = 25
+    paginate_by = 20
 
     def get_queryset(self):
-        qs = self.get_base_queryset()
+        qs = (
+            Atencion.objects
+            .select_related("persona", "area", "creado_por")
+            .all()
+            .order_by("-fecha_atencion", "-fecha_creacion")  # ✅ en tu modelo es fecha_creacion
+        )
 
         q = (self.request.GET.get("q") or "").strip()
-        persona_id = self.request.GET.get("persona")
-        area_id = self.request.GET.get("area")
-        estado = self.request.GET.get("estado")
-        prioridad = self.request.GET.get("prioridad")
-        canal = self.request.GET.get("canal")
-        motivo = self.request.GET.get("motivo")
-        seguimiento = self.request.GET.get("seguimiento")
+        area_id = (self.request.GET.get("area") or "").strip()
+        estado = (self.request.GET.get("estado") or "").strip()
 
         if q:
             qs = qs.filter(
-                Q(persona__apellido__icontains=q)
-                | Q(persona__nombre__icontains=q)
-                | Q(persona__dni__icontains=q)
-                | Q(persona_nombre__icontains=q)
-                | Q(persona_dni__icontains=q)
-                | Q(descripcion__icontains=q)
-                | Q(resultado__icontains=q)
+                Q(persona__apellido__icontains=q) |
+                Q(persona__nombre__icontains=q) |
+                Q(persona__dni__icontains=q) |
+                Q(persona_nombre__icontains=q) |
+                Q(persona_dni__icontains=q) |
+                Q(descripcion__icontains=q) |
+                Q(resultado__icontains=q)
             )
-
-        if persona_id:
-            qs = qs.filter(persona_id=persona_id)
 
         if area_id:
             qs = qs.filter(area_id=area_id)
@@ -83,151 +58,106 @@ class AtencionListView(AtencionBaseMixin, ListView):
         if estado:
             qs = qs.filter(estado=estado)
 
-        if prioridad:
-            qs = qs.filter(prioridad=prioridad)
-
-        if canal:
-            qs = qs.filter(canal=canal)
-
-        if motivo:
-            qs = qs.filter(motivo_principal=motivo)
-
-        if seguimiento in ("1", "true", "True", "on"):
-            qs = qs.filter(requiere_seguimiento=True)
-
-        return qs.order_by("-fecha_atencion", "-id")
+        return qs
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        qs_base = getattr(self, "object_list", self.get_queryset())
-
-        ctx["total_atenciones"] = qs_base.count()
-        ctx["total_con_seguimiento"] = qs_base.filter(
-            requiere_seguimiento=True
-        ).count()
-
-        ctx["resumen_por_estado"] = (
-            qs_base.values("estado")
-            .annotate(cantidad=Count("id"))
-            .order_by("estado")
-        )
-
-        ctx["resumen_por_area"] = (
-            qs_base.values("area__id", "area__nombre")
-            .annotate(cantidad=Count("id"))
-            .order_by("area__nombre")
-        )
-
-        ctx["resumen_por_motivo"] = (
-            qs_base.values("motivo_principal")
-            .annotate(cantidad=Count("id"))
-            .order_by("motivo_principal")
-        )
-
-        ctx["filtros_personas"] = Beneficiario.objects.filter(
-            activo=True
-        ).order_by("apellido", "nombre")
-
-        ctx["filtros_areas"] = Area.objects.filter(
-            activo=True
-        ).order_by("nombre")
-
-        estado_field = Atencion._meta.get_field("estado")
-        prioridad_field = Atencion._meta.get_field("prioridad")
-        canal_field = Atencion._meta.get_field("canal")
-        motivo_field = Atencion._meta.get_field("motivo_principal")
-
-        ctx["filtros_estados"] = estado_field.choices
-        ctx["filtros_prioridades"] = prioridad_field.choices
-        ctx["filtros_canales"] = canal_field.choices
-        ctx["filtros_motivos"] = motivo_field.choices
-
-        ctx["filtro_actual"] = {
-            "q": self.request.GET.get("q", ""),
-            "persona": self.request.GET.get("persona") or "",
-            "area": self.request.GET.get("area") or "",
-            "estado": self.request.GET.get("estado") or "",
-            "prioridad": self.request.GET.get("prioridad") or "",
-            "canal": self.request.GET.get("canal") or "",
-            "motivo": self.request.GET.get("motivo") or "",
-            "seguimiento": self.request.GET.get("seguimiento") or "",
-        }
-
+        ctx["filtros_areas"] = Area.objects.filter(activo=True).order_by("nombre")
+        ctx["estado_choices"] = Atencion.ESTADO_CHOICES
+        ctx["q"] = (self.request.GET.get("q") or "").strip()
+        ctx["area_sel"] = (self.request.GET.get("area") or "").strip()
+        ctx["estado_sel"] = (self.request.GET.get("estado") or "").strip()
         return ctx
 
 
-class AtencionCreateView(AtencionBaseMixin, CreateView):
-    """
-    Alta de una nueva atención social (módulo social, sin montos).
-
-    - Usa el formulario AtencionForm (con todos los widgets bootstrapizados).
-    - Template: finanzas/atencion_form.html
-    """
-
-    template_name = "finanzas/atencion_form.html"
+class AtencionCreateView(StaffRequiredMixin, CreateView):
+    model = Atencion
     form_class = AtencionForm
+    template_name = "finanzas/atencion_form.html"
 
-    def get_form_kwargs(self):
-        """
-        Inyecta persona_inicial al form si viene ?persona=<id> en la URL,
-        para que AtencionForm pueda preseleccionarla.
-        """
-        kwargs = super().get_form_kwargs()
+    def get_initial(self):
+        initial = super().get_initial()
         persona_id = self.request.GET.get("persona")
         if persona_id:
-            kwargs.setdefault("persona_inicial", persona_id)
+            initial["persona"] = persona_id
+        return initial
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["request"] = self.request  # para usar en el form si hace falta
         return kwargs
 
     def get_success_url(self):
-        """
-        Después de guardar:
-        - Si la atención tiene persona → historial de atenciones de esa persona.
-        - Si no tiene persona → listado general de atenciones.
-        """
-        persona = getattr(self.object, "persona", None)
-        if persona:
-            return reverse("finanzas:atencion_beneficiario_list", args=[persona.id])
-        return reverse("finanzas:atencion_list")
+        # 1) Si viene next=..., respetarlo (volver a ficha de persona, etc.)
+        nxt = (self.request.POST.get("next") or self.request.GET.get("next") or "").strip()
+        if nxt:
+            return nxt
+
+        # 2) Si la atención quedó vinculada a persona, ir al historial de esa persona
+        if getattr(self.object, "persona_id", None):
+            return reverse("finanzas:atencion_beneficiario_list", args=[self.object.persona_id])
+
+        # 3) fallback
+        return reverse_lazy("finanzas:atencion_list")
+
+    def form_valid(self, form):
+        # ✅ Campos correctos según tu modelo:
+        form.instance.creado_por = self.request.user
+        form.instance.actualizado_por = self.request.user
+        messages.success(self.request, "Atención registrada correctamente.")
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        # Esto te evita el “loop silencioso”: deja claro que hubo error.
+        messages.error(self.request, "No se pudo guardar. Revisá los campos marcados.")
+        return super().form_invalid(form)
 
 
-class AtencionBeneficiarioListView(AtencionBaseMixin, ListView):
-    """
-    Listado de atenciones sociales para un beneficiario puntual.
-    """
+class AtencionUpdateView(StaffRequiredMixin, UpdateView):
+    model = Atencion
+    form_class = AtencionForm
+    template_name = "finanzas/atencion_form.html"
 
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["request"] = self.request
+        return kwargs
+
+    def get_success_url(self):
+        nxt = (self.request.POST.get("next") or self.request.GET.get("next") or "").strip()
+        if nxt:
+            return nxt
+
+        if self.object.persona_id:
+            return reverse("finanzas:atencion_beneficiario_list", args=[self.object.persona_id])
+        return reverse_lazy("finanzas:atencion_list")
+
+    def form_valid(self, form):
+        form.instance.actualizado_por = self.request.user
+        messages.success(self.request, "Atención actualizada correctamente.")
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        messages.error(self.request, "No se pudo guardar. Revisá los campos marcados.")
+        return super().form_invalid(form)
+
+
+class AtencionBeneficiarioListView(StaffRequiredMixin, ListView):
+    model = Atencion
     template_name = "finanzas/atencion_beneficiario_list.html"
     context_object_name = "atenciones"
-    paginate_by = 25
-
-    def dispatch(self, request, *args, **kwargs):
-        self.beneficiario = get_object_or_404(Beneficiario, pk=kwargs["pk"])
-        return super().dispatch(request, *args, **kwargs)
+    paginate_by = 20
 
     def get_queryset(self):
-        qs = self.get_base_queryset()
-        qs = qs.filter(persona=self.beneficiario)
-        return qs.order_by("-fecha_atencion", "-id")
+        self.beneficiario = get_object_or_404(Beneficiario, pk=self.kwargs["pk"])
+        return (
+            Atencion.objects
+            .filter(persona=self.beneficiario)
+            .select_related("area", "creado_por")
+            .order_by("-fecha_atencion", "-fecha_creacion")
+        )
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        qs_base = getattr(self, "object_list", self.get_queryset())
-
         ctx["beneficiario"] = self.beneficiario
-        ctx["total_atenciones"] = qs_base.count()
-        ctx["total_pendientes"] = qs_base.filter(
-            requiere_seguimiento=True
-        ).count()
-
-        ctx["resumen_por_estado"] = (
-            qs_base.values("estado")
-            .annotate(cantidad=Count("id"))
-            .order_by("estado")
-        )
-
-        ctx["resumen_por_motivo"] = (
-            qs_base.values("motivo_principal")
-            .annotate(cantidad=Count("id"))
-            .order_by("motivo_principal")
-        )
-
         return ctx

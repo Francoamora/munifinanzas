@@ -1,0 +1,275 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+
+{% block title %}{{ proveedor.nombre }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* === ESTILOS TABS "DARK MODE" PREMIUM === */
+    .card-header-tabs {
+        background-color: #1e293b; /* Slate 800 */
+        padding: 0.75rem 0.75rem 0 0.75rem;
+        border-bottom: none;
+    }
+
+    .nav-tabs-pro {
+        border-bottom: none;
+        gap: 6px;
+    }
+
+    /* INACTIVO */
+    .nav-tabs-pro .nav-link {
+        color: rgba(255, 255, 255, 0.7);
+        font-weight: 600;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border: none;
+        border-radius: 8px 8px 0 0;
+        padding: 0.8rem 1.5rem;
+        transition: all 0.2s ease;
+        background-color: transparent;
+    }
+
+    .nav-tabs-pro .nav-link:hover {
+        color: #ffffff;
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    /* ACTIVO */
+    .nav-tabs-pro .nav-link.active {
+        color: #1e293b !important;
+        background-color: #ffffff;
+        font-weight: 800;
+        opacity: 1;
+        box-shadow: 0 -4px 10px rgba(0,0,0,0.1);
+        position: relative;
+    }
+    
+    /* Líneas de color */
+    #pagos-tab.active { border-top: 4px solid #198754; } /* Verde para Pagos */
+    #ocs-tab.active { border-top: 4px solid #0d6efd; }   /* Azul para Compras */
+
+    /* Tarjetas KPI */
+    .kpi-card {
+        transition: transform 0.2s;
+        border: 1px solid #f1f5f9;
+    }
+    .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 4px 15px rgba(0,0,0,0.05) !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="row g-4 animate-fade-in">
+    
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
+            <div class="card-body p-4 text-center bg-white">
+                
+                <div class="rounded-circle text-white d-flex align-items-center justify-content-center mx-auto mb-3 shadow-sm" 
+                     style="width: 90px; height: 90px; font-size: 2.5rem; background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); border: 4px solid white;">
+                    {{ proveedor.nombre|first|upper }}
+                </div>
+                
+                <h4 class="fw-bold text-dark mb-1">{{ proveedor.nombre }}</h4>
+                
+                {% if proveedor.rubro %}
+                    <span class="badge bg-light text-secondary border mb-2">{{ proveedor.rubro }}</span>
+                {% endif %}
+                
+                <p class="text-secondary font-monospace mb-4 small">
+                    <i class="bi bi-card-heading me-1"></i>{{ proveedor.cuit|default:"S/D" }}
+                </p>
+                
+                <div class="d-grid gap-2">
+                    <a href="{% url 'finanzas:oc_create' %}?proveedor={{ proveedor.pk }}" class="btn btn-primary shadow-sm fw-bold hover-lift">
+                        <i class="bi bi-cart-plus me-2"></i>Nueva Compra
+                    </a>
+                    <a href="{% url 'finanzas:proveedor_update' proveedor.pk %}" class="btn btn-white border shadow-sm fw-bold text-dark hover-lift">
+                        <i class="bi bi-pencil me-2"></i>Editar Datos
+                    </a>
+                </div>
+            </div>
+            
+            <div class="card-footer bg-light p-4 border-top">
+                <h6 class="text-uppercase text-muted small fw-bold mb-3 ls-1">Contacto & Banco</h6>
+                <ul class="list-unstyled mb-0 text-dark small space-y-2">
+                    <li class="mb-2 d-flex gap-3 align-items-center">
+                        <div class="bg-white p-2 rounded border text-secondary"><i class="bi bi-geo-alt"></i></div>
+                        <span>{{ proveedor.direccion|default:"Dirección no cargada" }}</span>
+                    </li>
+                    <li class="mb-2 d-flex gap-3 align-items-center">
+                        <div class="bg-white p-2 rounded border text-secondary"><i class="bi bi-telephone"></i></div>
+                        <span>{{ proveedor.telefono|default:"-" }}</span>
+                    </li>
+                    <li class="mb-2 d-flex gap-3 align-items-center">
+                        <div class="bg-white p-2 rounded border text-secondary"><i class="bi bi-envelope"></i></div>
+                        <span>{{ proveedor.email|default:"-" }}</span>
+                    </li>
+                </ul>
+                
+                {% if proveedor.cbu %}
+                <div class="mt-4 p-3 bg-white border rounded-3 shadow-sm">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <small class="text-uppercase text-muted fw-bold" style="font-size: 0.65rem;">Datos Bancarios</small>
+                        <i class="bi bi-bank2 text-secondary opacity-50"></i>
+                    </div>
+                    <div class="font-monospace small text-dark">
+                        <div class="mb-1"><span class="text-muted">CBU:</span> {{ proveedor.cbu }}</div>
+                        <div><span class="text-muted">Alias:</span> {{ proveedor.alias }}</div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm kpi-card h-100 rounded-4">
+                    <div class="card-body p-4">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <small class="text-uppercase text-secondary fw-bold ls-1" style="font-size: 0.7rem;">Total Pagado</small>
+                                <div class="fs-3 fw-bold text-dark mt-1">${{ total_pagado_historico|intcomma }}</div>
+                            </div>
+                            <div class="bg-success bg-opacity-10 text-success rounded-circle p-3">
+                                <i class="bi bi-cash-stack fs-3"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm kpi-card h-100 rounded-4">
+                    <div class="card-body p-4">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <small class="text-uppercase text-secondary fw-bold ls-1" style="font-size: 0.7rem;">Órdenes Compra</small>
+                                <div class="fs-3 fw-bold text-dark mt-1">{{ ultimas_ocs.count }}</div>
+                            </div>
+                            <div class="bg-primary bg-opacity-10 text-primary rounded-circle p-3">
+                                <i class="bi bi-receipt-cutoff fs-3"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-4 overflow-hidden bg-white">
+            
+            <div class="card-header-tabs">
+                <ul class="nav nav-tabs nav-tabs-pro nav-justified" id="provTabs" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active" id="pagos-tab" data-bs-toggle="tab" data-bs-target="#pagos" type="button">
+                            <i class="bi bi-cash-coin me-2"></i>Últimos Pagos
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="ocs-tab" data-bs-toggle="tab" data-bs-target="#ocs" type="button">
+                            <i class="bi bi-cart-check me-2"></i>Historial Compras
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            
+            <div class="card-body p-0">
+                <div class="tab-content">
+                    
+                    <div class="tab-pane fade show active" id="pagos">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="bg-light text-dark">
+                                    <tr>
+                                        <th class="ps-4 py-3 small fw-bold text-uppercase">Fecha</th>
+                                        <th class="py-3 small fw-bold text-uppercase">Detalle / Concepto</th>
+                                        <th class="text-end pe-4 py-3 small fw-bold text-uppercase">Monto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for mov in ultimos_pagos %}
+                                    <tr>
+                                        <td class="ps-4">
+                                            <div class="fw-bold text-dark">{{ mov.fecha_operacion|date:"d/m/Y" }}</div>
+                                        </td>
+                                        <td>
+                                            <div class="text-dark fw-medium">{{ mov.descripcion }}</div>
+                                            {% if mov.orden_pago %}
+                                                <small class="text-muted"><i class="bi bi-hash me-1"></i>OP {{ mov.orden_pago.numero }}</small>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-end pe-4">
+                                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-3 py-2 rounded-pill font-monospace">
+                                                - ${{ mov.monto|intcomma }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="3" class="text-center py-5">
+                                            <div class="opacity-25 mb-2"><i class="bi bi-wallet2 fs-1"></i></div>
+                                            <p class="text-muted fw-bold small">No hay pagos registrados.</p>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="ocs">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="bg-light text-dark">
+                                    <tr>
+                                        <th class="ps-4 py-3 small fw-bold text-uppercase">Fecha</th>
+                                        <th class="py-3 small fw-bold text-uppercase">N° Orden</th>
+                                        <th class="py-3 small fw-bold text-uppercase">Área Solicitante</th>
+                                        <th class="text-center py-3 small fw-bold text-uppercase">Estado</th>
+                                        <th class="text-end pe-4"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for oc in ultimas_ocs %}
+                                    <tr>
+                                        <td class="ps-4 fw-medium text-dark">{{ oc.fecha_oc|date:"d/m/Y" }}</td>
+                                        <td><span class="font-monospace text-primary fw-bold bg-primary bg-opacity-10 px-2 py-1 rounded">#{{ oc.numero }}</span></td>
+                                        <td class="small text-secondary">{{ oc.area.nombre|default:"General" }}</td>
+                                        <td class="text-center">
+                                            {% if oc.estado == 'APROBADA' %}
+                                                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Aprobada</span>
+                                            {% elif oc.estado == 'PENDIENTE' %}
+                                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill">Pendiente</span>
+                                            {% else %}
+                                                <span class="badge bg-light text-dark border rounded-pill">{{ oc.get_estado_display }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-end pe-4">
+                                            <a href="{% url 'finanzas:oc_detail' oc.pk %}" class="btn btn-sm btn-white border shadow-sm"><i class="bi bi-eye"></i></a>
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="5" class="text-center py-5">
+                                            <div class="opacity-25 mb-2"><i class="bi bi-cart-x fs-1"></i></div>
+                                            <p class="text-muted fw-bold small">No hay órdenes de compra emitidas.</p>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}

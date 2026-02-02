@@ -1,574 +1,360 @@
 {% load static %}
 {% load humanize %}
-{% load finanzas_extras %}
-
 <!doctype html>
-<html lang="es">
+<html lang="es" data-bs-theme="light">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>
-      {% block title %}Sistema de Finanzas – Comuna de Tacuarendí{% endblock %}
-    </title>
+    <title>{% block title %}Comuna de Tacuarendí{% endblock %}</title>
 
-    {# Bootstrap 5 CSS #}
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
-      crossorigin="anonymous"
-    >
-
-    {# Bootstrap Icons #}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-
-    {# Custom CSS #}
-    <link rel="stylesheet" href="{% static 'finanzas/css/app.css' %}">
+    
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
+    
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
 
     <style>
-      /* Navbar refinado */
-      .navbar-finanzas {
-        position: relative;          /* crea contexto de apilado */
-        z-index: 1050;               /* por encima de cards/contenido */
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      :root {
+        --font-primary: 'Inter', sans-serif;
+        --primary-color: #0f172a; 
+        --bg-body: #f8fafc;       
+        --text-main: #020617;     
+        --text-muted: #64748b;    
       }
 
-      /* Muy importante: dropdowns de la navbar siempre arriba del contenido */
-      .navbar-finanzas .dropdown-menu {
-        z-index: 1100;               /* más alto que el resto del layout */
+      body {
+        font-family: var(--font-primary);
+        background-color: var(--bg-body);
+        color: var(--text-main);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
       }
 
-      /* Nav items con altura uniforme */
-      .navbar-nav .nav-link {
-        padding: 0.65rem 1rem;
-        font-weight: 500;
-        font-size: 0.95rem;
-        transition: all 0.2s ease;
-        border-radius: 6px;
-        margin: 0 0.15rem;
+      /* NAVBAR PRO */
+      .navbar-glass {
+        background: #0f172a; 
+        padding: 0.6rem 0;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        z-index: 1030;
       }
 
-      .navbar-nav .nav-link:hover {
-        background-color: rgba(255, 255, 255, 0.1);
-        transform: translateY(-1px);
+      .navbar-brand {
+        font-weight: 700;
+        letter-spacing: -0.5px;
+        color: #fff !important;
       }
-
-      .navbar-nav .nav-link.active {
-        background-color: rgba(255, 255, 255, 0.15);
+      
+      .brand-subtitle {
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: rgba(255,255,255,0.6);
         font-weight: 600;
       }
 
-      /* Dropdown menus mejorados */
+      .nav-link {
+        font-weight: 500;
+        font-size: 0.9rem;
+        color: #cbd5e1 !important;
+        padding: 0.5rem 1rem !important;
+        border-radius: 6px;
+        transition: all 0.2s;
+      }
+
+      .nav-link:hover, .nav-link.active {
+        color: #ffffff !important;
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      /* Logo Container */
+      .logo-box {
+          background: white;
+          padding: 4px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 40px;
+          width: 40px;
+      }
+      .logo-img { max-height: 32px; width: auto; }
+
+      /* DROPDOWNS */
       .dropdown-menu {
-        border: none;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        border-radius: 12px;
         padding: 0.5rem;
-        margin-top: 0.5rem;
-        min-width: 220px;
+        margin-top: 8px !important;
+        z-index: 1050;
       }
 
       .dropdown-item {
-        padding: 0.65rem 1rem;
         border-radius: 6px;
-        transition: all 0.2s ease;
+        padding: 0.6rem 1rem;
         font-size: 0.9rem;
+        color: #334155;
+        font-weight: 500;
       }
 
       .dropdown-item:hover {
-        background-color: #f8f9fa;
-        transform: translateX(4px);
+        background-color: #f1f5f9;
+        color: #0f172a;
       }
 
-      .dropdown-divider {
-        margin: 0.5rem 0;
-        opacity: 0.1;
+      .dropdown-header {
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        color: #94a3b8;
+        text-transform: uppercase;
       }
 
-      /* Badge de notificaciones */
-      .notification-badge {
-        position: relative;
-        top: -2px;
-        font-size: 0.65rem;
-        padding: 0.25rem 0.5rem;
-        font-weight: 600;
+      /* UTILITIES */
+      .card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+      .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+      .hover-lift { transition: transform 0.2s; }
+      .hover-lift:hover { transform: translateY(-2px); }
+
+      /* SELECT2 FIXES */
+      .select2-container--bootstrap-5 .select2-selection {
+        border-color: #cbd5e1;
+        min-height: 40px;
+        padding-top: 0.35rem;
       }
-
-      /* Botones de acción rápida */
-      .quick-action-btn {
-        padding: 0.5rem 1rem;
-        font-size: 0.875rem;
-        font-weight: 500;
-        border-radius: 6px;
-        border: 1.5px solid rgba(255, 255, 255, 0.3);
-        transition: all 0.2s ease;
-      }
-
-      .quick-action-btn:hover {
-        background-color: rgba(255, 255, 255, 0.15);
-        border-color: rgba(255, 255, 255, 0.5);
-        transform: translateY(-2px);
-      }
-
-      /* Botón de usuario */
-      .user-menu-btn {
-        padding: 0.5rem 1rem;
-        border-radius: 6px;
-        border: 1.5px solid rgba(255, 255, 255, 0.3);
-        transition: all 0.2s ease;
-      }
-
-      .user-menu-btn:hover {
-        background-color: rgba(255, 255, 255, 0.15);
-        border-color: rgba(255, 255, 255, 0.5);
-      }
-
-      /* Dropdown del usuario */
-      .user-dropdown-menu {
-        min-width: 260px;
-      }
-
-      .user-info-header {
-        padding: 1rem;
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        border-radius: 6px 6px 0 0;
-        margin: -0.5rem -0.5rem 0.5rem -0.5rem;
-      }
-
-      /* Alertas mejoradas */
-      .alert-modern {
-        border: none;
-        border-radius: 8px;
-        padding: 1rem 1.25rem;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-      }
-
-      .alert-modern .alert-icon {
-        font-size: 1.5rem;
-        line-height: 1;
-      }
-
-      /* Main content con elevación */
-      .main-content {
-        background-color: #f8f9fa;
-        min-height: calc(100vh - 70px);
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-      }
-
-      .content-wrapper {
-        background: white;
-        border-radius: 12px;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-        padding: 2rem;
-        margin-bottom: 2rem;
-      }
-
-      /* Logo branding */
-      .navbar-brand-logo {
-        height: 36px;
-        width: auto;
-      }
-
-      .navbar-brand-text .brand-title {
-        font-size: 1.1rem;
-        font-weight: 600;
-        letter-spacing: -0.02em;
-      }
-
-      .navbar-brand-text .brand-subtitle {
-        font-size: 0.7rem;
-        opacity: 0.75;
-        font-weight: 400;
-      }
-
-      /* Responsive improvements */
-      @media (max-width: 991.98px) {
-        .navbar-nav .nav-link {
-          margin: 0.15rem 0;
-        }
-
-        .quick-actions-mobile {
-          width: 100%;
-          padding: 0.75rem 0;
-          border-top: 1px solid rgba(255, 255, 255, 0.1);
-          margin-top: 0.5rem;
-        }
-
-        .content-wrapper {
-          padding: 1.5rem;
-          border-radius: 8px;
-        }
-      }
-
-      @media (max-width: 575.98px) {
-        .content-wrapper {
-          padding: 1rem;
-          border-radius: 6px;
-        }
-      }
+      :focus-visible { outline: 3px solid rgba(59, 130, 246, .35); outline-offset: 2px; }
     </style>
 
-    {% block extra_head %}{% endblock %}
+    {% block extra_css %}{% endblock %}
   </head>
   <body>
 
-    {# ===================== NAVIGATION BAR ===================== #}
-    <nav class="navbar navbar-expand-lg navbar-dark navbar-finanzas">
-      <div class="container-fluid px-3 px-lg-4">
+    <nav class="navbar navbar-expand-lg navbar-dark navbar-glass sticky-top">
+      <div class="container-fluid px-lg-5">
 
-        {# Brand/Logo #}
-        {% if request.user.is_authenticated and request.user.is_staff %}
-          {% url 'finanzas:dashboard' as brand_url %}
-        {% else %}
-          {% url 'finanzas:home' as brand_url %}
-        {% endif %}
-
-        <a class="navbar-brand d-flex align-items-center gap-2 me-lg-5" href="{{ brand_url }}">
-          <img
-            src="{% static 'finanzas/img/logo-comuna.png' %}"
-            alt="Comuna de Tacuarendí"
-            class="navbar-brand-logo d-none d-sm-inline-block"
-          >
-          <div class="navbar-brand-text lh-sm">
-            <div class="brand-title">Comuna de Tacuarendí</div>
-            <div class="brand-subtitle d-none d-lg-block">Sistema de Finanzas</div>
-          </div>
+        <a class="navbar-brand d-flex align-items-center gap-3" href="{% url 'finanzas:home' %}">
+            <div class="logo-box shadow-sm">
+                <img src="{% static 'finanzas/img/logo-comuna.png' %}" onerror="this.style.display='none'" alt="Logo" class="logo-img">
+                <i class="bi bi-building text-dark" style="display: none;" id="logo-fallback"></i>
+            </div>
+            <div class="d-flex flex-column lh-1">
+                <span style="font-size: 1.05rem;">Comuna de Tacuarendí</span>
+                <span class="brand-subtitle">Sistema de Gestión</span>
+            </div>
         </a>
 
-        {# Mobile Toggle #}
-        <button
-          class="navbar-toggler border-0"
-          type="button"
-          data-bs-toggle="collapse"
-          data-bs-target="#mainNavbar"
-          aria-controls="mainNavbar"
-          aria-expanded="false"
-          aria-label="Mostrar navegación"
-        >
+        <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Abrir menú">
           <span class="navbar-toggler-icon"></span>
         </button>
 
-        {# Navbar Content #}
-        <div class="collapse navbar-collapse" id="mainNavbar">
+        <div class="collapse navbar-collapse" id="mainNav">
           {% if request.user.is_authenticated %}
-            {% with url_name=request.resolver_match.url_name %}
+            <ul class="navbar-nav mx-auto mb-2 mb-lg-0 gap-1 pt-2 pt-lg-0">
 
-              {# ========== NAVIGATION MENU ========== #}
-              <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+              <li class="nav-item">
+                <a class="nav-link" href="{% url 'finanzas:dashboard' %}">
+                    <i class="bi bi-grid-fill me-1"></i> Dashboard
+                </a>
+              </li>
 
-                {# Inicio #}
-                <li class="nav-item">
-                  <a
-                    class="nav-link {% if url_name == 'home' %}active{% endif %}"
-                    href="{% url 'finanzas:home' %}"
-                  >
-                    Inicio
-                  </a>
-                </li>
-
-                {# Tablero y Balances #}
-                {% if rol_staff_finanzas or rol_consulta_politica %}
-                  <li class="nav-item">
-                    <a
-                      class="nav-link {% if url_name == 'dashboard' %}active{% endif %}"
-                      href="{% url 'finanzas:dashboard' %}"
-                    >
-                      Tablero
-                    </a>
-                  </li>
-
-                  <li class="nav-item">
-                    <a
-                      class="nav-link {% if url_name == 'balance_resumen' %}active{% endif %}"
-                      href="{% url 'finanzas:balance_resumen' %}"
-                    >
-                      Balances
-                    </a>
-                  </li>
-                {% endif %}
-
-                {# Dropdown: Finanzas #}
-                {% if rol_staff_finanzas or rol_operador_finanzas or rol_consulta_politica %}
-                  <li class="nav-item dropdown">
-                    <a
-                      class="nav-link dropdown-toggle {% if url_name == 'movimiento_list' or url_name == 'orden_pago_list' or url_name == 'orden_pago_detail' or url_name == 'orden_pago_update' %}active{% endif %}"
-                      href="#"
-                      id="navbarFinanzas"
-                      role="button"
-                      data-bs-toggle="dropdown"
-                      aria-expanded="false"
-                    >
-                      Finanzas
-                    </a>
-                    <ul class="dropdown-menu" aria-labelledby="navbarFinanzas">
-                      <li>
-                        <a class="dropdown-item" href="{% url 'finanzas:movimiento_list' %}">
-                          <i class="bi bi-arrow-left-right me-2 text-primary"></i>
-                          Movimientos
-                        </a>
-                      </li>
-                      <li>
-                        <a class="dropdown-item" href="{% url 'finanzas:movimiento_list' %}?tipo=GASTO">
-                          <i class="bi bi-arrow-down-circle me-2 text-danger"></i>
-                          Gastos
-                        </a>
-                      </li>
-                      <li><hr class="dropdown-divider"></li>
-                      <li>
-                        <a class="dropdown-item" href="{% url 'finanzas:orden_pago_list' %}">
-                          <i class="bi bi-receipt me-2 text-success"></i>
-                          Órdenes de pago
-                        </a>
-                      </li>
-                    </ul>
-                  </li>
-                {% endif %}
-
-                {# Dropdown: Operaciones (OC + OT) #}
-                {% if rol_staff_finanzas or rol_operador_finanzas or rol_operador_social %}
-                  <li class="nav-item dropdown">
-                    <a
-                      class="nav-link dropdown-toggle {% if url_name|slice:':3' == 'oc_' or url_name|slice:':14' == 'orden_trabajo_' %}active{% endif %}"
-                      href="#"
-                      id="navbarOperaciones"
-                      role="button"
-                      data-bs-toggle="dropdown"
-                      aria-expanded="false"
-                    >
-                      Operaciones
-                    </a>
-                    <ul class="dropdown-menu" aria-labelledby="navbarOperaciones">
-                      {% if rol_staff_finanzas or rol_operador_finanzas %}
-                        <li>
-                          <a class="dropdown-item" href="{% url 'finanzas:oc_list' %}">
-                            <i class="bi bi-cart-check me-2 text-info"></i>
-                            Órdenes de compra
-                          </a>
-                        </li>
-                      {% endif %}
-                      <li>
-                        <a class="dropdown-item" href="{% url 'finanzas:orden_trabajo_list' %}">
-                          <i class="bi bi-tools me-2 text-warning"></i>
-                          Órdenes de trabajo
-                        </a>
-                      </li>
-                    </ul>
-                  </li>
-                {% endif %}
-
-                {# Viajes #}
-                {% if rol_staff_finanzas or rol_operador_finanzas or rol_consulta_politica or rol_operador_social %}
-                  <li class="nav-item">
-                    <a
-                      class="nav-link {% if url_name|slice:':14' == 'viaje_vehiculo' or url_name == 'flota_combustible_resumen' %}active{% endif %}"
-                      href="{% url 'finanzas:viaje_vehiculo_list' %}"
-                    >
-                      Viajes
-                    </a>
-                  </li>
-                {% endif %}
-
-                {# Personas (sin despliegue) #}
-                {% if rol_staff_finanzas or rol_operador_finanzas or rol_operador_social or rol_consulta_politica %}
-                  <li class="nav-item">
-                    <a
-                      class="nav-link {% if url_name == 'persona_list' or url_name == 'persona_detail' or url_name == 'persona_update' or url_name|slice:':9' == 'atencion_' %}active{% endif %}"
-                      href="{% url 'finanzas:persona_list' %}"
-                    >
-                      Personas
-                    </a>
-                  </li>
-                {% endif %}
-
-                {# Agenda con badge #}
-                <li class="nav-item">
-                  <a
-                    class="nav-link {% if url_name|slice:':6' == 'agenda' %}active{% endif %}"
-                    href="{% url 'agenda:agenda_list' %}"
-                  >
-                    Agenda
-                    {% if tareas_pendientes_usuario %}
-                      <span class="badge bg-danger notification-badge ms-1">
-                        {{ tareas_pendientes_usuario }}
-                      </span>
-                    {% endif %}
-                  </a>
-                </li>
-
-              </ul>
-
-              {# ========== RIGHT SIDE ACTIONS ========== #}
-              <div class="d-flex align-items-center gap-2">
-
-                {# Quick Action Buttons - Desktop #}
-                {% if rol_staff_finanzas or rol_operador_finanzas or rol_operador_social %}
-                  <div class="d-none d-lg-flex gap-2 me-2">
-                    {% if rol_staff_finanzas or rol_operador_finanzas %}
-                      <a
-                        href="{% url 'finanzas:movimiento_create' %}"
-                        class="btn btn-sm btn-outline-light quick-action-btn"
-                        title="Crear nuevo movimiento"
-                      >
-                        <i class="bi bi-plus-circle me-1"></i>
-                        Movimiento
-                      </a>
-
-                      <a
-                        href="{% url 'finanzas:oc_create' %}"
-                        class="btn btn-sm btn-outline-light quick-action-btn"
-                        title="Crear nueva orden de compra"
-                      >
-                        <i class="bi bi-cart-plus me-1"></i>
-                        OC
-                      </a>
-                    {% endif %}
-
-                    {# Botón Atención para todos los roles operativos que ven acciones rápidas #}
-                    <a
-                      href="{% url 'finanzas:atencion_create' %}"
-                      class="btn btn-sm btn-outline-light quick-action-btn"
-                      title="Registrar nueva atención social"
-                    >
-                      <i class="bi bi-chat-left-heart me-1"></i>
-                      Atención
-                    </a>
-                  </div>
-                {% endif %}
-
-                {# User Dropdown Menu #}
-                <div class="dropdown">
-                  <button
-                    class="btn btn-sm btn-outline-light user-menu-btn d-flex align-items-center gap-2"
-                    type="button"
-                    id="userMenuButton"
-                    data-bs-toggle="dropdown"
-                    aria-expanded="false"
-                  >
-                    <i class="bi bi-person-circle fs-5"></i>
-                    <span class="d-none d-md-inline">
-                      {{ request.user.get_short_name|default:request.user.username }}
-                    </span>
-                    <i class="bi bi-chevron-down d-none d-md-inline" style="font-size: 0.7rem;"></i>
-                  </button>
-                  <ul class="dropdown-menu dropdown-menu-end user-dropdown-menu" aria-labelledby="userMenuButton">
-                    <li class="user-info-header">
-                      <div class="text-muted small mb-1">Sesión iniciada como</div>
-                      <div class="fw-semibold text-dark">{{ request.user.get_full_name|default:request.user.username }}</div>
-                      {% if request.user.email %}
-                        <div class="text-muted small mt-1">{{ request.user.email }}</div>
-                      {% endif %}
-                    </li>
-                    {% if request.user.is_staff %}
-                      <li>
-                        <a class="dropdown-item" href="{% url 'admin:index' %}">
-                          <i class="bi bi-gear me-2"></i>
-                          Panel de administración
-                        </a>
-                      </li>
-                      <li><hr class="dropdown-divider"></li>
-                    {% endif %}
-                    <li>
-                      {# 🔴 Logout por POST para evitar 405 en Django 5 #}
-                      <form method="post" action="{% url 'logout' %}" class="m-0 px-0">
-                        {% csrf_token %}
-                        <button type="submit" class="dropdown-item text-danger w-100 text-start">
-                          <i class="bi bi-box-arrow-right me-2"></i>
-                          Cerrar sesión
-                        </button>
-                      </form>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-
-              {# Quick Actions Mobile #}
-              {% if rol_staff_finanzas or rol_operador_finanzas or rol_operador_social %}
-                <div class="d-lg-none quick-actions-mobile">
-                  <div class="d-flex gap-2 flex-wrap">
-                    {% if rol_staff_finanzas or rol_operador_finanzas %}
-                      <a
-                        href="{% url 'finanzas:movimiento_create' %}"
-                        class="btn btn-sm btn-outline-light quick-action-btn flex-fill"
-                      >
-                        <i class="bi bi-plus-circle me-1"></i>
-                        Nuevo movimiento
-                      </a>
-                      <a
-                        href="{% url 'finanzas:oc_create' %}"
-                        class="btn btn-sm btn-outline-light quick-action-btn flex-fill"
-                      >
-                        <i class="bi bi-cart-plus me-1"></i>
-                        Nueva OC
-                      </a>
-                    {% endif %}
-
-                    <a
-                      href="{% url 'finanzas:atencion_create' %}"
-                      class="btn btn-sm btn-outline-light quick-action-btn flex-fill"
-                    >
-                      <i class="bi bi-chat-left-heart me-1"></i>
-                      Nueva atención
-                    </a>
-                  </div>
-                </div>
+              {% if es_operador_finanzas or es_staff_finanzas or es_admin_sistema %}
+              <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                    <i class="bi bi-wallet-fill me-1"></i> Finanzas
+                </a>
+                <ul class="dropdown-menu">
+                  <li><h6 class="dropdown-header">Caja Diaria</h6></li>
+                  <li><a class="dropdown-item" href="{% url 'finanzas:movimiento_create' %}">Registrar Movimiento</a></li>
+                  <li><a class="dropdown-item" href="{% url 'finanzas:movimiento_list' %}">Ver Movimientos</a></li>
+                  
+                  {% if es_staff_finanzas or es_admin_sistema %}
+                  <li><hr class="dropdown-divider"></li>
+                  <li><h6 class="dropdown-header">Tesorería</h6></li>
+                  <li><a class="dropdown-item" href="{% url 'finanzas:orden_pago_list' %}">Órdenes de Pago</a></li>
+                  <li><a class="dropdown-item" href="{% url 'finanzas:balance_resumen' %}">Balance General</a></li>
+                  {% endif %}
+                </ul>
+              </li>
               {% endif %}
 
-            {% endwith %}
+              {% if es_operador_finanzas or es_operador_social or es_admin_sistema %}
+              <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                    <i class="bi bi-briefcase-fill me-1"></i> Operativo
+                </a>
+                <ul class="dropdown-menu">
+                  {% if es_operador_finanzas or es_admin_sistema %}
+                  <li><h6 class="dropdown-header">Compras</h6></li>
+                  <li><a class="dropdown-item" href="{% url 'finanzas:proveedor_list' %}">Proveedores</a></li>
+                  <li><a class="dropdown-item" href="{% url 'finanzas:oc_list' %}">Órdenes de Compra</a></li>
+                  <li><hr class="dropdown-divider"></li>
+                  {% endif %}
+                  
+                  <li><h6 class="dropdown-header">Servicios</h6></li>
+                  <li><a class="dropdown-item" href="{% url 'finanzas:orden_trabajo_list' %}">Órdenes de Trabajo</a></li>
+                </ul>
+              </li>
+              {% endif %}
 
+              {% if es_operador_finanzas or es_operador_social or es_admin_sistema %}
+              <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                    <i class="bi bi-truck-front-fill me-1"></i> Flota
+                </a>
+                <ul class="dropdown-menu">
+                  <li><a class="dropdown-item fw-bold text-primary" href="{% url 'finanzas:hoja_ruta_create' %}">
+                      <i class="bi bi-plus-circle me-2"></i>Nuevo Viaje
+                  </a></li>
+                  <li><a class="dropdown-item" href="{% url 'finanzas:hoja_ruta_list' %}">Historial de Viajes</a></li>
+                  <li><hr class="dropdown-divider"></li>
+                  <li><a class="dropdown-item" href="{% url 'finanzas:vehiculo_list' %}">Parque Automotor</a></li>
+                  
+                  {% if es_operador_finanzas or es_admin_sistema %}
+                  <li><a class="dropdown-item" href="{% url 'finanzas:consumo_combustible' %}">Consumo Combustible</a></li>
+                  {% endif %}
+                </ul>
+              </li>
+              {% endif %}
+
+              {% if es_operador_finanzas or es_admin_sistema %}
+              <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                    <i class="bi bi-box-seam-fill me-1"></i> Inventario
+                </a>
+                <ul class="dropdown-menu">
+                  <li><h6 class="dropdown-header">Gestión de Stock</h6></li>
+                  <li><a class="dropdown-item fw-bold text-primary" href="{% url 'inventario:movimiento_create' %}">
+                      <i class="bi bi-arrow-left-right me-2"></i>Mover Stock
+                  </a></li>
+                  <li><a class="dropdown-item fw-bold text-warning" href="{% url 'inventario:prestamo_list' %}">
+                      <i class="bi bi-tools me-2"></i>Control de Préstamos
+                  </a></li>
+                  <li><a class="dropdown-item" href="{% url 'inventario:stock_list' %}">Tablero de Pañol</a></li>
+                  <li><hr class="dropdown-divider"></li>
+                  <li><a class="dropdown-item" href="{% url 'inventario:insumo_create' %}">Nuevo Artículo</a></li>
+                </ul>
+              </li>
+              {% endif %}
+
+              <li class="nav-item dropdown">
+                 <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                    <i class="bi bi-people-fill me-1"></i> Social
+                </a>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="{% url 'finanzas:atencion_create' %}">Nueva Atención</a></li>
+                    <li><a class="dropdown-item" href="{% url 'finanzas:atencion_list' %}">Mesa de Entrada</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="{% url 'finanzas:persona_list' %}">Padrón de Personas</a></li>
+                </ul>
+              </li>
+            </ul>
+
+            <div class="d-flex align-items-center gap-3 pt-3 pt-lg-0">
+                <div class="dropdown">
+                    <a href="#" class="d-flex align-items-center gap-2 text-decoration-none dropdown-toggle p-1 rounded-pill bg-white bg-opacity-10 pe-3 text-white border border-white border-opacity-10 hover-lift" data-bs-toggle="dropdown">
+                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center fw-bold shadow-sm border border-2 border-white" style="width: 32px; height: 32px; font-size: 0.85rem;">
+                            {{ request.user.first_name|slice:":1"|default:request.user.username|slice:":1"|upper }}
+                        </div>
+                        <span class="small fw-bold">{{ request.user.first_name|default:request.user.username }}</span>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 mt-2 p-2">
+                        <li><h6 class="dropdown-header">Sesión Activa</h6></li>
+                        {% if user.is_staff %}
+                        <li><a class="dropdown-item" href="{% url 'admin:index' %}"><i class="bi bi-gear-fill me-2"></i>Admin Panel</a></li>
+                        {% endif %}
+                        <li>
+                            <form method="post" action="{% url 'logout' %}">
+                                {% csrf_token %}
+                                <button type="submit" class="dropdown-item text-danger fw-bold">
+                                  <i class="bi bi-box-arrow-right me-2"></i>Cerrar Sesión
+                                </button>
+                            </form>
+                        </li>
+                    </ul>
+                </div>
+            </div>
           {% else %}
-            {# Not Authenticated - Login Button #}
             <div class="ms-auto">
-              <a href="{% url 'login' %}" class="btn btn-outline-light btn-sm quick-action-btn px-4">
-                <i class="bi bi-box-arrow-in-right me-2"></i>
-                Ingresar
-              </a>
+                <a href="{% url 'login' %}" class="btn btn-light btn-sm px-4 fw-bold shadow-sm">Ingresar</a>
             </div>
           {% endif %}
         </div>
       </div>
     </nav>
 
-    {# ===================== MAIN CONTENT ===================== #}
-    <main class="main-content">
-      <div class="container-fluid px-3 px-lg-4">
-        {# Django Messages #}
-        {% if messages %}
-          <div class="row mb-3">
-            <div class="col-12">
-              {% for message in messages %}
-                <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show alert-modern d-flex align-items-start" role="alert">
-                  <div class="alert-icon me-3">
-                    {% if message.tags == 'success' %}
-                      <i class="bi bi-check-circle-fill"></i>
-                    {% elif message.tags == 'error' or message.tags == 'danger' %}
-                      <i class="bi bi-exclamation-triangle-fill"></i>
-                    {% elif message.tags == 'warning' %}
-                      <i class="bi bi-exclamation-circle-fill"></i>
-                    {% else %}
-                      <i class="bi bi-info-circle-fill"></i>
-                    {% endif %}
-                  </div>
-                  <div class="flex-grow-1">{{ message }}</div>
-                  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
-                </div>
-              {% endfor %}
-            </div>
-          </div>
-        {% endif %}
-
-        {# Page Content #}
+    <main class="flex-grow-1 py-4">
+      <div class="container-fluid px-lg-5">
         {% block content %}{% endblock %}
       </div>
     </main>
 
-    {# ===================== SCRIPTS ===================== #}
-    <script
-      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
-      integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
-      crossorigin="anonymous"
-    ></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/i18n/es.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <script>
+      (function () {
+        "use strict";
+
+        // 1. INICIALIZAR SWEETALERT
+        function initAlerts() {
+          {% if messages %}
+            {% for message in messages %}
+              Swal.fire({
+                title: "{% if message.tags == 'success' %}¡Éxito!{% elif message.tags == 'error' %}Error{% else %}Atención{% endif %}",
+                text: "{{ message }}",
+                icon: "{% if message.tags == 'success' %}success{% elif message.tags == 'error' %}error{% else %}info{% endif %}",
+                confirmButtonColor: '#0f172a',
+                timer: 4000,
+                timerProgressBar: true
+              });
+            {% endfor %}
+          {% endif %}
+        }
+
+        // 2. CONFIGURAR SELECT2 GLOBAL (BLINDADO)
+        function initSelect2Base() {
+          if (!window.jQuery || !jQuery.fn || !jQuery.fn.select2) return;
+          try {
+            jQuery.fn.select2.defaults.set("theme", "bootstrap-5");
+            jQuery.fn.select2.defaults.set("language", "es");
+          } catch (e) {}
+
+          // SOLO aplica a selects normales, IGNORA los que tienen AJAX o clases especiales
+          jQuery("select.form-select")
+            .not(".no-select2")
+            .not(".select2-hidden-accessible")
+            .not(".select2-ajax")
+            .each(function () {
+                try { jQuery(this).select2({ width: "100%" }); } catch (e) {}
+            });
+        }
+
+        document.addEventListener("DOMContentLoaded", function () { 
+            initAlerts(); 
+            initSelect2Base(); 
+            
+            // Fallback imagen logo
+            const img = document.querySelector('.logo-img');
+            if(img) {
+                img.onerror = function() {
+                    this.style.display = 'none';
+                    document.getElementById('logo-fallback').style.display = 'block';
+                }
+            }
+        });
+      })();
+    </script>
 
     {% block extra_js %}{% endblock %}
   </body>

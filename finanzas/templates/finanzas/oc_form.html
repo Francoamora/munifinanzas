@@ -1,0 +1,356 @@
+{% extends "finanzas/base.html" %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}
+    {% if orden.pk %}Editar OC #{{ orden.numero }}{% else %}Nueva Orden de Compra{% endif %}
+{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center animate-fade-in" style="padding-bottom: 120px;">
+    
+    <div class="col-12 col-xl-9">
+
+        <form method="post" novalidate id="ocForm" data-url-proveedores="{% url 'finanzas:oc_proveedores_suggest' %}">
+            {% csrf_token %}
+            
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
+                <div>
+                    <h1 class="h3 fw-bold text-dark mb-1">
+                        {% if orden.pk %}
+                            <i class="bi bi-pencil-square me-2 text-primary"></i>Editar OC <span class="text-muted">#{{ orden.numero }}</span>
+                        {% else %}
+                            <i class="bi bi-cart-plus-fill me-2 text-primary"></i>Nueva Orden de Compra
+                        {% endif %}
+                    </h1>
+                    <p class="text-secondary mb-0 small fw-medium">Gestión de aprovisionamiento.</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="{% url 'finanzas:oc_list' %}" class="btn btn-white border shadow-sm px-3 fw-bold text-secondary">
+                        Cancelar
+                    </a>
+                    {% if not orden or orden.estado == 'BORRADOR' %}
+                    <button type="submit" class="btn btn-primary shadow-sm fw-bold px-4 hover-lift">
+                        <i class="bi bi-save2 me-2"></i>Guardar OC
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if form.errors %}
+            <div class="alert alert-danger shadow-sm border-0 mb-4 rounded-3">
+                <div class="d-flex align-items-center gap-3">
+                    <i class="bi bi-exclamation-triangle-fill fs-4"></i>
+                    <div>
+                        <strong>Hay errores en el formulario:</strong>
+                        <ul class="mb-0 ps-3 small">
+                            {% for field in form %}
+                                {% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}
+                            {% endfor %}
+                            {% if form.non_field_errors %}<li>{{ form.non_field_errors }}</li>{% endif %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
+                <div class="card-header bg-white py-3 border-bottom">
+                    <h6 class="mb-0 fw-bold text-dark text-uppercase small ls-1">
+                        <i class="bi bi-shop me-2 text-primary"></i>Datos del Proveedor
+                    </h6>
+                </div>
+                <div class="card-body p-4 bg-light bg-opacity-50">
+                    <div class="row g-4">
+                        <div class="col-12">
+                            <label class="form-label small fw-bold text-dark text-uppercase">Buscar Proveedor *</label>
+                            <div class="input-group shadow-sm">
+                                <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-primary"></i></span>
+                                <select name="{{ form.proveedor.name }}" id="id_proveedor" class="form-select" required>
+                                    {% if form.instance.proveedor %}
+                                        <option value="{{ form.instance.proveedor.id }}" selected>
+                                            {{ form.instance.proveedor.nombre }} ({{ form.instance.proveedor.cuit }})
+                                        </option>
+                                    {% endif %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label small fw-bold text-secondary">RAZÓN SOCIAL (CONFIRMACIÓN)</label>
+                            {{ form.proveedor_nombre }} 
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold text-secondary">CUIT (CONFIRMACIÓN)</label>
+                            {{ form.proveedor_cuit }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold text-dark">N° COMPROBANTE</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light text-muted border-end-0">#</span>
+                                {{ form.numero }}
+                            </div>
+                            <div class="form-text small" style="font-size: 0.7rem;">Se generará automáticamente al guardar.</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold text-dark">FECHA EMISIÓN</label>
+                            {{ form.fecha_oc }}
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold text-dark">RUBRO PRINCIPAL</label>
+                            {{ form.rubro_principal }}
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold text-dark">ÁREA</label>
+                            {{ form.area }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
+                <div class="card-header bg-dark text-white py-3 px-4 d-flex justify-content-between align-items-center">
+                    <span class="fw-bold text-uppercase small ls-1"><i class="bi bi-list-check me-2"></i>Detalle de Items</span>
+                    <div class="bg-white text-dark rounded-pill px-4 py-1 fw-bold shadow-sm d-flex align-items-center gap-2">
+                        <span class="small text-secondary text-uppercase">Total:</span>
+                        <span id="totalDisplay" class="font-monospace fs-5">$ 0,00</span>
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle" id="tablaItems">
+                        <thead class="bg-light text-secondary small text-uppercase fw-bold">
+                            <tr>
+                                <th class="ps-4 py-3" style="width: 25%;">Categoría</th>
+                                <th class="py-3" style="width: 15%;">Área Item</th>
+                                <th class="py-3" style="width: 35%;">Descripción</th>
+                                <th class="py-3 text-end pe-4" style="width: 20%;">Monto ($)</th>
+                                <th class="py-3 text-center" style="width: 5%;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="lineas-container">
+                            {{ lineas.management_form }}
+                            
+                            {% for form in lineas %}
+                                <tr class="linea-row bg-white">
+                                    {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+                                    <td class="ps-4">{{ form.categoria }}</td>
+                                    <td>{{ form.area }}</td>
+                                    <td>{{ form.descripcion }}</td>
+                                    <td class="pe-4">
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-text bg-light border-end-0 text-muted">$</span>
+                                            {{ form.monto }}
+                                        </div>
+                                    </td>
+                                    <td class="text-center">
+                                        {% if lineas.can_delete %}
+                                            <div class="d-none">{{ form.DELETE }}</div> 
+                                            <button type="button" class="btn btn-sm btn-outline-danger border-0 btn-delete-row">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="p-3 bg-light border-top text-center">
+                    <button type="button" id="add-row" class="btn btn-outline-primary btn-sm fw-bold border-2 rounded-pill px-4 hover-lift">
+                        <i class="bi bi-plus-lg me-1"></i> AGREGAR ÍTEM
+                    </button>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm rounded-4 mb-5">
+                <div class="card-body p-4">
+                    <label class="form-label small fw-bold text-dark text-uppercase">Notas Adicionales</label>
+                    {{ form.observaciones }}
+                </div>
+            </div>
+
+        </form>
+    </div>
+
+    <div class="col-12 col-xl-3 d-none d-xl-block">
+        <div class="sticky-top" style="top: 100px;">
+            <div class="card border-0 shadow-sm rounded-4 bg-primary text-white overflow-hidden mb-3">
+                <div class="card-header bg-transparent border-0 pt-4 pb-0">
+                    <h6 class="fw-bold text-uppercase ls-1 mb-0"><i class="bi bi-info-circle me-2"></i>Códigos de Rubro</h6>
+                </div>
+                <div class="card-body">
+                    <p class="small opacity-75 mb-3">Utilizá estos códigos para clasificar el gasto principal de la OC.</p>
+                    <ul class="list-unstyled small mb-0 d-flex flex-column gap-2">
+                        <li class="d-flex align-items-start gap-2">
+                            <span class="badge bg-white text-primary fw-bold">AS</span>
+                            <span class="opacity-90 lh-sm">Ayudas Sociales <br><span class="opacity-50" style="font-size:0.7em">Directas, emergencias</span></span>
+                        </li>
+                        <li class="d-flex align-items-start gap-2">
+                            <span class="badge bg-white text-primary fw-bold">CB</span>
+                            <span class="opacity-90 lh-sm">Combustible <br><span class="opacity-50" style="font-size:0.7em">Vehículos y máquinas</span></span>
+                        </li>
+                        <li class="d-flex align-items-start gap-2">
+                            <span class="badge bg-white text-primary fw-bold">OB</span>
+                            <span class="opacity-90 lh-sm">Obras y Materiales <br><span class="opacity-50" style="font-size:0.7em">Corralón, construcción</span></span>
+                        </li>
+                        <li class="d-flex align-items-start gap-2">
+                            <span class="badge bg-white text-primary fw-bold">SV</span>
+                            <span class="opacity-90 lh-sm">Servicios <br><span class="opacity-50" style="font-size:0.7em">Terceros, alquileres</span></span>
+                        </li>
+                        <li class="d-flex align-items-start gap-2">
+                            <span class="badge bg-white text-primary fw-bold">PE</span>
+                            <span class="opacity-90 lh-sm">Personal <br><span class="opacity-50" style="font-size:0.7em">Jornales, changas</span></span>
+                        </li>
+                        <li class="d-flex align-items-start gap-2">
+                            <span class="badge bg-white text-primary fw-bold">HI</span>
+                            <span class="opacity-90 lh-sm">Herramientas <br><span class="opacity-50" style="font-size:0.7em">Insumos generales</span></span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<table style="display:none">
+    <tbody id="empty-row">
+        <tr class="linea-row bg-white animate-fade-in">
+            {% with lineas.empty_form as form %}
+                {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+                <td class="ps-4">{{ form.categoria }}</td>
+                <td>{{ form.area }}</td>
+                <td>{{ form.descripcion }}</td>
+                <td class="pe-4">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-light border-end-0 text-muted">$</span>
+                        {{ form.monto }}
+                    </div>
+                </td>
+                <td class="text-center">
+                    <div class="d-none">{{ form.DELETE }}</div>
+                    <button type="button" class="btn btn-sm btn-outline-danger border-0 btn-delete-row">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            {% endwith %}
+        </tr>
+    </tbody>
+</table>
+
+{% endblock %}
+
+{% block extra_js %}
+<style>
+    /* Estilos PRO */
+    .form-control, .form-select { border: 1px solid #cbd5e1; padding: 0.6rem 0.8rem; border-radius: 8px; font-size: 0.9rem; }
+    .form-control:focus, .form-select:focus { border-color: #0d6efd; box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15); }
+    input[readonly].bg-light { background-color: #f1f5f9 !important; color: #475569; font-weight: 600; border-color: #e2e8f0; }
+    .hover-lift:hover { transform: translateY(-2px); transition: 0.2s; }
+</style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    
+    // 1. SELECT2 PROVEEDOR
+    const $proveedor = $('#id_proveedor');
+    const urlProveedores = $('#ocForm').data('url-proveedores');
+    const $totalDisplay = $('#totalDisplay');
+    
+    // Formset
+    const $container = $('#lineas-container');
+    const $totalForms = $('#id_lineas-TOTAL_FORMS');
+    const $emptyRow = $('#empty-row').html();
+
+    $proveedor.select2({
+        theme: 'bootstrap-5',
+        width: '100%',
+        placeholder: 'Buscar por nombre o CUIT...',
+        allowClear: true,
+        ajax: {
+            url: urlProveedores,
+            dataType: 'json',
+            delay: 250,
+            data: params => ({ q: params.term, page: params.page }),
+            processResults: data => ({ results: data.results }),
+            cache: true
+        },
+        minimumInputLength: 1
+    });
+
+    // 2. AUTOCOMPLETADO
+    $proveedor.on('select2:select', function (e) {
+        var data = e.params.data;
+        var nombre = data.text.split('(')[0].trim();
+        var cuit = "";
+        
+        if(data.cuit) cuit = data.cuit;
+        else {
+            var match = data.text.match(/\(([^)]+)\)/);
+            if(match) cuit = match[1];
+        }
+
+        $('#id_proveedor_nombre').val(nombre);
+        $('#id_proveedor_cuit').val(cuit);
+    });
+
+    $proveedor.on('select2:clear', function() {
+        $('#id_proveedor_nombre').val('');
+        $('#id_proveedor_cuit').val('');
+    });
+
+    // 3. FORMSET DINÁMICO
+    $('#add-row').click(function() {
+        var formIdx = parseInt($totalForms.val());
+        var newRow = $emptyRow.replace(/__prefix__/g, formIdx);
+        $container.append(newRow);
+        $totalForms.val(formIdx + 1);
+        
+        // Init Select2 en nuevos selects
+        $container.find('tr:last select').select2({ theme: 'bootstrap-5', width: '100%' });
+        
+        bindEvents();
+    });
+
+    $container.on('click', '.btn-delete-row', function() {
+        var $row = $(this).closest('tr');
+        $row.find('input[type="checkbox"]').prop('checked', true);
+        $row.hide();
+        calcularTotal();
+    });
+
+    // 4. CÁLCULOS
+    function calcularTotal() {
+        let total = 0;
+        $('input[name$="-monto"]').each(function() {
+            var $row = $(this).closest('tr');
+            if ($row.is(':hidden')) return;
+            
+            let val = parseFloat($(this).val().replace(',', '.'));
+            if (!isNaN(val)) total += val;
+        });
+        
+        const formatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 2 });
+        $totalDisplay.text(formatter.format(total));
+    }
+
+    function bindEvents() {
+        $('input[name$="-monto"]').off('input').on('input', calcularTotal);
+    }
+
+    // INIT
+    bindEvents();
+    calcularTotal();
+    $('#lineas-container select').select2({ theme: 'bootstrap-5', width: '100%' });
+});
+</script>
+{% endblock %}

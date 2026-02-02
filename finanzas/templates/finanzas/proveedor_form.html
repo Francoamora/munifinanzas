@@ -1,0 +1,75 @@
+{% extends "finanzas/base.html" %}
+
+{% block title %}{% if form.instance.pk %}Editar Proveedor{% else %}Nuevo Proveedor{% endif %}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-xl-8">
+        
+        <form method="post" class="needs-validation" novalidate>
+            {% csrf_token %}
+            
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3 fw-bold text-dark mb-0">
+                    {% if form.instance.pk %}Editar Datos{% else %}Alta de Proveedor{% endif %}
+                </h1>
+                <a href="{% url 'finanzas:proveedor_list' %}" class="btn btn-light border">Cancelar</a>
+            </div>
+
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                <div class="card-header bg-white py-3 border-bottom">
+                    <h6 class="mb-0 fw-bold text-primary small text-uppercase ls-1">Datos Comerciales</h6>
+                </div>
+                <div class="card-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label text-dark fw-bold small">Razón Social / Nombre</label>
+                            <input type="text" name="nombre" class="form-control" value="{{ form.nombre.value|default:'' }}" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label text-dark fw-bold small">CUIT</label>
+                            <input type="text" name="cuit" class="form-control" value="{{ form.cuit.value|default:'' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label text-dark fw-bold small">Rubro Principal</label>
+                            <input type="text" name="rubro" class="form-control" value="{{ form.rubro.value|default:'' }}" placeholder="Ej: Ferretería, Combustible...">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label text-dark fw-bold small">Teléfono</label>
+                            <input type="text" name="telefono" class="form-control" value="{{ form.telefono.value|default:'' }}">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label text-dark fw-bold small">Dirección</label>
+                            <input type="text" name="direccion" class="form-control" value="{{ form.direccion.value|default:'' }}">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label text-dark fw-bold small">Email</label>
+                            <input type="email" name="email" class="form-control" value="{{ form.email.value|default:'' }}">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card-header bg-light py-2 border-top border-bottom">
+                    <h6 class="mb-0 fw-bold text-secondary small text-uppercase ls-1">Información Bancaria</h6>
+                </div>
+                <div class="card-body p-4 bg-light bg-opacity-25">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label text-dark fw-bold small">CBU / CVU</label>
+                            <input type="text" name="cbu" class="form-control font-monospace" value="{{ form.cbu.value|default:'' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label text-dark fw-bold small">Alias</label>
+                            <input type="text" name="alias" class="form-control" value="{{ form.alias.value|default:'' }}">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-footer bg-white p-3 text-end">
+                    <button type="submit" class="btn btn-primary px-5 fw-bold shadow-sm">Guardar Ficha</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

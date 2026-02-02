@@ -1,373 +1,523 @@
-document.addEventListener("DOMContentLoaded", function () {
-  /* =========================================================
-   * 0) Autofocus inicial
-   * ========================================================= */
-  (function () {
-    const fechaOp = document.getElementById("id_fecha_operacion");
-    if (fechaOp && !fechaOp.value) {
-      try {
-        fechaOp.focus();
-      } catch (e) {
-        // silencioso
-      }
+// static/finanzas/js/movimiento_form.js (v99 - SOLUCIÓN DEFINITIVA)
+(() => {
+  "use strict";
+  window.__MF_MOV_FORM_VERSION__ = "99";
+
+  // ==================== UTILITIES ====================
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const show = (el, on = true) => el && el.classList.toggle("d-none", !on);
+  const val = (el) => (el ? String(el.value ?? "").trim() : "");
+  const norm = (s) =>
+    String(s || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+  const setRequired = (el, on) => {
+    if (!el) return;
+    if (on) el.setAttribute("required", "required");
+    else el.removeAttribute("required");
+  };
+
+  const setDisabled = (el, on) => {
+    if (!el) return;
+    el.disabled = !!on;
+    el.classList.toggle("mf-disabled", on);
+    el.setAttribute("aria-disabled", on ? "true" : "false");
+  };
+
+  // ==================== DOM ELEMENTS ====================
+  const form = $("#movimientoForm");
+  if (!form) return;
+
+  const tipoEl = $("#id_tipo");
+  const categoriaEl = $("#id_categoria");
+  const categoriasUrl = form.dataset.categoriasUrl;
+  const categoriaLoading = $("#categoriaLoading");
+  const categoriaMeta = $("#categoriaMeta");
+
+  const cuentaOrigenWrap = $("#cuentaOrigenWrap");
+  const cuentaDestinoWrap = $("#cuentaDestinoWrap");
+  const cuentaOrigenInput = $("#id_cuenta_origen_texto");
+  const cuentaDestinoInput = $("#id_cuenta_destino_texto");
+
+  const personaBadge = $("#personaBadge");
+
+  const provTabBtn = $("#proveedor-tab");
+  const ayudaTabBtn = $("#ayuda-tab");
+  const vehiculoTabBtn = $("#vehiculo-tab");
+
+  const programaAyuda = $("#id_programa_ayuda");
+  const tipoPagoPersona = $("#id_tipo_pago_persona");
+  const programaAyudaTexto = $("#id_programa_ayuda_texto");
+
+  const vehiculoSelect = $("#id_vehiculo");
+  const litrosInput = $("#id_litros");
+  const tipoCombustible = $("#id_tipo_combustible");
+  const precioUnitario = $("#id_precio_unitario");
+
+  const modoHint = $("#modoHint");
+  const modoHintText = $("#modoHintText");
+
+  // ==================== TYPE CHECKERS ====================
+  const isGasto = (t) => norm(t) === "gasto";
+  const isIngreso = (t) => norm(t) === "ingreso";
+  const isTransfer = (t) => norm(t) === "transferencia";
+
+  // ==================== TAB ACTIVATION ====================
+  function activateTab(btn) {
+    if (!btn) return;
+    try {
+      if (window.bootstrap?.Tab) new window.bootstrap.Tab(btn).show();
+      else btn.click();
+    } catch (_) {
+      btn.click();
     }
-  })();
-
-  /* =========================================================
-   * 1) BLOQUES OPCIONALES (PROVEEDOR / BENEFICIARIO / COMBUSTIBLE)
-   * ========================================================= */
-  function setupSectionToggle(toggleId, sectionId, fieldIds) {
-    const toggle = document.getElementById(toggleId);
-    const section = document.getElementById(sectionId);
-
-    if (!toggle || !section) return;
-
-    function hasAnyValue() {
-      return fieldIds.some(function (id) {
-        const field = document.getElementById(id);
-        return field && field.value && field.value.trim() !== "";
-      });
-    }
-
-    function clearField(id) {
-      const field = document.getElementById(id);
-      const hidden = document.getElementById(id + "_hidden");
-
-      if (field) {
-        field.value = "";
-      }
-      if (hidden) {
-        hidden.value = "";
-      }
-    }
-
-    function applyState() {
-      const active = toggle.checked;
-
-      if (active) {
-        section.classList.remove("d-none");
-        section.classList.add("mv-section-active");
-        fieldIds.forEach(function (id) {
-          const field = document.getElementById(id);
-          if (field) {
-            field.removeAttribute("disabled");
-          }
-        });
-      } else {
-        section.classList.remove("mv-section-active");
-        section.classList.add("d-none");
-        fieldIds.forEach(function (id) {
-          const field = document.getElementById(id);
-          if (field) {
-            field.setAttribute("disabled", "disabled");
-          }
-          clearField(id);
-        });
-      }
-    }
-
-    // Si ya hay valores cargados (editar), mantenemos el bloque activo
-    if (hasAnyValue()) {
-      toggle.checked = true;
-    }
-
-    applyState();
-    toggle.addEventListener("change", applyState);
   }
 
-  // Proveedor
-  setupSectionToggle(
-    "toggle-proveedor",
-    "proveedor-section",
-    ["id_proveedor_cuit", "id_proveedor_nombre"]
-  );
+  // ==================== HINTS ====================
+  function hint(tipo) {
+    if (!modoHint || !modoHintText) return;
+    if (isGasto(tipo)) {
+      modoHintText.textContent =
+        "Gasto: sale dinero. Se usa Cuenta Origen + Proveedor/Persona/Vehículo según corresponda.";
+      show(modoHint, true);
+    } else if (isIngreso(tipo)) {
+      modoHintText.textContent =
+        "Ingreso: entra dinero. Se usa Cuenta Destino y la categoría correspondiente.";
+      show(modoHint, true);
+    } else if (isTransfer(tipo)) {
+      modoHintText.textContent =
+        "Transferencia: mover fondos. Se usan Cuenta Origen y Cuenta Destino.";
+      show(modoHint, true);
+    } else {
+      show(modoHint, false);
+    }
+  }
 
-  // Beneficiario
-  setupSectionToggle(
-    "toggle-beneficiario",
-    "beneficiario-section",
-    [
-      "id_beneficiario_dni",
-      "id_beneficiario_nombre",
-      "id_beneficiario_direccion",
-      "id_beneficiario_barrio"
-    ]
-  );
+  // ==================== HELPERS ====================
+  function extractDigits(str) {
+    const m = String(str || "").match(/(\d{6,})/);
+    return m ? m[1] : "";
+  }
 
-  // Combustible / vehículo
-  setupSectionToggle(
-    "toggle-combustible",
-    "combustible-section",
-    ["id_vehiculo_texto", "id_litros", "id_precio_unitario", "id_tipo_combustible"]
-  );
+  function getCategoriaFlags() {
+    const opt = categoriaEl?.selectedOptions?.[0];
+    if (!opt) return { ayuda: false, combustible: false };
+    
+    const ayuda = opt.dataset.ayuda === "1";
+    const combustible = opt.dataset.combustible === "1";
+    
+    return { ayuda, combustible };
+  }
 
-  /* =========================================================
-   * 2) AUTOCOMPLETE DNI (usa URL desde data-persona-dni-url)
-   * ========================================================= */
-  (function () {
-    const dniInput            = document.getElementById("id_beneficiario_dni");
-    const nombreInput         = document.getElementById("id_beneficiario_nombre");
-    const direccionInput      = document.getElementById("id_beneficiario_direccion");
-    const barrioInput         = document.getElementById("id_beneficiario_barrio");
-    const alertBox            = document.getElementById("beneficiario-alert");
-    const beneficiarioToggle  = document.getElementById("toggle-beneficiario");
-    const beneficiarioSection = document.getElementById("beneficiario-section");
+  // ==================== MODO TIPO ====================
+  function applyTipoMode() {
+    const tipo = val(tipoEl);
+    hint(tipo);
 
-    if (!dniInput || !alertBox || !beneficiarioSection) {
+    setRequired(cuentaOrigenInput, isGasto(tipo) || isTransfer(tipo));
+    setRequired(cuentaDestinoInput, isIngreso(tipo) || isTransfer(tipo));
+
+    if (cuentaOrigenWrap) show(cuentaOrigenWrap, isGasto(tipo) || isTransfer(tipo));
+    if (cuentaDestinoWrap) show(cuentaDestinoWrap, isIngreso(tipo) || isTransfer(tipo));
+  }
+
+  // ==================== MODO CATEGORÍA ====================
+  function applyCategoriaMode() {
+    const tipo = val(tipoEl);
+    const catId = val(categoriaEl);
+
+    // Limpiar meta
+    if (categoriaMeta) {
+      categoriaMeta.innerHTML = "";
+      categoriaMeta.className = "badge d-none";
+    }
+
+    // DEFAULTS: Todo deshabilitado
+    if (personaBadge) personaBadge.textContent = "Opcional";
+
+    setDisabled(programaAyuda, true);
+    setDisabled(tipoPagoPersona, true);
+    setDisabled(programaAyudaTexto, true);
+    setRequired(tipoPagoPersona, false);
+
+    setDisabled(vehiculoSelect, true);
+    setDisabled(litrosInput, true);
+    setDisabled(tipoCombustible, true);
+    setDisabled(precioUnitario, true);
+    setRequired(vehiculoSelect, false);
+    setRequired(litrosInput, false);
+    setRequired(tipoCombustible, false);
+    setRequired(precioUnitario, false);
+
+    if (!catId) {
+      if (isGasto(tipo)) activateTab(provTabBtn);
       return;
     }
 
-    // Tomamos la URL de forma robusta desde el data-atributo
-    const dniLookupUrl = beneficiarioSection.getAttribute("data-persona-dni-url");
-    if (!dniLookupUrl) {
-      console.warn("[finanzas] No se encontró data-persona-dni-url en #beneficiario-section");
+    const { ayuda, combustible } = getCategoriaFlags();
+
+    // MODO AYUDA SOCIAL
+    if (ayuda) {
+      if (personaBadge) personaBadge.textContent = "Obligatoria";
+
+      setDisabled(programaAyuda, false);
+      setDisabled(tipoPagoPersona, false);
+      setDisabled(programaAyudaTexto, false);
+      setRequired(tipoPagoPersona, true);
+
+      if (categoriaMeta) {
+        categoriaMeta.innerHTML = '<i class="bi bi-heart-pulse me-1"></i>Ayuda social';
+        categoriaMeta.className = "badge badge-ayuda";
+        show(categoriaMeta, true);
+      }
+
+      activateTab(ayudaTabBtn);
       return;
     }
 
-    let lastDni = "";
+    // MODO COMBUSTIBLE
+    if (combustible) {
+      setDisabled(vehiculoSelect, false);
+      setDisabled(litrosInput, false);
+      setDisabled(tipoCombustible, false);
+      setDisabled(precioUnitario, false);
 
-    function mostrarMensaje(texto, tipo) {
-      alertBox.textContent = texto;
-      alertBox.classList.remove("d-none", "alert-info", "alert-warning", "alert-danger");
-      alertBox.classList.add(tipo || "alert-info");
+      setRequired(vehiculoSelect, true);
+      setRequired(litrosInput, true);
+      setRequired(tipoCombustible, true);
+      setRequired(precioUnitario, true);
+
+      if (categoriaMeta) {
+        categoriaMeta.innerHTML = '<i class="bi bi-fuel-pump me-1"></i>Combustible';
+        categoriaMeta.className = "badge badge-combustible";
+        show(categoriaMeta, true);
+      }
+
+      activateTab(vehiculoTabBtn);
+      return;
     }
 
-    dniInput.addEventListener("blur", function () {
-      const dni = dniInput.value.trim();
+    // MODO DEFAULT: Proveedor
+    activateTab(provTabBtn);
+  }
 
-      if (!dni) {
-        lastDni = "";
-        alertBox.classList.add("d-none");
-        return;
-      }
+  // ==================== CONTADOR DESCRIPCIÓN ====================
+  function bindDescCounter() {
+    const descCounter = $("#descCounter");
+    const descEl = $("#id_descripcion");
+    if (!descCounter || !descEl) return;
+    const update = () => (descCounter.textContent = String(val(descEl).length));
+    descEl.addEventListener("input", update);
+    update();
+  }
 
-      if (dni === lastDni) {
-        return;
-      }
+  // ==================== SELECT2 AJAX ====================
+  function pruneToPlaceholder(selectEl) {
+    if (!selectEl) return;
+    const current = val(selectEl);
+    if (current) {
+      const selectedOpt = selectEl.querySelector(`option[value="${CSS.escape(current)}"]`);
+      const selectedText = selectedOpt ? selectedOpt.textContent : "";
+      selectEl.innerHTML = `<option value=""></option><option value="${current}" selected>${selectedText}</option>`;
+    } else {
+      selectEl.innerHTML = `<option value=""></option>`;
+    }
+  }
 
-      // Si el bloque está apagado, lo activamos automáticamente
-      if (beneficiarioToggle && !beneficiarioToggle.checked) {
-        beneficiarioToggle.checked = true;
-        beneficiarioToggle.dispatchEvent(new Event("change"));
-      }
+  function initAjaxSelect2(selectEl, onPick) {
+    if (!selectEl || !window.jQuery || !jQuery.fn?.select2) return;
 
-      lastDni = dni;
+    pruneToPlaceholder(selectEl);
 
-      mostrarMensaje("Buscando DNI en el censo...", "alert-info");
+    const url = selectEl.dataset.ajaxUrl;
+    const placeholder = selectEl.dataset.placeholder || "Buscar...";
+    const $jq = jQuery(selectEl);
 
-      fetch(dniLookupUrl + "?dni=" + encodeURIComponent(dni))
-        .then(function (resp) {
-          if (!resp.ok) {
-            throw new Error("Respuesta HTTP no OK: " + resp.status);
-          }
-          return resp.json();
-        })
-        .then(function (data) {
-          if (data.found) {
-            if (nombreInput && !nombreInput.value)        nombreInput.value    = data.nombre    || "";
-            if (direccionInput && !direccionInput.value)  direccionInput.value = data.direccion || "";
-            if (barrioInput && !barrioInput.value)        barrioInput.value    = data.barrio    || "";
+    if ($jq.data("select2") || selectEl.classList.contains("select2-hidden-accessible")) return;
 
-            mostrarMensaje("Datos cargados desde el censo.", "alert-info");
-          } else {
-            mostrarMensaje("DNI no encontrado. Se creará una nueva persona.", "alert-warning");
-          }
-        })
-        .catch(function (error) {
-          console.error("[finanzas] Error consultando DNI:", error);
-          mostrarMensaje(
-            "No se pudo consultar el censo. Verificá la conexión o avisá al administrador.",
-            "alert-danger"
-          );
-        });
+    $jq.select2({
+      width: "100%",
+      theme: "bootstrap-5",
+      language: "es",
+      placeholder,
+      allowClear: true,
+      minimumInputLength: 2,
+      ajax: {
+        url,
+        dataType: "json",
+        delay: 250,
+        data: (params) => ({
+          q: params.term,
+          term: params.term,
+          page: params.page || 1,
+        }),
+        processResults: (data) => {
+          if (!data) return { results: [] };
+          if (Array.isArray(data)) return { results: data };
+          if (Array.isArray(data.results)) return { results: data.results };
+          if (Array.isArray(data.items)) return { results: data.items };
+          return { results: [] };
+        },
+      },
     });
-  })();
 
-  /* =========================================================
-   * 3) MÁSCARA DE MONTOS / LITROS / PRECIO
-   * ========================================================= */
-  (function () {
-    const montoInput  = document.getElementById("id_monto");
-    const litrosInput = document.getElementById("id_litros");
-    const precioInput = document.getElementById("id_precio_unitario");
+    $jq.on("select2:select", (e) => onPick?.(e.params?.data || null));
+    $jq.on("select2:clear", () => onPick?.(null));
+  }
 
-    function getNumericString(text) {
-      return String(text || "").replace(/[^\d.,]/g, "");
+  // ==================== FILL FUNCTIONS ====================
+  function fillPersona(data) {
+    const nombreEl = $("#id_beneficiario_nombre");
+    const dniEl = $("#id_beneficiario_dni");
+    if (!nombreEl || !dniEl) return;
+
+    if (!data) {
+      nombreEl.value = "";
+      dniEl.value = "";
+      return;
     }
 
-    function normalizeToEnglish(text) {
-      text = getNumericString(text);
-      if (text === "") return "";
+    const text = data.text || "";
+    nombreEl.value = data.nombre || text;
+    dniEl.value = data.dni || data.documento || extractDigits(text);
+  }
 
-      const hasComma = text.includes(",");
-      const hasDot   = text.includes(".");
+  function fillProveedor(data) {
+    const nombreEl = $("#id_proveedor_nombre");
+    const cuitEl = $("#id_proveedor_cuit");
+    if (!nombreEl || !cuitEl) return;
 
-      // Caso 1: tiene coma y punto
-      if (hasComma && hasDot) {
-        const lastComma = text.lastIndexOf(",");
-        const lastDot   = text.lastIndexOf(".");
+    if (!data) {
+      nombreEl.value = "";
+      cuitEl.value = "";
+      return;
+    }
 
-        // es-AR: 1.234,56 => coma decimal
-        if (lastComma > lastDot) {
-          const cleaned = text.replace(/\./g, "");
-          const parts   = cleaned.split(",");
-          const intRaw  = parts[0] || "";
-          const decRaw  = parts[1] || "";
-          const intPart = intRaw.replace(/\D/g, "") || "0";
-          const dec     = decRaw.replace(/\D/g, "").padEnd(2, "0").slice(0, 2);
-          return intPart + "." + dec;
+    const text = data.text || "";
+    const cuit = data.cuit || extractDigits(text);
+    const nombre = data.nombre || text.replace(/\(\s*\d+\s*\)\s*$/, "").trim();
+
+    nombreEl.value = nombre;
+    cuitEl.value = cuit;
+  }
+
+  function fillVehiculo(data) {
+    const vehTxt = $("#id_vehiculo_texto");
+    if (!vehTxt) return;
+    vehTxt.value = data ? (data.text || "") : "";
+  }
+
+  // ==================== LOAD CATEGORÍAS ====================
+  async function loadCategorias() {
+    if (!categoriasUrl || !categoriaEl) return;
+
+    const tipo = val(tipoEl);
+    
+    // Reset select
+    categoriaEl.innerHTML = `<option value="">---------</option>`;
+
+    if (!tipo) {
+      applyCategoriaMode();
+      return;
+    }
+
+    show(categoriaLoading, true);
+    setDisabled(categoriaEl, true);
+
+    try {
+      const url = `${categoriasUrl}?tipo=${encodeURIComponent(tipo)}`;
+      const res = await fetch(url, {
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin",
+      });
+
+      if (!res.ok) {
+        throw new Error(`Error ${res.status}`);
+      }
+
+      const text = await res.text();
+      if (!text || text.trim() === '') {
+        throw new Error('Respuesta vacía del servidor');
+      }
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (_) {
+        if (text.includes('<option')) {
+          data = { html: text };
+        } else {
+          throw new Error('Respuesta inválida');
         }
-
-        // en-US: 1,234.56 => punto decimal
-        const cleaned = text.replace(/,/g, "");
-        const parts   = cleaned.split(".");
-        const intRaw  = parts[0] || "";
-        const decRaw  = parts[1] || "";
-        const intPart = intRaw.replace(/\D/g, "") || "0";
-        const dec     = decRaw.replace(/\D/g, "").padEnd(2, "0").slice(0, 2);
-        return intPart + "." + dec;
       }
 
-      // Caso 2: solo coma (es-AR decimal)
-      if (hasComma && !hasDot) {
-        const cleaned = text.replace(/\./g, "");
-        const parts   = cleaned.split(",");
-        const intRaw  = parts[0] || "";
-        const decRaw  = parts[1] || "";
-        const intPart = intRaw.replace(/\D/g, "") || "0";
-        const dec     = decRaw.replace(/\D/g, "").padEnd(2, "0").slice(0, 2);
-        return intPart + "." + dec;
-      }
-
-      // Caso 3: solo punto
-      if (hasDot && !hasComma) {
-        const lastDot       = text.lastIndexOf(".");
-        const decimalsCount = text.length - lastDot - 1;
-
-        if (decimalsCount > 0 && decimalsCount <= 2) {
-          const cleaned = text.replace(/,/g, "");
-          const parts   = cleaned.split(".");
-          const intRaw  = parts[0] || "";
-          const decRaw  = parts[1] || "";
-          const intPart = intRaw.replace(/\D/g, "") || "0";
-          const dec     = decRaw.replace(/\D/g, "").padEnd(2, "0").slice(0, 2);
-          return intPart + "." + dec;
-        }
-
-        const intPart = text.replace(/\D/g, "") || "0";
-        return intPart + ".00";
-      }
-
-      // Caso 4: sin separadores -> entero
-      const intPart = text.replace(/\D/g, "") || "0";
-      return intPart + ".00";
-    }
-
-    function formatEsAr(eng) {
-      if (!eng) return "";
-      const n = Number(eng);
-      if (!isFinite(n)) return eng;
-
-      return new Intl.NumberFormat("es-AR", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }).format(n);
-    }
-
-    function setupMoneyInput(input) {
-      if (!input) return;
-
-      const form = input.form;
-      if (!form) return;
-
-      input.type = "text";
-
-      const hidden = document.createElement("input");
-      hidden.type  = "hidden";
-      hidden.name  = input.name;
-      hidden.id    = input.id + "_hidden";
-
-      // Si ya venía con un valor (editar), lo normalizamos y lo mostramos formateado
-      if (input.value) {
-        const normInit = normalizeToEnglish(input.value);
-        hidden.value = normInit;
-        input.value  = formatEsAr(normInit);
+      // Caso 1: HTML directo
+      if (data && typeof data.html === "string" && data.html.includes("<option")) {
+        categoriaEl.innerHTML = `<option value="">---------</option>` + data.html;
       } else {
-        hidden.value = "";
+        // Caso 2: JSON estructurado
+        const itemsRaw =
+          (Array.isArray(data?.results) && data.results) ||
+          (Array.isArray(data) && data) ||
+          (Array.isArray(data?.items) && data.items) ||
+          [];
+
+        // Agrupar
+        const groups = new Map();
+        for (const it of itemsRaw) {
+          const g = it.group || it.grupo || it.tipo || it.seccion || "";
+          const key = g || "__nogroup__";
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(it);
+        }
+
+        // Limpiar y reconstruir
+        categoriaEl.innerHTML = "";
+        
+        const placeholderOpt = document.createElement("option");
+        placeholderOpt.value = "";
+        placeholderOpt.textContent = "---------";
+        categoriaEl.appendChild(placeholderOpt);
+
+        let totalOpciones = 1;
+
+        for (const [g, arr] of groups.entries()) {
+          const parent = g !== "__nogroup__" ? document.createElement("optgroup") : null;
+          if (parent) parent.label = g;
+
+          for (const it of arr) {
+            const opt = document.createElement("option");
+            opt.value = String(it.id ?? it.value ?? "");
+            opt.textContent = String(it.text ?? it.label ?? it.nombre ?? "");
+            
+            const ayuda = it.es_ayuda_social ?? it.ayuda ?? it.is_ayuda_social ?? false;
+            const comb = it.es_combustible ?? it.combustible ?? it.is_combustible ?? false;
+            opt.dataset.ayuda = ayuda ? "1" : "0";
+            opt.dataset.combustible = comb ? "1" : "0";
+
+            if (parent) {
+              parent.appendChild(opt);
+            } else {
+              categoriaEl.appendChild(opt);
+            }
+            
+            totalOpciones++;
+          }
+          
+          if (parent) {
+            categoriaEl.appendChild(parent);
+          }
+        }
+
+        console.log(`[Categorías] ${totalOpciones} opciones insertadas en DOM`);
       }
 
-      const parent = input.parentNode;
-      if (parent) {
-        parent.insertBefore(hidden, input);
-      }
-
-      input.removeAttribute("name");
-      input.setAttribute("inputmode", "decimal");
-      input.setAttribute("autocomplete", "off");
-
-      input.addEventListener("input", function () {
-        const raw     = input.value;
-        const cleaned = raw.replace(/[^0-9.,]/g, "");
-        if (cleaned !== raw) {
-          const posDiff = raw.length - cleaned.length;
-          let pos       = input.selectionStart || cleaned.length;
-          input.value   = cleaned;
+      // ✅ SOLUCIÓN DEFINITIVA: Destruir y recrear Select2
+      if (window.jQuery && jQuery.fn?.select2) {
+        const $cat = jQuery(categoriaEl);
+        
+        // Destruir completamente
+        if ($cat.data("select2")) {
           try {
-            input.setSelectionRange(pos - posDiff, pos - posDiff);
-          } catch (e) {}
+            $cat.select2('destroy');
+          } catch (e) {
+            console.warn('[Select2] Error al destruir:', e);
+          }
         }
-
-        hidden.value = normalizeToEnglish(input.value);
-      });
-
-      input.addEventListener("blur", function () {
-        if (!input.value) {
-          hidden.value = "";
-          return;
+        
+        // Limpiar remnantes del DOM
+        $cat.removeClass('select2-hidden-accessible');
+        $cat.next('.select2-container').remove();
+        
+        // Recrear limpiamente
+        try {
+          $cat.select2({
+            width: "100%",
+            theme: "bootstrap-5",
+            language: "es",
+            placeholder: "Seleccionar categoría…",
+            allowClear: true,
+          });
+          
+          // ✅ Vincular eventos
+          $cat.off('select2:select select2:clear');
+          $cat.on('select2:select', function(e) {
+            console.log('[Select2] Categoría seleccionada:', e.params.data.id);
+            applyCategoriaMode();
+          });
+          $cat.on('select2:clear', function() {
+            console.log('[Select2] Categoría limpiada');
+            applyCategoriaMode();
+          });
+          
+        } catch (e) {
+          console.error('[Select2] Error al inicializar:', e);
         }
-        const norm = normalizeToEnglish(input.value);
-        hidden.value = norm;
-        input.value  = formatEsAr(norm);
-      });
-
-      form.addEventListener("submit", function () {
-        if (!input.value) {
-          hidden.value = "";
-          return;
-        }
-        const norm = normalizeToEnglish(input.value);
-        hidden.value = norm;
-      });
-    }
-
-    setupMoneyInput(montoInput);
-    setupMoneyInput(litrosInput);
-    setupMoneyInput(precioInput);
-  })();
-
-  /* =========================================================
-   * 4) HINT SEGÚN TIPO DE MOVIMIENTO
-   * ========================================================= */
-  (function () {
-    const tipoSelect = document.getElementById("id_tipo");
-    const hint       = document.getElementById("tipo-hint");
-
-    if (!tipoSelect || !hint) return;
-
-    function updateHint() {
-      const v = tipoSelect.value;
-      if (v === "INGRESO") {
-        hint.textContent = "Ingreso: registrá entradas de dinero (subsidios, coparticipación, aportes, etc.).";
-      } else if (v === "GASTO") {
-        hint.textContent = "Gasto: registrá salidas de dinero (compras, ayudas sociales, combustible, servicios, etc.).";
-      } else if (v === "TRANSFERENCIA") {
-        hint.textContent = "Transferencia: mové fondos entre cuentas de la comuna (completá bien origen y destino).";
-      } else {
-        hint.textContent = "Seleccioná el tipo de movimiento y completá fecha y monto.";
       }
+
+      console.log(`[Categorías] Cargadas ${categoriaEl.options.length - 1} opciones para tipo: ${tipo}`);
+
+    } catch (e) {
+      console.error("Error cargando categorías:", e);
+      
+      if (categoriaMeta) {
+        categoriaMeta.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-1"></i>Error: ${e.message}`;
+        categoriaMeta.className = "badge bg-danger";
+        show(categoriaMeta, true);
+      }
+
+    } finally {
+      setDisabled(categoriaEl, false);
+      show(categoriaLoading, false);
+      applyCategoriaMode();
+    }
+  }
+
+  // ==================== APPLY ALL ====================
+  function applyAll() {
+    applyTipoMode();
+    loadCategorias();
+  }
+
+  // ==================== INITIALIZATION ====================
+  function bind() {
+    // Init Select2 AJAX
+    initAjaxSelect2($("#id_beneficiario"), fillPersona);
+    initAjaxSelect2($("#id_proveedor"), fillProveedor);
+    initAjaxSelect2($("#id_vehiculo"), fillVehiculo);
+
+    // Fallback sin Select2
+    const b = $("#id_beneficiario");
+    const p = $("#id_proveedor");
+    const v = $("#id_vehiculo");
+    b && b.addEventListener("change", () => fillPersona({ text: b.selectedOptions?.[0]?.textContent || "" }));
+    p && p.addEventListener("change", () => fillProveedor({ text: p.selectedOptions?.[0]?.textContent || "" }));
+    v && v.addEventListener("change", () => fillVehiculo({ text: v.selectedOptions?.[0]?.textContent || "" }));
+
+    // Eventos principales
+    tipoEl && tipoEl.addEventListener("change", applyAll);
+    
+    // ✅ CRÍTICO: Evento change nativo también (por si Select2 no dispara el evento)
+    categoriaEl && categoriaEl.addEventListener("change", applyCategoriaMode);
+
+    bindDescCounter();
+
+    // Estado inicial
+    applyTipoMode();
+    
+    if (val(tipoEl)) {
+      loadCategorias();
     }
 
-    tipoSelect.addEventListener("change", updateHint);
-    updateHint();
-  })();
-});
+    console.log("[MuniFinanzas] movimiento_form.js v" + window.__MF_MOV_FORM_VERSION__ + " ✅");
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bind);
+  } else {
+    bind();
+  }
+})();

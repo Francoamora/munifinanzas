@@ -1,0 +1,121 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+
+{% block title %}Control de Inventario{% endblock %}
+
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 animate-fade-in gap-3">
+    <div>
+        <h1 class="h3 fw-bold text-dark mb-1">
+            <i class="bi bi-box-seam-fill me-2 text-primary"></i>Pañol / Corralón
+        </h1>
+        <p class="text-secondary mb-0 fw-medium small">
+            Gestión de Stock Físico, Materiales y Herramientas.
+        </p>
+    </div>
+    
+    <div class="d-flex gap-2">
+        <a href="{% url 'inventario:movimiento_create' %}" class="btn btn-dark shadow-sm fw-bold rounded-pill px-4 hover-lift">
+            <i class="bi bi-arrow-left-right me-2"></i>Movimiento
+        </a>
+        <a href="{% url 'inventario:insumo_create' %}" class="btn btn-white border shadow-sm fw-bold text-primary rounded-pill px-4 hover-lift">
+            <i class="bi bi-plus-lg me-2"></i>Nuevo Artículo
+        </a>
+    </div>
+</div>
+
+<div class="row mb-4 animate-fade-in">
+    <div class="col-12">
+        <form method="get" class="position-relative">
+            <div class="input-group shadow-sm rounded-pill overflow-hidden border-0">
+                <span class="input-group-text bg-white border-0 ps-4"><i class="bi bi-search text-muted"></i></span>
+                <input type="text" name="q" class="form-control border-0 py-3 text-dark fw-medium" 
+                       placeholder="Buscar material, herramienta o categoría..." 
+                       value="{{ request.GET.q }}" style="box-shadow: none;">
+                <button type="submit" class="btn btn-primary px-4 fw-bold">BUSCAR</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row g-3">
+    {% for item in insumos %}
+    <div class="col-12 col-md-6 col-lg-4 col-xl-3">
+        <div class="card h-100 border-0 shadow-sm rounded-4 position-relative overflow-hidden hover-lift {% if item.stock_actual <= item.stock_minimo %}border border-danger border-opacity-50{% endif %}">
+            
+            <div class="position-absolute top-0 start-0 w-100" style="height: 6px; background: {% if item.es_herramienta %}#f59e0b{% else %}#3b82f6{% endif %};"></div>
+
+            <div class="card-body p-4 d-flex flex-column">
+                
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <span class="badge {% if item.es_herramienta %}bg-warning-subtle text-warning-emphasis{% else %}bg-primary-subtle text-primary{% endif %} border border-opacity-10 rounded-pill px-3 py-1">
+                        {% if item.es_herramienta %}
+                            <i class="bi bi-tools me-1"></i>Herramienta
+                        {% else %}
+                            <i class="bi bi-box-seam me-1"></i>Insumo
+                        {% endif %}
+                    </span>
+                    
+                    {% if item.stock_actual <= item.stock_minimo %}
+                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill animate-pulse">
+                            <i class="bi bi-exclamation-circle-fill me-1"></i>BAJO
+                        </span>
+                    {% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <a href="{% url 'inventario:insumo_detail' item.pk %}" class="text-decoration-none text-dark stretched-link">
+                        <h5 class="fw-bold mb-1 text-truncate" title="{{ item.nombre }}">{{ item.nombre }}</h5>
+                    </a>
+                    <div class="small text-muted d-flex align-items-center">
+                        <i class="bi bi-tag-fill me-1 opacity-50"></i>{{ item.categoria.nombre }}
+                    </div>
+                </div>
+
+                <div class="mt-auto pt-3 border-top border-light">
+                    <div class="d-flex justify-content-between align-items-end">
+                        <div>
+                            <span class="small text-uppercase fw-bold text-muted" style="font-size: 0.65rem; letter-spacing: 1px;">Disponible</span>
+                            <div class="d-flex align-items-baseline gap-1">
+                                <span class="display-6 fw-bold {% if item.stock_actual <= item.stock_minimo %}text-danger{% else %}text-dark{% endif %} font-monospace lh-1">
+                                    {{ item.stock_actual|floatformat:0 }}
+                                </span>
+                                <span class="small fw-bold text-secondary">{{ item.get_unidad_display|lower }}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="btn btn-sm btn-light rounded-circle shadow-sm text-primary" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center;">
+                            <i class="bi bi-chevron-right"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-12 text-center py-5 animate-fade-in">
+        <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 80px; height: 80px;">
+            <i class="bi bi-box-seam fs-1 text-muted opacity-50"></i>
+        </div>
+        <h5 class="fw-bold text-secondary">El Pañol está vacío</h5>
+        <p class="small text-muted mb-4">Comienza cargando los primeros artículos o herramientas.</p>
+        <a href="{% url 'inventario:insumo_create' %}" class="btn btn-primary rounded-pill px-4 fw-bold">
+            <i class="bi bi-plus-lg me-2"></i>Crear Primer Artículo
+        </a>
+    </div>
+    {% endfor %}
+</div>
+
+<style>
+    .animate-pulse { animation: pulse 2s infinite; }
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.6; }
+        100% { opacity: 1; }
+    }
+    /* Hover effect específico para estas tarjetas */
+    .hover-lift:hover .text-primary { color: #0d6efd !important; }
+</style>
+
+{% endblock %}

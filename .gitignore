@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+
+# Entorno Virtual (¡Muy importante no subirlo!)
+venv/
+env/
+.env
+
+# Base de Datos (Por seguridad y privacidad de la gente, NO subir a GitHub)
+db.sqlite3
+db_vieja.sqlite3
+
+# Archivos estáticos y media generados
+staticfiles/
+media/
+
+# Archivos de sistema Mac
+.DS_Store

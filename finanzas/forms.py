@@ -1,1969 +1,1028 @@
+# finanzas/forms.py
+import re
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
 from django import forms
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from django.urls import reverse_lazy
 from django.forms import inlineformset_factory
+from django.db import models as dj_models
 
+# Modelos
 from .models import (
-    # Núcleo contable / social
-    Movimiento,
-    Beneficiario,
-    ProgramaAyuda,
-    Area,
-    Categoria,
-    # Atenciones sociales
-    Atencion,
-    # Órdenes de pago
-    OrdenPago,
-    OrdenPagoLinea,
-    # Órdenes de compra
-    OrdenCompra,
-    OrdenCompraLinea,
-    FacturaOC,
-    # Flota / vehículos
-    Vehiculo,
-    ViajeVehiculo,
-    ViajeVehiculoTramo,
-    # Órdenes de trabajo
-    OrdenTrabajo,
-    OrdenTrabajoMaterial,
-    AdjuntoOrdenTrabajo,
+    Movimiento, Beneficiario, ProgramaAyuda, Area, Categoria,
+    Atencion, OrdenPago, OrdenPagoLinea, OrdenCompra, OrdenCompraLinea,
+    FacturaOC, Vehiculo, HojaRuta, Traslado,
+    OrdenTrabajo, OrdenTrabajoMaterial, AdjuntoOrdenTrabajo,
+    Proveedor, DocumentoBeneficiario
 )
 
+# =========================================================
+# 1) MIXINS Y UTILIDADES
+# =========================================================
 
-# =====================================================
-#   CAMPOS COMPARTIDOS
-# =====================================================
+class EstiloFormMixin:
+    """
+    Inyecta clases de Bootstrap automáticamente a los widgets.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        for field_name, field in self.fields.items():
+            widget = field.widget
+            attrs = widget.attrs
+            existing_class = (attrs.get("class", "") or "").strip()
+
+            if isinstance(widget, (forms.CheckboxInput,)):
+                if "form-check-input" not in existing_class:
+                    attrs["class"] = f"{existing_class} form-check-input".strip()
+
+            elif isinstance(widget, (forms.RadioSelect,)):
+                pass
+
+            elif isinstance(widget, (forms.Select, forms.SelectMultiple)):
+                if "form-select" not in existing_class:
+                    attrs["class"] = f"{existing_class} form-select".strip()
+
+            else:
+                if "form-control" not in existing_class:
+                    attrs["class"] = f"{existing_class} form-control".strip()
+
+            if isinstance(widget, forms.Textarea):
+                attrs["rows"] = attrs.get("rows", 3)
+
+
+_MONEY_CLEAN_RE = re.compile(r"[^\d,.\-]")
+
+
+def _money_to_decimal(value: str) -> Decimal:
+    """
+    Parseo inteligente de montos (AR/US).
+    """
+    s = (value or "").strip()
+    s = s.replace(" ", "").replace("\u00a0", "")
+    s = _MONEY_CLEAN_RE.sub("", s)
+
+    if not s:
+        raise ValidationError("Ingresá un monto válido. Ej: 10.000,00")
+
+    has_dot = "." in s
+    has_comma = "," in s
+
+    if has_dot and has_comma:
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            s = s.replace(",", "")
+    elif has_comma:
+        part = s.split(",")[-1]
+        if len(part) in (1, 2):
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            s = s.replace(",", "")
+    elif has_dot:
+        part = s.split(".")[-1]
+        if len(part) in (1, 2):
+            s = s.replace(",", "")
+        else:
+            s = s.replace(".", "")
+
+    try:
+        dec = Decimal(s)
+    except InvalidOperation:
+        raise ValidationError("Ingresá un monto válido. Ej: 10.000,00")
+
+    return dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
 
 class MontoDecimalField(forms.DecimalField):
-    """
-    Campo decimal que acepta montos con:
-      - puntos como separador de miles (50.000 -> 50000)
-      - coma como separador decimal (50.000,50 -> 50000.50)
-
-    Ejemplos aceptados:
-      "50000"
-      "50.000"
-      "50.000,00"
-      "1.234.567,89"
-
-    Mejora: si NO hay coma, no tocamos los puntos (para no romper "1234.56").
-    """
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("widget", forms.TextInput(attrs={"inputmode": "decimal", "autocomplete": "off"}))
+        super().__init__(*args, **kwargs)
 
     def to_python(self, value):
-        if isinstance(value, str):
-            value = value.strip()
-            if not value:
-                return super().to_python(value)
-
-            if "," in value and "." in value:
-                # Formato tipo 1.234.567,89
-                value = value.replace(".", "").replace(",", ".")
-            elif "," in value:
-                # Formato tipo 1234,56
-                value = value.replace(",", ".")
-            # Si solo hay ".", lo dejamos como está (decimal clásico en Python)
-
-        return super().to_python(value)
+        if value in self.empty_values:
+            return None
+        if isinstance(value, Decimal):
+            return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        return _money_to_decimal(str(value))
 
 
-# =====================================================
-#   FORMULARIO MOVIMIENTO
-# =====================================================
+def _normalizar_dni(valor: str) -> str:
+    if valor is None:
+        return ""
+    valor = str(valor).strip()
+    return re.sub(r"\D+", "", valor)
 
-class MovimientoForm(forms.ModelForm):
+
+def _money_formfield_callback(db_field, **kwargs):
+    if isinstance(db_field, dj_models.DecimalField):
+        required = not (getattr(db_field, "blank", False) or getattr(db_field, "null", False))
+        return MontoDecimalField(
+            max_digits=db_field.max_digits,
+            decimal_places=db_field.decimal_places,
+            required=required,
+            label=getattr(db_field, "verbose_name", None),
+            widget=forms.TextInput(attrs={"inputmode": "decimal", "autocomplete": "off"}),
+        )
+    return db_field.formfield(**kwargs)
+
+
+def _select2_single_queryset_for_bound(model_cls, *, instance_pk=None, bound_value=None):
+    pk = None
+    if instance_pk:
+        pk = instance_pk
+    else:
+        raw = (bound_value or "").strip() if bound_value is not None else ""
+        if raw.isdigit():
+            pk = int(raw)
+
+    if not pk:
+        return model_cls.objects.none()
+
+    return model_cls.objects.filter(pk=pk)
+
+
+# =========================================================
+# 2) MOVIMIENTOS
+# =========================================================
+
+class MovimientoForm(EstiloFormMixin, forms.ModelForm):
     """
-    Formulario principal de Movimiento.
-
-    Incluye:
-    - Campos del modelo Movimiento.
-    - Campos extras para completar/actualizar datos de Beneficiario
-      (beneficiario_direccion / beneficiario_barrio).
+    Formulario principal de Caja.
+    - INGRESO: Permite vincular Persona (para recibo).
+    - GASTO: Permite vincular Persona, Proveedor o Vehículo.
+    - TRANSFERENCIA: Solo cuentas internas.
     """
+
+    TPP_NINGUNO = "NINGUNO"
 
     fecha_operacion = forms.DateField(
-        label="Fecha de operación",
-        widget=forms.DateInput(
-            attrs={
-                "type": "date",
-                "class": "form-control",
-            },
-            format="%Y-%m-%d",
-        ),
+        widget=forms.DateInput(attrs={"type": "date"}),
         input_formats=["%Y-%m-%d"],
     )
 
-    # Usamos el campo inteligente para que acepte 50.000 y 50.000,00
     monto = MontoDecimalField(
         max_digits=14,
         decimal_places=2,
-        widget=forms.NumberInput(
-            attrs={
-                "step": "0.01",
-                "class": "form-control",
-            }
-        ),
+        widget=forms.TextInput(attrs={
+            "inputmode": "decimal",
+            "autocomplete": "off",
+            "placeholder": "Ej: 10.000,00",
+        })
     )
 
-    # Campos extra para censo de personas (no están en Movimiento, pero sí en Beneficiario)
-    beneficiario_direccion = forms.CharField(
-        label="Domicilio beneficiario",
-        max_length=255,
-        required=False,
-        widget=forms.TextInput(
-            attrs={
-                "class": "form-control",
-                "placeholder": "Calle, número, etc.",
-            }
-        ),
+    litros = MontoDecimalField(
+        max_digits=10, decimal_places=2, required=False,
+        widget=forms.TextInput(attrs={
+            "inputmode": "decimal",
+            "autocomplete": "off",
+            "placeholder": "Ej: 40 o 40,5",
+        })
     )
-    beneficiario_barrio = forms.CharField(
-        label="Barrio beneficiario",
-        max_length=100,
-        required=False,
-        widget=forms.TextInput(
-            attrs={
-                "class": "form-control",
-                "placeholder": "Barrio / zona",
-            }
-        ),
+    precio_unitario = MontoDecimalField(
+        max_digits=14, decimal_places=2, required=False,
+        widget=forms.TextInput(attrs={
+            "inputmode": "decimal",
+            "autocomplete": "off",
+            "placeholder": "Ej: 1.250,00",
+        })
     )
 
-    # Campos que NO se pueden tocar cuando el movimiento está aprobado/rechazado
-    CAMPOS_BLOQUEADOS_EN_APROBADO = (
-        "tipo",
-        "fecha_operacion",
-        "monto",
-        "cuenta_origen_texto",
-        "cuenta_destino_texto",
+    # AJAX Beneficiario
+    beneficiario = forms.ModelChoiceField(
+        queryset=Beneficiario.objects.none(),
+        required=False,
+        widget=forms.Select(attrs={
+            "class": "select2-ajax",
+            "data-ajax-url": reverse_lazy("finanzas:persona_autocomplete"),
+            "data-placeholder": "Buscar persona (DNI / Apellido / Nombre)...",
+        })
+    )
+
+    # Campos Persona Nueva
+    persona_nueva_dni = forms.CharField(
+        required=False,
+        label="DNI/CUIL (Persona nueva)",
+        widget=forms.TextInput(attrs={"inputmode": "numeric", "autocomplete": "off", "placeholder": "Solo números"})
+    )
+    persona_nueva_apellido = forms.CharField(
+        required=False,
+        label="Apellido (Persona nueva)",
+        widget=forms.TextInput(attrs={"autocomplete": "off"})
+    )
+    persona_nueva_nombre = forms.CharField(
+        required=False,
+        label="Nombre (Persona nueva)",
+        widget=forms.TextInput(attrs={"autocomplete": "off"})
+    )
+    persona_nueva_direccion = forms.CharField(
+        required=False,
+        label="Dirección (Persona nueva)",
+        widget=forms.TextInput(attrs={"autocomplete": "off"})
+    )
+    persona_nueva_barrio = forms.CharField(
+        required=False,
+        label="Barrio (Persona nueva)",
+        widget=forms.TextInput(attrs={"autocomplete": "off"})
+    )
+    persona_nueva_telefono = forms.CharField(
+        required=False,
+        label="Teléfono (Persona nueva)",
+        widget=forms.TextInput(attrs={"autocomplete": "off"})
+    )
+
+    proveedor = forms.ModelChoiceField(
+        queryset=Proveedor.objects.all().order_by("nombre"),
+        required=False,
+        widget=forms.Select(attrs={
+            "class": "select2-ajax",
+            "data-ajax-url": reverse_lazy("finanzas:oc_proveedores_suggest"),
+            "data-placeholder": "Buscar proveedor (nombre / CUIT)...",
+        })
+    )
+
+    vehiculo = forms.ModelChoiceField(
+        queryset=Vehiculo.objects.filter(activo=True).order_by("patente"),
+        required=False,
+        widget=forms.Select(attrs={
+            "class": "select2-ajax",
+            "data-ajax-url": reverse_lazy("finanzas:vehiculo_autocomplete"),
+            "data-placeholder": "Buscar vehículo (patente / descripción)...",
+        })
     )
 
     class Meta:
         model = Movimiento
         fields = [
-            # Bloque A: generales
-            "tipo",
-            "fecha_operacion",
-            "monto",
-            # Bloque C: cuentas (texto)
-            "cuenta_origen_texto",
-            "cuenta_destino_texto",
-            # Bloque B: clasificación
-            "categoria",
-            "area",
-            # Bloque D: proveedor
-            "proveedor_cuit",
-            "proveedor_nombre",
-            # Bloque E: beneficiario (parte modelo)
-            "beneficiario_dni",
-            "beneficiario_nombre",
+            "tipo", "fecha_operacion", "monto",
+            "cuenta_origen_texto", "cuenta_destino_texto",
+            "categoria", "area",
+            "proveedor", "proveedor_cuit", "proveedor_nombre",
+            "beneficiario", "beneficiario_dni", "beneficiario_nombre",
             "tipo_pago_persona",
-            # Bloque F: programa ayuda
-            "programa_ayuda",
-            "programa_ayuda_texto",
-            # Bloque G: vehículo / combustible
-            "vehiculo",
-            "vehiculo_texto",
-            "litros",
-            "precio_unitario",
-            "tipo_combustible",
-            # Bloque H: detalle
-            "descripcion",
-            "observaciones",
+            "programa_ayuda", "programa_ayuda_texto",
+            "vehiculo", "vehiculo_texto",
+            "litros", "precio_unitario", "tipo_combustible",
+            "descripcion", "observaciones",
         ]
-        widgets = {
-            "tipo": forms.Select(attrs={"class": "form-select"}),
-            "cuenta_origen_texto": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Ej: Caja chica DS",
-                }
-            ),
-            "cuenta_destino_texto": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Solo si es transferencia",
-                }
-            ),
-            "categoria": forms.Select(attrs={"class": "form-select"}),
-            "area": forms.Select(attrs={"class": "form-select"}),
-            "proveedor_cuit": forms.TextInput(
-                attrs={"class": "form-control", "placeholder": "CUIT (opcional)"}
-            ),
-            "proveedor_nombre": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Nombre proveedor (se guarda para reusar)",
-                }
-            ),
-            "beneficiario_dni": forms.TextInput(
-                attrs={"class": "form-control", "placeholder": "DNI (opcional)"}
-            ),
-            "beneficiario_nombre": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Nombre y apellido (para censo de ayudas / trabajos)",
-                }
-            ),
-            "tipo_pago_persona": forms.Select(attrs={"class": "form-select"}),
-            "programa_ayuda": forms.Select(attrs={"class": "form-select"}),
-            "programa_ayuda_texto": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Ej: Plan invierno 2025",
-                }
-            ),
-            "vehiculo": forms.Select(
-                attrs={
-                    "class": "form-select",
-                }
-            ),
-            "vehiculo_texto": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Ej: Hilux blanca - PTT123",
-                }
-            ),
-            "litros": forms.NumberInput(attrs={"step": "0.01", "class": "form-control"}),
-            "precio_unitario": forms.NumberInput(
-                attrs={"step": "0.01", "class": "form-control"}
-            ),
-            "tipo_combustible": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Ej: Diesel, Nafta Súper",
-                }
-            ),
-            "descripcion": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Descripción corta del movimiento",
-                }
-            ),
-            "observaciones": forms.Textarea(
-                attrs={"rows": 3, "class": "form-control"}
-            ),
-        }
         labels = {
-            "tipo_pago_persona": "Tipo de pago a la persona",
-            "vehiculo": "Vehículo (flota)",
-            "vehiculo_texto": "Vehículo (texto libre)",
+            "fecha_operacion": "Fecha operación",
+            "cuenta_origen_texto": "Cuenta Origen",
+            "cuenta_destino_texto": "Cuenta Destino",
+            "tipo_pago_persona": "Modalidad de entrega",
+        }
+        widgets = {
+            "proveedor_cuit": forms.TextInput(attrs={"readonly": "readonly", "class": "bg-light"}),
+            "proveedor_nombre": forms.TextInput(attrs={"readonly": "readonly", "class": "bg-light"}),
+            "beneficiario_dni": forms.TextInput(attrs={"readonly": "readonly", "class": "bg-light"}),
+            "beneficiario_nombre": forms.TextInput(attrs={"readonly": "readonly", "class": "bg-light"}),
+            "vehiculo_texto": forms.TextInput(attrs={"readonly": "readonly", "class": "bg-light"}),
+            "observaciones": forms.Textarea(attrs={"rows": 3}),
+            "descripcion": forms.Textarea(attrs={"rows": 2}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        instance = getattr(self, "instance", None)
-
-        # Prefijar fecha de operación en hoy para nuevos movimientos (solo cuando no hay POST)
-        if (
-            (not instance or not instance.pk)
-            and not self.data
-            and "fecha_operacion" in self.fields
-            and not self.initial.get("fecha_operacion")
-        ):
-            self.initial["fecha_operacion"] = timezone.now().date()
-
-        # Si el movimiento ya tiene beneficiario, precargar domicilio/barrio en GET
-        beneficiario = getattr(instance, "beneficiario", None)
-        if beneficiario and not self.data:
-            if beneficiario.direccion and not self.initial.get("beneficiario_direccion"):
-                self.initial["beneficiario_direccion"] = beneficiario.direccion
-            if beneficiario.barrio and not self.initial.get("beneficiario_barrio"):
-                self.initial["beneficiario_barrio"] = beneficiario.barrio
-
-        # Orden de categorías
         self.fields["categoria"].queryset = Categoria.objects.order_by("nombre")
+        self.fields["area"].queryset = Area.objects.filter(activo=True).order_by("nombre")
 
-        # Solo áreas activas
-        self.fields["area"].queryset = Area.objects.filter(activo=True).order_by(
-            "nombre"
+        # Cargar opción seleccionada en Select2 Ajax
+        bound_ben = None
+        if self.is_bound:
+            bound_ben = (self.data.get(self.add_prefix("beneficiario")) or self.data.get("beneficiario") or "").strip()
+
+        instance_ben_pk = getattr(self.instance, "beneficiario_id", None) if self.instance else None
+        self.fields["beneficiario"].queryset = _select2_single_queryset_for_bound(
+            Beneficiario,
+            instance_pk=instance_ben_pk,
+            bound_value=bound_ben,
         )
-        self.fields["area"].empty_label = "---------"
 
-        # Solo programas activos
-        self.fields["programa_ayuda"].queryset = (
-            ProgramaAyuda.objects.filter(activo=True).order_by("nombre")
-        )
-        self.fields["programa_ayuda"].empty_label = "---------"
+        try:
+            if self.is_bound:
+                tipo_val = (self.data.get(self.add_prefix("tipo")) or self.data.get("tipo") or "").strip()
+            else:
+                tipo_val = (getattr(self.instance, "tipo", "") or "").strip()
 
-        # Vehículos activos para el FK
-        if "vehiculo" in self.fields:
-            self.fields["vehiculo"].queryset = Vehiculo.objects.filter(
-                activo=True
-            ).order_by("patente", "descripcion")
-            self.fields["vehiculo"].required = False
-            self.fields["vehiculo"].empty_label = "---------"
+            modo = self._modo(tipo_val)
 
-        # Aplicar modo “núcleo contable bloqueado” para movimientos aprobados / rechazados
-        self._aplicar_restricciones_por_estado()
+            cat_ing = getattr(Categoria, "TIPO_INGRESO", "INGRESO")
+            cat_gas = getattr(Categoria, "TIPO_GASTO", "GASTO")
+            cat_amb = getattr(Categoria, "TIPO_AMBOS", "AMBOS")
 
-    def _aplicar_restricciones_por_estado(self):
-        instance = getattr(self, "instance", None)
-        if not instance or not instance.pk:
-            return
+            qs_cat = Categoria.objects.order_by("nombre")
+            if modo == "INGRESO":
+                qs_cat = qs_cat.filter(tipo__in=[cat_ing, cat_amb])
+            elif modo == "GASTO":
+                qs_cat = qs_cat.filter(tipo__in=[cat_gas, cat_amb])
 
-        esta_aprobado = getattr(instance, "esta_aprobado", False)
-        esta_rechazado = getattr(instance, "esta_rechazado", False)
+            self.fields["categoria"].queryset = qs_cat
+        except Exception:
+            pass
 
-        if not (esta_aprobado or esta_rechazado):
-            return
+        # Campos opcionales por defecto (validación real en clean)
+        for fn in (
+            "cuenta_origen_texto", "cuenta_destino_texto",
+            "tipo_pago_persona", "programa_ayuda", "programa_ayuda_texto"
+        ):
+            if fn in self.fields:
+                self.fields[fn].required = False
 
-        for name in self.CAMPOS_BLOQUEADOS_EN_APROBADO:
-            field = self.fields.get(name)
-            if field:
-                field.disabled = True
-                field.widget.attrs["readonly"] = "readonly"
+        self._persona_a_crear = None
+
+    # --- HELPERS ---
+
+    def _modo(self, tipo: str) -> str:
+        t = (tipo or "").strip().upper()
+        if "ING" in t: return "INGRESO"
+        if "GAS" in t or "EGR" in t or "SAL" in t: return "GASTO"
+        if "TRANS" in t: return "TRANSFERENCIA"
+        return ""
+
+    def _tp_is_none(self, value) -> bool:
+        v = (value or "").strip().upper()
+        return not v or v in {self.TPP_NINGUNO, "NO", "N/A", "NA"}
+
+    def _es_ayuda_social(self, cleaned) -> bool:
+        cat = cleaned.get("categoria")
+        if cleaned.get("programa_ayuda"): return True
+        if cat and getattr(cat, "es_ayuda_social", False): return True
+        return not self._tp_is_none(cleaned.get("tipo_pago_persona"))
+
+    def _es_combustible(self, cleaned) -> bool:
+        cat = cleaned.get("categoria")
+        if any([cleaned.get("litros"), cleaned.get("precio_unitario"), (cleaned.get("tipo_combustible") or "").strip()]):
+            return True
+        return cat and getattr(cat, "es_combustible", False)
+
+    # --- VALIDACIÓN (CLEAN) ---
 
     def clean(self):
-        cleaned_data = super().clean()
+        cleaned = super().clean()
+        tipo = cleaned.get("tipo")
+        modo = self._modo(tipo)
 
-        tipo = cleaned_data.get("tipo")
-        categoria = cleaned_data.get("categoria")
-        tipo_pago_persona = cleaned_data.get("tipo_pago_persona")
-        dni = cleaned_data.get("beneficiario_dni")
-        nombre = cleaned_data.get("beneficiario_nombre")
-        cuenta_origen = cleaned_data.get("cuenta_origen_texto")
-        cuenta_destino = cleaned_data.get("cuenta_destino_texto")
+        if not modo:
+            self.add_error("tipo", "Seleccioná el tipo de operación.")
+            return cleaned
 
-        errors = {}
+        if not (cleaned.get("descripcion") or "").strip():
+            self.add_error("descripcion", "La descripción es obligatoria.")
 
-        # Coherencia tipo ↔ categoría (si el helper existe en el modelo)
-        if tipo and categoria and hasattr(categoria, "aplica_a_tipo_movimiento"):
-            if not categoria.aplica_a_tipo_movimiento(tipo):
-                errors["categoria"] = (
-                    "La categoría seleccionada no es compatible con el tipo de movimiento."
-                )
+        # Cuentas
+        co = (cleaned.get("cuenta_origen_texto") or "").strip()
+        cd = (cleaned.get("cuenta_destino_texto") or "").strip()
 
-        # Reglas mínimas para transferencias
-        if tipo == Movimiento.TIPO_TRANSFERENCIA:
-            if not cuenta_origen or not cuenta_origen.strip():
-                errors["cuenta_origen_texto"] = (
-                    "Para una transferencia indicá la cuenta de origen."
-                )
-            if not cuenta_destino or not cuenta_destino.strip():
-                errors["cuenta_destino_texto"] = (
-                    "Para una transferencia indicá la cuenta de destino."
-                )
+        if modo == "INGRESO":
+            if not cd: self.add_error("cuenta_destino_texto", "Para INGRESO falta cuenta destino.")
+            cleaned["cuenta_origen_texto"] = ""
+        elif modo == "GASTO":
+            if not co: self.add_error("cuenta_origen_texto", "Para GASTO falta cuenta origen.")
+            cleaned["cuenta_destino_texto"] = ""
+        elif modo == "TRANSFERENCIA":
+            if not co: self.add_error("cuenta_origen_texto", "Falta cuenta origen.")
+            if not cd: self.add_error("cuenta_destino_texto", "Falta cuenta destino.")
+            if co == cd: self.add_error("cuenta_destino_texto", "Cuentas deben ser distintas.")
 
-        # Si no es un pago a persona, no aplicamos validaciones extra de sueldo/changa
-        if (
-            not tipo_pago_persona
-            or tipo_pago_persona == Movimiento.PAGO_PERSONA_NINGUNO
-        ):
-            if errors:
-                raise ValidationError(errors)
-            return cleaned_data
+        # LIMPIEZA INICIAL SEGÚN MODO
+        if modo == "TRANSFERENCIA":
+            # Transferencia borra TODO (persona, proveedor, etc)
+            for k in ["proveedor", "programa_ayuda", "vehiculo", "beneficiario", "litros", "precio_unitario"]:
+                cleaned[k] = None
+            for k in ["proveedor_cuit", "proveedor_nombre", "vehiculo_texto", "tipo_combustible", "beneficiario_dni", "beneficiario_nombre"]:
+                cleaned[k] = ""
+            cleaned["tipo_pago_persona"] = self.TPP_NINGUNO
+            self._persona_a_crear = None
+            return cleaned
 
-        # Validaciones específicas para sueldo / changa
-        if tipo != Movimiento.TIPO_GASTO:
-            errors["tipo"] = (
-                "Para marcar sueldo o changa/jornal, el movimiento debe ser un gasto."
+        if modo == "INGRESO":
+            # ✅ CORRECCIÓN CRÍTICA: Borra Proveedor y Vehículo, PERO DEJA EL BENEFICIARIO (Persona)
+            for k in ["proveedor", "programa_ayuda", "vehiculo", "litros", "precio_unitario"]:
+                cleaned[k] = None
+            for k in ["proveedor_cuit", "proveedor_nombre", "vehiculo_texto", "tipo_combustible"]:
+                cleaned[k] = ""
+            cleaned["tipo_pago_persona"] = self.TPP_NINGUNO
+            # IMPORTANTE: No retornamos aquí, dejamos que siga para procesar la persona
+
+        # LÓGICA DE PERSONA (Común para Gasto e Ingreso)
+        ben = cleaned.get("beneficiario")
+        # Datos persona nueva
+        new_dni = _normalizar_dni(cleaned.get("persona_nueva_dni"))
+        new_ape = (cleaned.get("persona_nueva_apellido") or "").strip()
+        new_nom = (cleaned.get("persona_nueva_nombre") or "").strip()
+        intentando_crear = bool(new_dni or new_ape or new_nom)
+
+        if ben and intentando_crear:
+            raise ValidationError("Seleccionaste una persona del padrón Y llenaste datos de nueva. Elegí solo una.")
+
+        if intentando_crear:
+            if not new_dni:
+                self.add_error("persona_nueva_dni", "Falta DNI para persona nueva.")
+            elif len(new_dni) not in (7, 8, 9, 11):
+                self.add_error("persona_nueva_dni", "DNI inválido.")
+            else:
+                # Chequear si existe
+                existente = Beneficiario.objects.filter(dni=new_dni).first()
+                if existente:
+                    cleaned["beneficiario"] = existente
+                    ben = existente
+                else:
+                    if not new_ape or not new_nom:
+                        self.add_error("persona_nueva_apellido", "Falta Apellido/Nombre.")
+                    else:
+                        self._persona_a_crear = {
+                            "dni": new_dni, "apellido": new_ape, "nombre": new_nom,
+                            "direccion": cleaned.get("persona_nueva_direccion", ""),
+                            "barrio": cleaned.get("persona_nueva_barrio", ""),
+                            "telefono": cleaned.get("persona_nueva_telefono", "")
+                        }
+
+        # Actualizar campos espejo de Persona
+        if ben:
+            cleaned["beneficiario_dni"] = ben.dni or ""
+            cleaned["beneficiario_nombre"] = f"{ben.apellido}, {ben.nombre}".strip()
+        else:
+            cleaned["beneficiario_dni"] = ""
+            cleaned["beneficiario_nombre"] = ""
+
+        # LÓGICA ESPECÍFICA DE GASTO
+        if modo == "GASTO":
+            prov = cleaned.get("proveedor")
+            veh = cleaned.get("vehiculo")
+            es_ayuda = self._es_ayuda_social(cleaned)
+
+            if not es_ayuda:
+                cleaned["tipo_pago_persona"] = self.TPP_NINGUNO
+                cleaned["programa_ayuda"] = None
+
+            # Regla: Si es Ayuda Social O no hay proveedor/vehículo, exigimos Persona
+            req_persona = es_ayuda or (not prov and not veh)
+            if req_persona and not ben and not self._persona_a_crear:
+                self.add_error("beneficiario", "Para este GASTO debés indicar el Beneficiario (o Proveedor/Vehículo).")
+
+            if es_ayuda and self._tp_is_none(cleaned.get("tipo_pago_persona")):
+                self.add_error("tipo_pago_persona", "Falta modalidad de entrega para Ayuda Social.")
+
+            # Espejos Proveedor
+            if prov:
+                cleaned["proveedor_cuit"] = prov.cuit or ""
+                cleaned["proveedor_nombre"] = prov.nombre or ""
+            else:
+                cleaned["proveedor_cuit"] = ""
+                cleaned["proveedor_nombre"] = ""
+
+            # Combustible
+            if self._es_combustible(cleaned):
+                if not veh: self.add_error("vehiculo", "Falta Vehículo para combustible.")
+                if cleaned.get("litros") is None: self.add_error("litros", "Faltan Litros.")
+                if not cleaned.get("tipo_combustible"): self.add_error("tipo_combustible", "Falta Tipo de combustible.")
+                if veh:
+                    cleaned["vehiculo_texto"] = f"{veh.patente} - {veh.descripcion}".strip(" -")
+            else:
+                cleaned["litros"] = None
+                cleaned["precio_unitario"] = None
+                cleaned["tipo_combustible"] = ""
+                cleaned["vehiculo"] = None
+                cleaned["vehiculo_texto"] = ""
+
+        return cleaned
+
+    # --- SAVE ---
+
+    def save(self, commit=True):
+        mov = super().save(commit=False)
+        modo = self._modo(self.cleaned_data.get("tipo"))
+
+        # 1. Limpieza base según modo
+        if modo == "INGRESO":
+            mov.cuenta_origen_texto = ""
+            mov.proveedor = None
+            mov.proveedor_cuit = ""
+            mov.proveedor_nombre = ""
+            mov.programa_ayuda = None
+            mov.programa_ayuda_texto = ""
+            mov.vehiculo = None
+            mov.vehiculo_texto = ""
+            mov.litros = None
+            mov.precio_unitario = None
+            mov.tipo_combustible = ""
+            mov.tipo_pago_persona = self.TPP_NINGUNO
+            # ✅ CORRECCIÓN: No limpiamos beneficiario aquí
+
+        elif modo == "TRANSFERENCIA":
+            mov.proveedor = None
+            mov.proveedor_cuit = ""
+            mov.proveedor_nombre = ""
+            mov.programa_ayuda = None
+            mov.programa_ayuda_texto = ""
+            mov.vehiculo = None
+            mov.vehiculo_texto = ""
+            mov.litros = None
+            mov.precio_unitario = None
+            mov.tipo_combustible = ""
+            mov.beneficiario = None
+            mov.beneficiario_dni = ""
+            mov.beneficiario_nombre = ""
+            mov.tipo_pago_persona = self.TPP_NINGUNO
+
+        else: # GASTO
+            mov.cuenta_destino_texto = ""
+
+        # 2. Procesar Persona (Aplica a GASTO e INGRESO)
+        if self._persona_a_crear:
+            data = self._persona_a_crear
+            ben, _ = Beneficiario.objects.get_or_create(
+                dni=data["dni"],
+                defaults={
+                    "apellido": data["apellido"], "nombre": data["nombre"],
+                    "direccion": data["direccion"], "barrio": data["barrio"],
+                    "telefono": data["telefono"], "activo": True
+                }
             )
+            if not ben.activo:
+                ben.activo = True
+                ben.save(update_fields=["activo"])
+            
+            mov.beneficiario = ben
+            mov.beneficiario_dni = ben.dni or ""
+            mov.beneficiario_nombre = f"{ben.apellido}, {ben.nombre}".strip()
+        else:
+            ben = self.cleaned_data.get("beneficiario")
+            if ben:
+                if not ben.activo:
+                    ben.activo = True
+                    ben.save(update_fields=["activo"])
+                mov.beneficiario = ben
+                mov.beneficiario_dni = ben.dni or ""
+                mov.beneficiario_nombre = f"{ben.apellido}, {ben.nombre}".strip()
+            elif modo != "INGRESO": 
+                # Si es Gasto y no eligió persona (quizás eligió proveedor), limpiamos.
+                # Para Ingreso, si no eligió, se permite que quede vacío (Anónimo).
+                mov.beneficiario = None
+                mov.beneficiario_dni = ""
+                mov.beneficiario_nombre = ""
 
-        if categoria and not getattr(categoria, "es_personal", False):
-            errors["categoria"] = (
-                "La categoría seleccionada no está marcada como 'personal'. "
-                "Revisá el maestro de categorías o elegí otra categoría adecuada."
-            )
+        # 3. Procesar Campos exclusivos de GASTO
+        if modo == "GASTO":
+            prov = self.cleaned_data.get("proveedor")
+            if prov:
+                mov.proveedor = prov
+                mov.proveedor_cuit = prov.cuit or ""
+                mov.proveedor_nombre = prov.nombre or ""
+            else:
+                mov.proveedor = None
+                mov.proveedor_cuit = ""
+                mov.proveedor_nombre = ""
 
-        if not dni and not nombre:
-            msg = (
-                "Si marcás sueldo o changa/jornal, completá al menos el DNI "
-                "o el apellido y nombre de la persona."
-            )
-            errors["beneficiario_dni"] = msg
-            errors["beneficiario_nombre"] = msg
+            veh = self.cleaned_data.get("vehiculo")
+            if veh:
+                mov.vehiculo = veh
+                mov.vehiculo_texto = f"{veh.patente} - {veh.descripcion}".strip(" -")
+            else:
+                mov.vehiculo = None
+                mov.vehiculo_texto = ""
+                mov.litros = None
+                mov.precio_unitario = None
+                mov.tipo_combustible = ""
 
-        if errors:
-            raise ValidationError(errors)
+        if commit:
+            mov.save()
+            self.save_m2m()
+        return mov
 
-        return cleaned_data
 
+# =========================================================
+# 3) ÓRDENES DE COMPRA (OC)
+# =========================================================
 
-# =====================================================
-#   ÓRDENES DE PAGO
-# =====================================================
+class OrdenCompraForm(EstiloFormMixin, forms.ModelForm):
+    RUBROS_CHOICES = [
+        ("AS", "AS - Ayudas sociales"),
+        ("CB", "CB - Combustible"),
+        ("OB", "OB - Obras y materiales"),
+        ("SV", "SV - Servicios contratados"),
+        ("PE", "PE - Personal / jornales"),
+        ("HI", "HI - Herramientas / insumos"),
+        ("OT", "OT - Otros"),
+    ]
 
-class OrdenPagoForm(forms.ModelForm):
-    fecha_orden = forms.DateField(
-        label="Fecha de orden",
-        widget=forms.DateInput(
-            attrs={
-                "type": "date",
-                "class": "form-control",
-            },
-            format="%Y-%m-%d",
-        ),
-        input_formats=["%Y-%m-%d"],
+    fecha_oc = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}), initial=lambda: timezone.now().date())
+    
+    proveedor = forms.ModelChoiceField(
+        queryset=Proveedor.objects.filter(activo=True),
+        widget=forms.Select(attrs={
+            "class": "select2-ajax",
+            "data-ajax-url": reverse_lazy("finanzas:oc_proveedores_suggest"),
+            "data-placeholder": "Buscar proveedor...",
+        })
     )
 
-    factura_fecha = forms.DateField(
-        label="Fecha de factura",
-        required=False,
-        widget=forms.DateInput(
-            attrs={
-                "type": "date",
-                "class": "form-control",
-            },
-            format="%Y-%m-%d",
-        ),
-        input_formats=["%Y-%m-%d"],
-    )
+    rubro_principal = forms.ChoiceField(choices=RUBROS_CHOICES, widget=forms.Select(attrs={"class": "form-select"}))
+
+    class Meta:
+        model = OrdenCompra
+        fields = ["fecha_oc", "numero", "area", "proveedor", "proveedor_nombre", "proveedor_cuit", "rubro_principal", "observaciones"]
+        widgets = {
+            "proveedor_nombre": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly"}),
+            "proveedor_cuit": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly"}),
+            "numero": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly", "placeholder": "Automático al guardar"}),
+            "observaciones": forms.Textarea(attrs={"rows": 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['numero'].required = False
+
+    def clean(self):
+        cleaned = super().clean()
+        p = cleaned.get("proveedor")
+        if p:
+            cleaned["proveedor_nombre"] = p.nombre
+            cleaned["proveedor_cuit"] = p.cuit or ""
+        return cleaned
+
+OrdenCompraLineaFormSet = inlineformset_factory(
+    OrdenCompra, OrdenCompraLinea,
+    fields=["categoria", "area", "descripcion", "monto"],
+    extra=0,
+    can_delete=True,
+    formfield_callback=_money_formfield_callback
+)
+
+
+# =========================================================
+# 4) ÓRDENES DE PAGO
+# =========================================================
+
+class OrdenPagoForm(EstiloFormMixin, forms.ModelForm):
+    fecha_orden = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
+    factura_fecha = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
 
     factura_monto = MontoDecimalField(
-        max_digits=14,
-        decimal_places=2,
-        required=False,
-        widget=forms.NumberInput(
-            attrs={
-                "class": "form-control",
-                "step": "0.01",
-                "placeholder": "Monto facturado (opcional)",
-            }
-        ),
+        max_digits=14, decimal_places=2, required=False,
+        widget=forms.TextInput(attrs={"inputmode": "decimal", "autocomplete": "off", "placeholder": "Ej: 125.000,00"})
+    )
+
+    proveedor = forms.ModelChoiceField(
+        queryset=Proveedor.objects.all(), required=False,
+        widget=forms.Select(attrs={
+            "class": "select2-ajax",
+            "data-ajax-url": reverse_lazy("finanzas:oc_proveedores_suggest"),
+            "data-placeholder": "Buscar proveedor...",
+        })
     )
 
     class Meta:
         model = OrdenPago
         fields = [
-            "numero",
-            "fecha_orden",
-            "proveedor",
-            "proveedor_nombre",
-            "proveedor_cuit",
-            "area",
-            "condicion_pago",
-            "medio_pago_previsto",
-            "observaciones",
-            "factura_tipo",
-            "factura_numero",
-            "factura_fecha",
-            "factura_monto",
+            "numero", "fecha_orden", "proveedor", "proveedor_nombre", "proveedor_cuit", "area",
+            "condicion_pago", "medio_pago_previsto", "observaciones",
+            "factura_tipo", "factura_numero", "factura_fecha", "factura_monto"
         ]
         widgets = {
-            "numero": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Ej: OP-0001/2025",
-                }
-            ),
-            "proveedor": forms.Select(attrs={"class": "form-select"}),
-            "proveedor_nombre": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Nombre proveedor (para impresión)",
-                }
-            ),
-            "proveedor_cuit": forms.TextInput(
-                attrs={"class": "form-control", "placeholder": "CUIT (opcional)"}
-            ),
-            "area": forms.Select(attrs={"class": "form-select"}),
-            "condicion_pago": forms.Select(attrs={"class": "form-select"}),
-            "medio_pago_previsto": forms.Select(attrs={"class": "form-select"}),
-            "observaciones": forms.Textarea(
-                attrs={
-                    "class": "form-control",
-                    "rows": 3,
-                    "placeholder": "Notas internas de la orden",
-                }
-            ),
-            "factura_tipo": forms.Select(attrs={"class": "form-select"}),
-            "factura_numero": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Número de factura (opcional)",
-                }
-            ),
+            "proveedor_nombre": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly"}),
+            "proveedor_cuit": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly"}),
+            "observaciones": forms.Textarea(attrs={"rows": 3}),
         }
-        labels = {
-            "numero": "Número de orden",
-            "proveedor": "Proveedor (maestro)",
-            "proveedor_nombre": "Proveedor (texto en orden)",
-            "proveedor_cuit": "CUIT proveedor",
-            "area": "Área que solicita / imputa",
-            "condicion_pago": "Condición de pago",
-            "medio_pago_previsto": "Medio de pago previsto",
-            "observaciones": "Observaciones",
-            "factura_tipo": "Tipo de comprobante",
-            "factura_numero": "Número de factura",
-            "factura_monto": "Monto de factura",
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # Fecha por defecto = hoy (solo en alta / GET)
-        if not self.instance.pk and not self.data and "fecha_orden" in self.fields:
-            self.initial.setdefault("fecha_orden", timezone.now().date())
-
-        self.fields["area"].queryset = Area.objects.filter(activo=True).order_by(
-            "nombre"
-        )
-        self.fields["area"].empty_label = "---------"
-
-        # Proveedor activo (usamos el modelo remoto del FK de OrdenPago)
-        proveedor_model = OrdenPago._meta.get_field("proveedor").remote_field.model
-        self.fields["proveedor"].queryset = proveedor_model.objects.filter(
-            activo=True
-        ).order_by("nombre")
-        self.fields["proveedor"].empty_label = "---------"
-
-        # Placeholders amigables en selects (a nivel de widget/UX, no de lógica)
-        self.fields["condicion_pago"].empty_label = "---------"
-        self.fields["medio_pago_previsto"].empty_label = "---------"
-        self.fields["factura_tipo"].empty_label = "---------"
 
     def clean(self):
-        cleaned_data = super().clean()
-
-        factura_tipo = cleaned_data.get("factura_tipo")
-        factura_numero = cleaned_data.get("factura_numero")
-        factura_monto = cleaned_data.get("factura_monto")
-        factura_fecha = cleaned_data.get("factura_fecha")
-
-        # Si hay datos de factura, pedimos al menos tipo
-        if (factura_numero or factura_monto or factura_fecha) and not factura_tipo:
-            self.add_error("factura_tipo", "Seleccioná el tipo de comprobante.")
-
-        return cleaned_data
-
-
-class OrdenPagoLineaForm(forms.ModelForm):
-    # Campo de monto con soporte para puntos de miles y coma decimal
-    monto = MontoDecimalField(
-        max_digits=14,
-        decimal_places=2,
-        widget=forms.NumberInput(
-            attrs={
-                "class": "form-control form-control-sm text-end",
-                "step": "0.01",
-            }
-        ),
-    )
-
-    class Meta:
-        model = OrdenPagoLinea
-        fields = ["categoria", "area", "descripcion", "monto"]
-        widgets = {
-            "categoria": forms.Select(attrs={"class": "form-select form-select-sm"}),
-            "area": forms.Select(attrs={"class": "form-select form-select-sm"}),
-            "descripcion": forms.TextInput(
-                attrs={
-                    "class": "form-control form-control-sm",
-                    "placeholder": "Detalle del gasto / concepto",
-                }
-            ),
-        }
-        labels = {
-            "descripcion": "Descripción",
-            "monto": "Monto",
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["categoria"].queryset = Categoria.objects.order_by("nombre")
-        self.fields["categoria"].empty_label = "---------"
-        self.fields["area"].queryset = Area.objects.filter(activo=True).order_by(
-            "nombre"
-        )
-        self.fields["area"].empty_label = "---------"  # opcional
-
-    def clean(self):
-        cleaned_data = super().clean()
-        categoria = cleaned_data.get("categoria")
-        area = cleaned_data.get("area")
-        descripcion = cleaned_data.get("descripcion")
-        monto = cleaned_data.get("monto")
-
-        # Form totalmente vacío → lo ignora el formset
-        if not (categoria or area or descripcion or monto):
-            return cleaned_data
-
-        if monto is not None and monto <= 0:
-            self.add_error("monto", "El monto debe ser mayor que cero.")
-
-        return cleaned_data
+        cleaned = super().clean()
+        p = cleaned.get("proveedor")
+        if p:
+            cleaned["proveedor_cuit"] = p.cuit or ""
+            cleaned["proveedor_nombre"] = p.nombre or ""
+        return cleaned
 
 
 OrdenPagoLineaFormSet = inlineformset_factory(
-    OrdenPago,
-    OrdenPagoLinea,
-    form=OrdenPagoLineaForm,
-    extra=3,
-    can_delete=True,
+    OrdenPago, OrdenPagoLinea,
+    fields="__all__", extra=1, can_delete=True,
+    formfield_callback=_money_formfield_callback
 )
 
+# =========================================================
+# 5) PERSONAS (SOCIAL)
+# =========================================================
 
-# =====================================================
-#   BENEFICIARIO (CENSO)
-# =====================================================
-
-class BeneficiarioForm(forms.ModelForm):
-    """Formulario para editar datos de la persona / beneficiario (censo)."""
-
+class BeneficiarioForm(EstiloFormMixin, forms.ModelForm):
     class Meta:
         model = Beneficiario
         fields = [
-            "apellido",
-            "nombre",
-            "dni",
-            "direccion",
-            "barrio",
-            "telefono",
-            "paga_servicios",
-            "detalle_servicios",
-            "tipo_vinculo",
-            "sector_laboral",
-            # Beneficios sociales / pensión
-            "percibe_beneficio",
-            "beneficio_detalle",
-            "beneficio_organismo",
-            "beneficio_monto_aprox",
-            # Notas y estado
+            "nombre", "apellido", "dni", "fecha_nacimiento",
+            "direccion", "barrio", "telefono",
             "notas",
-            "activo",
+            "paga_servicios", "detalle_servicios",
+            "tipo_vinculo", "sector_laboral", "fecha_ingreso",
+            "percibe_beneficio", "beneficio_detalle", "beneficio_organismo", "beneficio_monto_aprox",
         ]
         widgets = {
-            "apellido": forms.TextInput(
-                attrs={"class": "form-control", "placeholder": "Apellido"}
-            ),
-            "nombre": forms.TextInput(
-                attrs={"class": "form-control", "placeholder": "Nombre"}
-            ),
-            "dni": forms.TextInput(
-                attrs={"class": "form-control", "placeholder": "DNI"}
-            ),
-            "direccion": forms.TextInput(
-                attrs={"class": "form-control", "placeholder": "Domicilio"}
-            ),
-            "barrio": forms.TextInput(
-                attrs={"class": "form-control", "placeholder": "Barrio / zona"}
-            ),
-            "telefono": forms.TextInput(
-                attrs={"class": "form-control", "placeholder": "Teléfono"}
-            ),
-            "paga_servicios": forms.CheckboxInput(
-                attrs={"class": "form-check-input"}
-            ),
-            "detalle_servicios": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Ej: Agua potable – Medidor 123, Lote 5 Manzana 3",
-                }
-            ),
-            "tipo_vinculo": forms.Select(
-                attrs={"class": "form-select"}
-            ),
-            "sector_laboral": forms.Select(
-                attrs={"class": "form-select"}
-            ),
-            # Beneficios sociales
-            "percibe_beneficio": forms.CheckboxInput(
-                attrs={"class": "form-check-input"}
-            ),
-            "beneficio_detalle": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Ej: AUH, jubilación mínima, pensión no contributiva",
-                }
-            ),
-            "beneficio_organismo": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Ej: ANSES, PAMI, Provincia, Nación",
-                }
-            ),
-            "beneficio_monto_aprox": forms.NumberInput(
-                attrs={
-                    "class": "form-control",
-                    "step": "0.01",
-                    "placeholder": "Monto mensual aprox. (opcional)",
-                }
-            ),
-            "notas": forms.Textarea(
-                attrs={"class": "form-control", "rows": 3, "placeholder": "Notas"}
-            ),
-            "activo": forms.CheckboxInput(attrs={"class": "form-check-input"}),
-        }
-        labels = {
-            "direccion": "Domicilio",
-            "paga_servicios": "Paga servicios a la comuna",
-            "detalle_servicios": "Detalle de servicios / referencia",
-            "tipo_vinculo": "Tipo de vínculo laboral",
-            "sector_laboral": "Área / sector en la comuna",
-            # Beneficios
-            "percibe_beneficio": "Percibe pensión o beneficio social",
-            "beneficio_detalle": "Detalle del beneficio",
-            "beneficio_organismo": "Organismo / programa",
-            "beneficio_monto_aprox": "Monto aproximado mensual",
+            "fecha_nacimiento": forms.DateInput(attrs={"type": "date"}),
+            "fecha_ingreso": forms.DateInput(attrs={"type": "date"}),
+            "beneficio_monto_aprox": forms.TextInput(attrs={
+                "inputmode": "decimal",
+                "autocomplete": "off",
+                "placeholder": "Ej: 50.000,00"
+            }),
+            "notas": forms.Textarea(attrs={"rows": 3}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["dni"].required = True
+        if not self.instance.pk:
+            self.instance.activo = True
 
-# =====================================================
-#   ATENCIONES SOCIALES
-# =====================================================
+    def clean_nombre(self):
+        v = (self.cleaned_data.get("nombre") or "").strip()
+        if not v:
+            raise ValidationError("Este campo es obligatorio.")
+        return v
 
-class AtencionForm(forms.ModelForm):
-    """
-    Registro de ATENCIONES SOCIALES (módulo social, sin plata):
+    def clean_apellido(self):
+        v = (self.cleaned_data.get("apellido") or "").strip()
+        if not v:
+            raise ValidationError("Este campo es obligatorio.")
+        return v
 
-    - Atención a X persona (del censo o por texto)
-    - Qué vino a pedir / plantear
-    - Qué se hizo / qué quedó pendiente
+    def clean_dni(self):
+        dni_raw = self.cleaned_data.get("dni", "")
+        dni = _normalizar_dni(dni_raw)
 
-    La fecha/hora de la atención se setea automáticamente.
-    """
+        if not dni:
+            raise ValidationError("Ingresá DNI/CUIL (solo números).")
+
+        if len(dni) not in (7, 8, 9, 11):
+            raise ValidationError("DNI/CUIL inválido. Verificá la cantidad de dígitos.")
+
+        qs = Beneficiario.objects.filter(dni=dni)
+        if self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+
+        if qs.exists():
+            e = qs.first()
+            raise ValidationError(f"Ya existe una persona con ese DNI/CUIL: {e.apellido}, {e.nombre} (ID {e.id}).")
+        return dni
+
+    def clean(self):
+        cleaned = super().clean()
+        nombre = (cleaned.get("nombre") or "").strip().lower()
+        apellido = (cleaned.get("apellido") or "").strip().lower()
+        fecha = cleaned.get("fecha_nacimiento")
+
+        if nombre and apellido and fecha:
+            qs = Beneficiario.objects.filter(nombre__iexact=nombre, apellido__iexact=apellido, fecha_nacimiento=fecha)
+            if self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise ValidationError("Posible duplicado: ya existe una persona con mismo Nombre, Apellido y Fecha de Nacimiento.")
+        return cleaned
+
+
+class AtencionForm(EstiloFormMixin, forms.ModelForm):
+    fecha_atencion = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date"}),
+        initial=lambda: timezone.now().date()
+    )
+    hora_atencion = forms.TimeField(
+        widget=forms.TimeInput(attrs={"type": "time"}),
+        required=False,
+        initial=lambda: timezone.now().time()
+    )
+    persona = forms.ModelChoiceField(
+        queryset=Beneficiario.objects.filter(activo=True).order_by("apellido", "nombre"),
+        required=False,
+        widget=forms.Select(attrs={
+            "class": "select2-ajax",
+            "data-ajax-url": reverse_lazy("finanzas:persona_autocomplete"),
+            "data-placeholder": "Buscar persona...",
+        })
+    )
 
     class Meta:
         model = Atencion
-        fields = [
-            "fecha_atencion",
-            "persona",
-            "persona_nombre",
-            "persona_dni",
-            "persona_barrio",
-            "motivo_principal",
-            "descripcion",
-            "canal",
-            "estado",
-            "prioridad",
-            "requiere_seguimiento",
-            "tarea_seguimiento",
-            "area",
-            "origen_interno",
-            "resultado",
-        ]
+        fields = "__all__"
         widgets = {
-            "persona": forms.Select(attrs={"class": "form-select"}),
-            "persona_nombre": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Nombre y apellido (si no está en el censo)",
-                }
-            ),
-            "persona_dni": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "DNI (si no está en el censo)",
-                }
-            ),
-            "persona_barrio": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Barrio / zona para ubicar a la familia",
-                }
-            ),
-            "motivo_principal": forms.Select(attrs={"class": "form-select"}),
-            "descripcion": forms.Textarea(
-                attrs={
-                    "class": "form-control",
-                    "rows": 4,
-                    "placeholder": "Qué vino a pedir / cuál es la situación",
-                }
-            ),
-            "canal": forms.Select(attrs={"class": "form-select"}),
-            "estado": forms.Select(attrs={"class": "form-select"}),
-            "prioridad": forms.Select(attrs={"class": "form-select"}),
-            "requiere_seguimiento": forms.CheckboxInput(
-                attrs={"class": "form-check-input"}
-            ),
-            "tarea_seguimiento": forms.Select(attrs={"class": "form-select"}),
-            "area": forms.Select(attrs={"class": "form-select"}),
-            "origen_interno": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Ej: Derivado por escuela, CAPS, juzgado, etc.",
-                }
-            ),
-            "resultado": forms.Textarea(
-                attrs={
-                    "class": "form-control",
-                    "rows": 4,
-                    "placeholder": "Qué se hizo / acordó / resolvió en la atención",
-                }
-            ),
+            "persona_nombre": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly"}),
+            "persona_dni": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly"}),
+            "persona_barrio": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly"}),
+            "descripcion": forms.Textarea(attrs={"rows": 3}),
+            "resultado": forms.Textarea(attrs={"rows": 2}),
         }
-        labels = {
-            "persona": "Persona (censo)",
-            "persona_nombre": "Nombre y apellido",
-            "persona_dni": "DNI",
-            "persona_barrio": "Barrio / referencia",
-            "motivo_principal": "Motivo principal",
-            "descripcion": "Detalle de la situación / pedido",
-            "canal": "Canal de ingreso",
-            "estado": "Estado de la atención",
-            "prioridad": "Prioridad",
-            "requiere_seguimiento": "¿Requiere seguimiento?",
-            "tarea_seguimiento": "Tarea asociada (agenda)",
-            "area": "Área responsable",
-            "origen_interno": "Origen interno / externo",
-            "resultado": "Resultado / acciones realizadas",
-        }
-
-    def __init__(self, *args, **kwargs):
-        # Permite pasar persona_inicial desde la vista (p.ej. ficha de censo)
-        persona_inicial = kwargs.pop("persona_inicial", None)
-        super().__init__(*args, **kwargs)
-
-        # Guardamos la fecha original para no pisarla en edición
-        self._fecha_original = getattr(self.instance, "fecha_atencion", None)
-
-        # La fecha NO la edita el usuario → campo oculto pero con valor válido
-        if "fecha_atencion" in self.fields:
-            field = self.fields["fecha_atencion"]
-            field.required = False
-            field.widget = forms.HiddenInput()
-
-            # En alta (sin instancia y sin POST) seteamos un valor inicial correcto
-            if not self.instance.pk and not self.data:
-                if isinstance(field, forms.DateTimeField):
-                    default_fecha = timezone.now()
-                else:
-                    # Caso típico: DateField → solo fecha
-                    default_fecha = timezone.now().date()
-                self.initial.setdefault("fecha_atencion", default_fecha)
-
-        # Bootstrapeo de widgets (respetando hidden)
-        for name, field in self.fields.items():
-            widget = field.widget
-            if isinstance(widget, forms.HiddenInput):
-                continue
-
-            existing_classes = widget.attrs.get("class", "")
-            classes = existing_classes.split() if existing_classes else []
-
-            if isinstance(widget, forms.Select):
-                base_class = "form-select"
-            elif isinstance(widget, forms.CheckboxInput):
-                base_class = "form-check-input"
-            elif isinstance(widget, forms.Textarea):
-                base_class = "form-control"
-                widget.attrs.setdefault("rows", 4)
-            else:
-                base_class = "form-control"
-
-            if base_class and base_class not in classes:
-                classes.append(base_class)
-                widget.attrs["class"] = " ".join(classes)
-
-        # Personas activas del censo
-        if "persona" in self.fields:
-            benef_qs = Beneficiario.objects.filter(activo=True).order_by(
-                "apellido",
-                "nombre",
-            )
-            self.fields["persona"].queryset = benef_qs
-            self.fields["persona"].empty_label = "---------"
-
-            def _benef_label(persona):
-                apellido = (persona.apellido or "").strip()
-                nombre = (persona.nombre or "").strip()
-                base = f"{apellido} {nombre}".strip() or "(Sin nombre)"
-                dni = getattr(persona, "dni", None)
-                if dni:
-                    return f"{base} – DNI {dni}"
-                return base
-
-            self.fields["persona"].label_from_instance = _benef_label
-
-            # Preseleccionar persona inicial si viene desde la ficha
-            if persona_inicial and not self.instance.pk and not self.data:
-                try:
-                    if hasattr(persona_inicial, "pk"):
-                        pk = persona_inicial.pk
-                    else:
-                        pk = int(persona_inicial)
-                    benef_qs.get(pk=pk)
-                    self.initial.setdefault("persona", pk)
-                except (Beneficiario.DoesNotExist, ValueError, TypeError):
-                    pass
-
-        # Áreas activas
-        if "area" in self.fields:
-            self.fields["area"].queryset = Area.objects.filter(activo=True).order_by(
-                "nombre"
-            )
-            self.fields["area"].empty_label = "---------"
-
-        # Tarea de seguimiento opcional
-        if "tarea_seguimiento" in self.fields:
-            self.fields["tarea_seguimiento"].required = False
-            if hasattr(self.fields["tarea_seguimiento"], "empty_label"):
-                self.fields["tarea_seguimiento"].empty_label = "---------"
 
     def clean(self):
-        cleaned_data = super().clean()
-
-        persona = cleaned_data.get("persona")
-        persona_nombre = cleaned_data.get("persona_nombre")
-        persona_dni = cleaned_data.get("persona_dni")
-        persona_barrio = cleaned_data.get("persona_barrio")
-
-        # Tiene que haber al menos alguna identificación de la persona
-        if not persona and not (persona_nombre or persona_dni or persona_barrio):
-            msg = (
-                "Cargá la persona desde el censo o completá al menos el nombre "
-                "o el DNI."
-            )
-            raise ValidationError(
-                {
-                    "persona": msg,
-                    "persona_nombre": msg,
-                }
-            )
-
-        return cleaned_data
-
-    def save(self, commit=True):
-        """
-        - Garantiza una fecha_atencion válida aunque el campo esté oculto.
-        - Copia datos básicos de la persona del censo a los campos de texto.
-        """
-        instance = super().save(commit=False)
-
-        # 1) Resolver fecha_atencion de forma robusta
-        fecha_form = self.cleaned_data.get("fecha_atencion")
-        field = self.fields.get("fecha_atencion")
-
-        if fecha_form:
-            # Si el form la limpió bien, usamos ese valor
-            instance.fecha_atencion = fecha_form
-        elif self._fecha_original is not None:
-            # En edición, si no vino nada, preservamos la original
-            instance.fecha_atencion = self._fecha_original
-        else:
-            # Alta sin fecha en cleaned_data → seteamos un valor válido
-            if isinstance(field, forms.DateTimeField):
-                default_fecha = timezone.now()
-            else:
-                default_fecha = timezone.now().date()
-            instance.fecha_atencion = default_fecha
-
-        # 2) Si hay persona del censo, copiamos textos de respaldo
-        persona = getattr(instance, "persona", None)
-        if persona:
-            # Nombre
-            if not instance.persona_nombre:
-                apellido = (persona.apellido or "").strip()
-                nombre = (persona.nombre or "").strip()
-                base = f"{apellido}, {nombre}".strip(", ").strip()
-                if base:
-                    instance.persona_nombre = base
-
-            # DNI
-            if not instance.persona_dni and getattr(persona, "dni", None):
-                instance.persona_dni = persona.dni
-
-            # Barrio
-            if not instance.persona_barrio and getattr(persona, "barrio", None):
-                instance.persona_barrio = persona.barrio
-
-        if commit:
-            instance.save()
-            self.save_m2m()
-
-        return instance
+        cleaned = super().clean()
+        p = cleaned.get("persona")
+        if p:
+            cleaned["persona_nombre"] = f"{p.apellido}, {p.nombre}".strip()
+            cleaned["persona_dni"] = p.dni or ""
+            cleaned["persona_barrio"] = p.barrio or ""
+        return cleaned
 
 
+# =========================================================
+# 6) FLOTA Y LOGÍSTICA
+# =========================================================
 
-# =====================================================
-#   ÓRDENES DE COMPRA
-# =====================================================
-
-class OrdenCompraForm(forms.ModelForm):
-    """
-    Form principal de Orden de Compra.
-    Enlazado al template finanzas/orden_compra_form.html
-    """
-
-    fecha_oc = forms.DateField(
-        label="Fecha OC",
-        widget=forms.DateInput(
-            attrs={
-                "type": "date",
-                "class": "form-control",
-            },
-            format="%Y-%m-%d",
-        ),
-        input_formats=["%Y-%m-%d"],
-    )
-
-    class Meta:
-        model = OrdenCompra
-        fields = [
-            "serie",
-            "numero",
-            "fecha_oc",
-            "estado",
-            "rubro_principal",
-            "proveedor",
-            "proveedor_nombre",
-            "proveedor_cuit",
-            "area",
-            "observaciones",
-        ]
-        widgets = {
-            "serie": forms.Select(
-                attrs={
-                    "class": "form-select",
-                }
-            ),
-            "numero": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Número interno de la OC (opcional)",
-                }
-            ),
-            "estado": forms.Select(
-                attrs={
-                    "class": "form-select",
-                }
-            ),
-            "rubro_principal": forms.Select(
-                attrs={
-                    "class": "form-select",
-                }
-            ),
-            "proveedor": forms.Select(
-                attrs={
-                    "class": "form-select",
-                }
-            ),
-            "proveedor_nombre": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Texto que se imprime en la OC",
-                }
-            ),
-            "proveedor_cuit": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "CUIT del proveedor (opcional)",
-                }
-            ),
-            "area": forms.Select(
-                attrs={
-                    "class": "form-select",
-                }
-            ),
-            "observaciones": forms.Textarea(
-                attrs={
-                    "class": "form-control",
-                    "rows": 3,
-                    "placeholder": "Notas / condiciones particulares de la OC",
-                }
-            ),
-        }
-        labels = {
-            "numero": "Número de OC",
-            "rubro_principal": "Rubro principal",
-            "proveedor": "Proveedor (maestro)",
-            "proveedor_nombre": "Proveedor (texto en OC)",
-            "proveedor_cuit": "CUIT proveedor",
-            "area": "Área solicitante",
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # Fecha OC por defecto = hoy (solo en alta / GET)
-        if not self.instance.pk and not self.data and "fecha_oc" in self.fields:
-            self.initial.setdefault("fecha_oc", timezone.now().date())
-
-        # Solo áreas activas
-        if "area" in self.fields:
-            self.fields["area"].queryset = Area.objects.filter(activo=True).order_by(
-                "nombre"
-            )
-            self.fields["area"].empty_label = "---------"
-
-        # Solo proveedores activos (desde el FK de OrdenCompra)
-        if "proveedor" in self.fields:
-            proveedor_model = OrdenCompra._meta.get_field("proveedor").remote_field.model
-            self.fields["proveedor"].queryset = proveedor_model.objects.filter(
-                activo=True
-            ).order_by("nombre")
-            self.fields["proveedor"].empty_label = "---------"
-
-        # Serie opcional
-        if "serie" in self.fields:
-            self.fields["serie"].empty_label = "---------" 
-
-
-class OrdenCompraLineaForm(forms.ModelForm):
-    """
-    Form de línea de Orden de Compra (detalle de conceptos).
-    Se usa en el formset OrdenCompraLineaFormSet.
-    """
-
-    monto = MontoDecimalField(
-        max_digits=14,
-        decimal_places=2,
-        widget=forms.NumberInput(
-            attrs={
-                "class": "form-control form-control-sm text-end",
-                "step": "0.01",
-            }
-        ),
-    )
-
-    class Meta:
-        model = OrdenCompraLinea
-        fields = ["categoria", "area", "descripcion", "monto"]
-        widgets = {
-            "categoria": forms.Select(
-                attrs={
-                    "class": "form-select form-select-sm",
-                }
-            ),
-            "area": forms.Select(
-                attrs={
-                    "class": "form-select form-select-sm",
-                }
-            ),
-            "descripcion": forms.TextInput(
-                attrs={
-                    "class": "form-control form-control-sm",
-                    "placeholder": "Detalle del bien/servicio contratado",
-                }
-            ),
-        }
-        labels = {
-            "descripcion": "Descripción",
-            "monto": "Monto",
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Categorías ordenadas alfabéticamente
-        self.fields["categoria"].queryset = Categoria.objects.order_by("nombre")
-        self.fields["categoria"].empty_label = "---------"
-        # Solo áreas activas
-        self.fields["area"].queryset = Area.objects.filter(activo=True).order_by(
-            "nombre"
-        )
-        self.fields["area"].empty_label = "---------"  # opcional
-
-    def clean(self):
-        cleaned_data = super().clean()
-        categoria = cleaned_data.get("categoria")
-        area = cleaned_data.get("area")
-        descripcion = cleaned_data.get("descripcion")
-        monto = cleaned_data.get("monto")
-
-        # Form totalmente vacío → lo ignora el formset
-        if not (categoria or area or descripcion or monto):
-            return cleaned_data
-
-        if monto is not None and monto <= 0:
-            self.add_error("monto", "El monto debe ser mayor que cero.")
-
-        return cleaned_data
-
-
-OrdenCompraLineaFormSet = inlineformset_factory(
-    OrdenCompra,
-    OrdenCompraLinea,
-    form=OrdenCompraLineaForm,
-    extra=1,
-    can_delete=True,
-)
-
-
-class FacturaOCForm(forms.ModelForm):
-    """
-    Formulario para FacturaOC.
-    Se piensa para usarse como formset dentro de la OC, por eso NO pedimos 'orden'.
-    """
-
-    fecha = forms.DateField(
-        label="Fecha del comprobante",
-        required=False,
-        widget=forms.DateInput(
-            attrs={
-                "type": "date",
-                "class": "form-control",
-            },
-            format="%Y-%m-%d",
-        ),
-        input_formats=["%Y-%m-%d"],
-    )
-
-    monto = MontoDecimalField(
-        max_digits=14,
-        decimal_places=2,
-        widget=forms.NumberInput(
-            attrs={
-                "class": "form-control",
-                "step": "0.01",
-                "placeholder": "Monto del comprobante",
-            }
-        ),
-    )
-
-    class Meta:
-        model = FacturaOC
-        fields = ["tipo", "numero", "fecha", "monto", "observaciones"]
-        widgets = {
-            "tipo": forms.Select(
-                attrs={
-                    "class": "form-select",
-                }
-            ),
-            "numero": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Número de factura / ticket",
-                }
-            ),
-            "observaciones": forms.Textarea(
-                attrs={
-                    "class": "form-control",
-                    "rows": 2,
-                    "placeholder": "Notas internas (opcional)",
-                }
-            ),
-        }
-        labels = {
-            "tipo": "Tipo de comprobante",
-            "numero": "Número",
-            "monto": "Monto",
-            "observaciones": "Observaciones",
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # Fecha por defecto = hoy (solo en alta / GET)
-        if not self.instance.pk and not self.data and "fecha" in self.fields:
-            self.initial.setdefault("fecha", timezone.now().date())
-
-
-FacturaOCFormSet = inlineformset_factory(
-    OrdenCompra,
-    FacturaOC,
-    form=FacturaOCForm,
-    extra=1,
-    can_delete=True,
-)
-
-
-# =====================================================
-#   FLOTA / VEHÍCULOS / ODÓMETRO
-# =====================================================
-
-class VehiculoForm(forms.ModelForm):
-    """ABM simple de vehículos, alineado al módulo de flota."""
-
+class VehiculoForm(EstiloFormMixin, forms.ModelForm):
     class Meta:
         model = Vehiculo
-        fields = [
-            "patente",
-            "descripcion",
-            "area",
-            "activo",
-            "kilometraje_referencia",
-            "horometro_referencia",
-        ]
+        fields = "__all__"
         widgets = {
-            "patente": forms.TextInput(
-                attrs={"class": "form-control", "placeholder": "Patente / identificación"}
-            ),
-            "descripcion": forms.TextInput(
-                attrs={"class": "form-control", "placeholder": "Descripción corta"}
-            ),
-            "area": forms.Select(attrs={"class": "form-select"}),
-            "activo": forms.CheckboxInput(attrs={"class": "form-check-input"}),
-            "kilometraje_referencia": forms.NumberInput(
-                attrs={"class": "form-control", "placeholder": "Ej: 120000"}
-            ),
-            "horometro_referencia": forms.NumberInput(
-                attrs={"class": "form-control", "step": "0.1"}
-            ),
-        }
-        labels = {
-            "kilometraje_referencia": "Km referencia (último servicio / alta)",
-            "horometro_referencia": "Horómetro referencia",
+            "observaciones": forms.Textarea(attrs={"rows": 3, "class": "form-control", "placeholder": "Detalles mecánicos, service, etc..."}),
+            "tipo": forms.Select(attrs={"class": "form-select"}),
+            "marca": forms.TextInput(attrs={"placeholder": "Ej: Toyota, Ford..."}),
         }
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["area"].queryset = Area.objects.filter(activo=True).order_by(
-            "nombre"
-        )
-        self.fields["area"].empty_label = "---------" 
 
-
-class ViajeVehiculoForm(forms.ModelForm):
-    """
-    Módulo ODÓMETRO PRO:
-    - Vehículo, área, chofer
-    - Km y horómetro
-    - Beneficiarios trasladados (censo)
-    - M2M híbrido con movimientos de combustible (sugerido, pero editable).
-
-    Mejora Fase 2:
-    - Permite recibir un beneficiario inicial para preseleccionarlo como
-      trasladado cuando se abre el form desde la ficha de persona.
-    """
-
-    fecha_salida = forms.DateField(
-        label="Fecha de salida",
-        widget=forms.DateInput(
-            attrs={"type": "date", "class": "form-control"},
-            format="%Y-%m-%d",
-        ),
-        input_formats=["%Y-%m-%d"],
+class HojaRutaForm(EstiloFormMixin, forms.ModelForm):
+    fecha = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date"}),
+        initial=lambda: timezone.now().date()
     )
-    fecha_regreso = forms.DateField(
-        label="Fecha de regreso",
+    hora_salida = forms.TimeField(
+        widget=forms.TimeInput(attrs={"type": "time"}),
         required=False,
-        widget=forms.DateInput(
-            attrs={"type": "date", "class": "form-control"},
-            format="%Y-%m-%d",
-        ),
-        input_formats=["%Y-%m-%d"],
+        initial=lambda: timezone.now().time()
     )
-
-    # Campo redefinido para poder controlar bien las etiquetas de combustible
-    cargas_combustible = forms.ModelMultipleChoiceField(
-        label="Cargas de combustible asociadas",
+    chofer = forms.ModelChoiceField(
+        queryset=Beneficiario.objects.filter(activo=True).order_by("apellido", "nombre"),
         required=False,
-        queryset=Movimiento.objects.none(),
-        widget=forms.SelectMultiple(
-            attrs={
-                "class": "form-select",
-                "size": 6,
-            }
-        ),
+        widget=forms.Select(attrs={
+            "class": "select2-ajax",
+            "data-ajax-url": reverse_lazy("finanzas:persona_autocomplete"),
+            "data-placeholder": "Buscar chofer...",
+        })
     )
 
     class Meta:
-        model = ViajeVehiculo
-        fields = [
-            "vehiculo",
-            "area",
-            "chofer",
-            "chofer_nombre",
-            "fecha_salida",
-            "hora_salida",
-            "fecha_regreso",
-            "hora_regreso",
-            "odometro_inicial",
-            "odometro_final",
-            "horometro_inicial",
-            "horometro_final",
-            "litros_tanque_inicio",
-            "litros_tanque_fin",
-            "tipo_recorrido",
-            "origen",
-            "destino",
-            "motivo",
-            "observaciones",
-            "beneficiarios",
-            "otros_beneficiarios",
-            "cargas_combustible",
-            "estado",
-        ]
+        model = HojaRuta
+        fields = ["vehiculo", "chofer", "chofer_nombre", "fecha", "hora_salida", "odometro_inicio", "observaciones"]
         widgets = {
-            "vehiculo": forms.Select(attrs={"class": "form-select"}),
-            "area": forms.Select(attrs={"class": "form-select"}),
-            "chofer": forms.Select(attrs={"class": "form-select"}),
-            "chofer_nombre": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Nombre chofer (si no está en censo)",
-                }
-            ),
-            "hora_salida": forms.TimeInput(
-                attrs={"type": "time", "class": "form-control"},
-                format="%H:%M",
-            ),
-            "hora_regreso": forms.TimeInput(
-                attrs={"type": "time", "class": "form-control"},
-                format="%H:%M",
-            ),
-            "odometro_inicial": forms.NumberInput(
-                attrs={"class": "form-control", "placeholder": "Km al salir"}
-            ),
-            "odometro_final": forms.NumberInput(
-                attrs={"class": "form-control", "placeholder": "Km al regresar"}
-            ),
-            "horometro_inicial": forms.NumberInput(
-                attrs={"class": "form-control", "step": "0.1"}
-            ),
-            "horometro_final": forms.NumberInput(
-                attrs={"class": "form-control", "step": "0.1"}
-            ),
-            "litros_tanque_inicio": forms.NumberInput(
-                attrs={"class": "form-control", "step": "0.01"}
-            ),
-            "litros_tanque_fin": forms.NumberInput(
-                attrs={"class": "form-control", "step": "0.01"}
-            ),
-            "tipo_recorrido": forms.Select(attrs={"class": "form-select"}),
-            "origen": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Ej: Tacuarendí – Comuna",
-                }
-            ),
-            "destino": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Ej: Reconquista – Banco / AFIP",
-                }
-            ),
-            "motivo": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Motivo general del viaje",
-                }
-            ),
-            "observaciones": forms.Textarea(
-                attrs={"class": "form-control", "rows": 3}
-            ),
-            "beneficiarios": forms.SelectMultiple(
-                attrs={
-                    "class": "form-select",
-                    "size": 6,
-                }
-            ),
-            "otros_beneficiarios": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Ej: Familia Pérez, delegación club X",
-                }
-            ),
-            "estado": forms.Select(attrs={"class": "form-select"}),
-        }
-        labels = {
-            "beneficiarios": "Personas trasladadas",
-            "otros_beneficiarios": "Otras personas / familias (texto)",
-            "cargas_combustible": "Cargas de combustible asociadas",
+            "chofer_nombre": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly"}),
+            "odometro_inicio": forms.NumberInput(attrs={"placeholder": "000000"}),
+            "observaciones": forms.Textarea(attrs={"rows": 3}),
         }
 
     def __init__(self, *args, **kwargs):
-        # Kwarg opcional para cuando abrimos el form desde la ficha de persona
-        beneficiario_inicial = kwargs.pop("beneficiario_inicial", None)
         super().__init__(*args, **kwargs)
-
-        # Fecha por defecto hoy en alta
-        if not self.instance.pk and not self.data:
-            self.initial.setdefault("fecha_salida", timezone.now().date())
-
-        # Vehículos activos
-        self.fields["vehiculo"].queryset = Vehiculo.objects.filter(
-            activo=True
-        ).order_by("patente", "descripcion")
-        self.fields["vehiculo"].empty_label = "---------"
-
-        # Áreas activas
-        self.fields["area"].queryset = Area.objects.filter(activo=True).order_by(
-            "nombre"
-        )
-        self.fields["area"].empty_label = "---------"
-
-        # Chofer / beneficiarios activos
-        benef_qs = Beneficiario.objects.filter(activo=True).order_by(
-            "apellido",
-            "nombre",
-        )
-        self.fields["chofer"].queryset = benef_qs
-        self.fields["chofer"].empty_label = "---------"
-        self.fields["beneficiarios"].queryset = benef_qs
-
-        # Etiqueta amigable: Apellido Nombre – DNI 12345678
-        def _benef_label(persona):
-            apellido = (persona.apellido or "").strip()
-            nombre = (persona.nombre or "").strip()
-            base = f"{apellido} {nombre}".strip() or "(Sin nombre)"
-            dni = getattr(persona, "dni", None)
-            if dni:
-                return f"{base} – DNI {dni}"
-            return base
-
-        self.fields["chofer"].label_from_instance = _benef_label
-        self.fields["beneficiarios"].label_from_instance = _benef_label
-
-        # ===============================
-        #   Modo híbrido combustible
-        # ===============================
-        base_qs = Movimiento.objects.filter(
-            categoria__es_combustible=True,
-            estado=Movimiento.ESTADO_APROBADO,
-            tipo=Movimiento.TIPO_GASTO,  # solo gastos de combustible
-        ).order_by("-fecha_operacion", "-id")
-
-        instance = getattr(self, "instance", None)
-        seleccion_ids = []
-
-        if instance and instance.pk:
-            seleccion_ids = list(
-                instance.cargas_combustible.values_list("id", flat=True)
-            )
-
-            if instance.vehiculo_id:
-                base_qs = base_qs.filter(vehiculo_id=instance.vehiculo_id)
-
-            if instance.fecha_salida:
-                # Sugerimos por fecha de salida; después se puede abrir rango si hace falta
-                base_qs = base_qs.filter(fecha_operacion=instance.fecha_salida)
-
-            if seleccion_ids:
-                base_qs = (
-                    base_qs
-                    | Movimiento.objects.filter(id__in=seleccion_ids)
-                ).distinct()
-
-        campo_cargas = self.fields["cargas_combustible"]
-        campo_cargas.queryset = base_qs
-        campo_cargas.label_from_instance = self._label_movimiento_combustible
-
-        # Preseleccionar beneficiario cuando venimos desde la ficha de persona
-        if beneficiario_inicial and "beneficiarios" in self.fields:
-            try:
-                if hasattr(beneficiario_inicial, "pk"):
-                    benef_pk = beneficiario_inicial.pk
-                else:
-                    benef_pk = int(beneficiario_inicial)
-                # Validamos que esté en el queryset activo
-                benef_qs.get(pk=benef_pk)
-                # Solo si el form está en alta (sin instancia) y no hay POST
-                if not self.instance.pk and not self.data:
-                    self.initial.setdefault("beneficiarios", [benef_pk])
-            except (Beneficiario.DoesNotExist, ValueError, TypeError):
-                pass
-
-    def _label_movimiento_combustible(self, mov: Movimiento) -> str:
-        """
-        Etiqueta amigable para las cargas de combustible:
-        Ej: 19/11/2025 · Fiat Uno ABC123 · $15000.00 · Detalle
-        """
-        partes = []
-
-        fecha = getattr(mov, "fecha_operacion", None)
-        if fecha:
-            partes.append(fecha.strftime("%d/%m/%Y"))
-
-        vehiculo = getattr(mov, "vehiculo", None)
-        if vehiculo:
-            partes.append(str(vehiculo))
-
-        monto = getattr(mov, "monto", None)
-        if monto is not None:
-            partes.append(f"${monto}")
-
-        detalle = (
-            getattr(mov, "descripcion", "")
-            or getattr(mov, "observaciones", "")
-            or ""
-        ).strip()
-        if detalle:
-            partes.append(detalle[:40])
-
-        if not partes:
-            return f"Movimiento #{mov.pk}"
-
-        return " · ".join(partes)
+        self.fields["vehiculo"].queryset = Vehiculo.objects.filter(activo=True).order_by("patente")
 
     def clean(self):
-        cleaned_data = super().clean()
-
-        fecha_salida = cleaned_data.get("fecha_salida")
-        fecha_regreso = cleaned_data.get("fecha_regreso")
-        odometro_inicial = cleaned_data.get("odometro_inicial")
-        odometro_final = cleaned_data.get("odometro_final")
-        horometro_inicial = cleaned_data.get("horometro_inicial")
-        horometro_final = cleaned_data.get("horometro_final")
-
-        errors = {}
-
-        if fecha_salida and fecha_regreso and fecha_regreso < fecha_salida:
-            errors["fecha_regreso"] = (
-                "La fecha de regreso no puede ser anterior a la fecha de salida."
-            )
-
-        if (
-            odometro_inicial is not None
-            and odometro_final is not None
-            and odometro_final < odometro_inicial
-        ):
-            errors["odometro_final"] = (
-                "El odómetro final no puede ser menor que el odómetro inicial."
-            )
-
-        if (
-            horometro_inicial is not None
-            and horometro_final is not None
-            and horometro_final < horometro_inicial
-        ):
-            errors["horometro_final"] = (
-                "El horómetro final no puede ser menor que el horómetro inicial."
-            )
-
-        if errors:
-            raise ValidationError(errors)
-
-        return cleaned_data
+        cleaned = super().clean()
+        c = cleaned.get("chofer")
+        if c:
+            cleaned["chofer_nombre"] = f"{c.apellido}, {c.nombre}".strip()
+        return cleaned
 
 
-class ViajeVehiculoTramoForm(forms.ModelForm):
-    """Tramos internos de un viaje (urbano/ruta, etc.)."""
+class HojaRutaCierreForm(EstiloFormMixin, forms.ModelForm):
+    hora_llegada = forms.TimeField(
+        widget=forms.TimeInput(attrs={"type": "time"}),
+        required=False,
+        initial=lambda: timezone.now().time()
+    )
 
     class Meta:
-        model = ViajeVehiculoTramo
-        fields = [
-            "orden",
-            "origen",
-            "destino",
-            "hora_salida",
-            "hora_llegada",
-            "motivo",
-            "observaciones",
-        ]
+        model = HojaRuta
+        fields = ["odometro_fin", "hora_llegada", "observaciones"]
         widgets = {
-            "orden": forms.NumberInput(
-                attrs={
-                    "class": "form-control form-control-sm text-center",
-                    "min": 1,
-                }
-            ),
-            "origen": forms.TextInput(
-                attrs={
-                    "class": "form-control form-control-sm",
-                    "placeholder": "Origen",
-                }
-            ),
-            "destino": forms.TextInput(
-                attrs={
-                    "class": "form-control form-control-sm",
-                    "placeholder": "Destino",
-                }
-            ),
-            "hora_salida": forms.TimeInput(
-                attrs={"type": "time", "class": "form-control form-control-sm"},
-                format="%H:%M",
-            ),
-            "hora_llegada": forms.TimeInput(
-                attrs={"type": "time", "class": "form-control form-control-sm"},
-                format="%H:%M",
-            ),
-            "motivo": forms.TextInput(
-                attrs={
-                    "class": "form-control form-control-sm",
-                    "placeholder": "Motivo / tarea del tramo",
-                }
-            ),
-            "observaciones": forms.Textarea(
-                attrs={
-                    "class": "form-control form-control-sm",
-                    "rows": 2,
-                    "placeholder": "Notas (opcional)",
-                }
-            ),
+            "odometro_fin": forms.NumberInput(attrs={"placeholder": "000000"}),
+            "observaciones": forms.Textarea(attrs={"rows": 3}),
         }
 
 
-ViajeVehiculoTramoFormSet = inlineformset_factory(
-    ViajeVehiculo,
-    ViajeVehiculoTramo,
-    form=ViajeVehiculoTramoForm,
-    extra=1,
-    can_delete=True,
-)
+# =========================================================
+# 7) ÓRDENES DE TRABAJO (OT)
+# =========================================================
+
+class TrasladoForm(EstiloFormMixin, forms.ModelForm):
+    pasajeros = forms.ModelMultipleChoiceField(
+        queryset=Beneficiario.objects.filter(activo=True).order_by("apellido", "nombre"),
+        required=False,
+        widget=forms.SelectMultiple(attrs={
+            "class": "select2-ajax-multi",
+            "data-ajax-url": reverse_lazy("finanzas:persona_autocomplete"),
+            "data-placeholder": "Buscar pasajeros...",
+        })
+    )
+
+    class Meta:
+        model = Traslado
+        fields = ["origen", "destino", "motivo", "pasajeros", "otros_pasajeros"]
+        widgets = {"otros_pasajeros": forms.TextInput(attrs={"placeholder": "Nombres de no empadronados"})}
 
 
-# =====================================================
-#   ÓRDENES DE TRABAJO
-# =====================================================
-
-class OrdenTrabajoForm(forms.ModelForm):
-    """
-    OT general (no solo mecánica):
-    - Permite registrar trabajos a vecinos, instituciones, vehículos, etc.
-    - Integra con Movimiento de ingreso (vía botón en la vista).
-    """
-
+class OrdenTrabajoForm(EstiloFormMixin, forms.ModelForm):
     fecha_ot = forms.DateField(
-        label="Fecha OT",
-        widget=forms.DateInput(
-            attrs={"type": "date", "class": "form-control"},
-            format="%Y-%m-%d",
-        ),
+        widget=forms.DateInput(attrs={"type": "date"}),
         input_formats=["%Y-%m-%d"],
+        initial=lambda: timezone.now().date()
+    )
+    
+    solicitante = forms.ModelChoiceField(
+        queryset=Beneficiario.objects.none(),
+        required=False,
+        widget=forms.Select(attrs={
+            "class": "select2-ajax",
+            "data-ajax-url": reverse_lazy("finanzas:persona_autocomplete"),
+            "data-placeholder": "Buscar solicitante...",
+        })
+    )
+    
+    responsable = forms.ModelChoiceField(
+        queryset=Beneficiario.objects.none(),
+        required=False,
+        widget=forms.Select(attrs={
+            "class": "select2-ajax",
+            "data-ajax-url": reverse_lazy("finanzas:persona_autocomplete"),
+            "data-placeholder": "Buscar responsable...",
+        })
     )
 
-    importe_estimado = MontoDecimalField(
-        max_digits=14,
-        decimal_places=2,
+    vehiculo = forms.ModelChoiceField(
+        queryset=Vehiculo.objects.none(),
         required=False,
-        widget=forms.NumberInput(
-            attrs={
-                "class": "form-control",
-                "step": "0.01",
-                "placeholder": "Importe estimado (opcional)",
-            }
-        ),
-    )
-    importe_final = MontoDecimalField(
-        max_digits=14,
-        decimal_places=2,
-        required=False,
-        widget=forms.NumberInput(
-            attrs={
-                "class": "form-control",
-                "step": "0.01",
-                "placeholder": "Importe final acordado (opcional)",
-            }
-        ),
+        widget=forms.Select(attrs={
+            "class": "select2-ajax",
+            "data-ajax-url": reverse_lazy("finanzas:vehiculo_autocomplete"),
+            "data-placeholder": "Buscar vehículo...",
+        })
     )
 
     class Meta:
         model = OrdenTrabajo
-        fields = [
-            "numero",
-            "fecha_ot",
-            "estado",
-            "tipo_trabajo",
-            "prioridad",
-            "solicitante",
-            "solicitante_texto",
-            "area",
-            "vehiculo",
-            "responsable",
-            "responsable_texto",
-            "descripcion",
-            "trabajos_realizados",
-            "importe_estimado",
-            "importe_final",
-            "categoria_ingreso",
-            # movimiento_ingreso se maneja desde la vista/botón y no lo mostramos acá
-            "observaciones",
-        ]
+        exclude = ['creado_por', 'fecha_creacion']
+        
         widgets = {
-            "numero": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": (
-                        "Dejar vacío para generar automáticamente "
-                        "(ej: OT-0001/2025)"
-                    ),
-                }
-            ),
-            "estado": forms.Select(attrs={"class": "form-select"}),
-            "tipo_trabajo": forms.Select(attrs={"class": "form-select"}),
-            "prioridad": forms.Select(attrs={"class": "form-select"}),
-            "solicitante": forms.Select(attrs={"class": "form-select"}),
-            "solicitante_texto": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": (
-                        "Nombre de vecino/a o institución (si no está en censo)"
-                    ),
-                }
-            ),
-            "area": forms.Select(attrs={"class": "form-select"}),
-            "vehiculo": forms.Select(attrs={"class": "form-select"}),
-            "responsable": forms.Select(attrs={"class": "form-select"}),
-            "responsable_texto": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Responsable (texto libre, opcional)",
-                }
-            ),
-            "descripcion": forms.Textarea(
-                attrs={
-                    "class": "form-control",
-                    "rows": 3,
-                    "placeholder": "Descripción del trabajo solicitado",
-                }
-            ),
-            "trabajos_realizados": forms.Textarea(
-                attrs={
-                    "class": "form-control",
-                    "rows": 3,
-                    "placeholder": "Detalle de trabajos efectivamente realizados",
-                }
-            ),
-            "categoria_ingreso": forms.Select(attrs={"class": "form-select"}),
-            "observaciones": forms.Textarea(
-                attrs={
-                    "class": "form-control",
-                    "rows": 3,
-                    "placeholder": "Notas internas",
-                }
-            ),
-        }
-        labels = {
-            "solicitante": "Solicitante (censo)",
-            "solicitante_texto": "Solicitante (texto)",
-            "responsable": "Responsable (censo)",
-            "responsable_texto": "Responsable (texto)",
-            "categoria_ingreso": "Categoría contable del ingreso",
-            "prioridad": "Prioridad",
+            "solicitante_texto": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly"}),
+            "responsable_texto": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly"}),
+            "descripcion": forms.Textarea(attrs={"rows": 3}),
+            "trabajos_realizados": forms.Textarea(attrs={"rows": 3}),
+            "numero": forms.TextInput(attrs={"placeholder": "Automático o manual"}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        
+        if 'numero' in self.fields:
+            self.fields['numero'].required = False
 
-        # Fecha por defecto hoy
-        if not self.instance.pk and not self.data:
-            self.initial.setdefault("fecha_ot", timezone.now().date())
+        def set_queryset(field_name, model_class):
+            val = None
+            if self.is_bound:
+                val = self.data.get(field_name)
+            elif self.instance.pk:
+                val = getattr(self.instance, f"{field_name}_id", None)
+            
+            if val:
+                self.fields[field_name].queryset = model_class.objects.filter(pk=val)
+            else:
+                self.fields[field_name].queryset = model_class.objects.none()
 
-        # Censo activos
-        benef_qs = Beneficiario.objects.filter(activo=True).order_by(
-            "apellido",
-            "nombre",
-        )
-        self.fields["solicitante"].queryset = benef_qs
-        self.fields["solicitante"].empty_label = "---------"
-        self.fields["responsable"].queryset = benef_qs
-        self.fields["responsable"].empty_label = "---------"
-
-        # Etiqueta Apellido Nombre – DNI para solicitante / responsable
-        def _benef_label(persona):
-            apellido = (persona.apellido or "").strip()
-            nombre = (persona.nombre or "").strip()
-            base = f"{apellido} {nombre}".strip() or "(Sin nombre)"
-            dni = getattr(persona, "dni", None)
-            if dni:
-                return f"{base} – DNI {dni}"
-            return base
-
-        self.fields["solicitante"].label_from_instance = _benef_label
-        self.fields["responsable"].label_from_instance = _benef_label
-
-        # Áreas activas
-        self.fields["area"].queryset = Area.objects.filter(activo=True).order_by(
-            "nombre"
-        )
-        self.fields["area"].empty_label = "---------"
-
-        # Vehículos activos
-        self.fields["vehiculo"].queryset = Vehiculo.objects.filter(
-            activo=True
-        ).order_by("patente", "descripcion")
-        self.fields["vehiculo"].empty_label = "---------"
-
-        # Categorías de ingreso
-        self.fields["categoria_ingreso"].queryset = Categoria.objects.filter(
-            tipo__in=[Categoria.TIPO_INGRESO, Categoria.TIPO_AMBOS]
-        ).order_by("nombre")
-        self.fields["categoria_ingreso"].empty_label = "---------" 
-
-
-class OrdenTrabajoMaterialForm(forms.ModelForm):
-    """Materiales / insumos usados en una OT (para control interno)."""
-
-    cantidad = MontoDecimalField(
-        max_digits=10,
-        decimal_places=2,
-        widget=forms.NumberInput(
-            attrs={
-                "class": "form-control form-control-sm text-end",
-                "step": "0.01",
-            }
-        ),
-    )
-    costo_unitario = MontoDecimalField(
-        max_digits=14,
-        decimal_places=2,
-        required=False,
-        widget=forms.NumberInput(
-            attrs={
-                "class": "form-control form-control-sm text-end",
-                "step": "0.01",
-            }
-        ),
-    )
-    costo_total = MontoDecimalField(
-        max_digits=14,
-        decimal_places=2,
-        required=False,
-        widget=forms.NumberInput(
-            attrs={
-                "class": "form-control form-control-sm text-end",
-                "step": "0.01",
-                "readonly": "readonly",
-            }
-        ),
-    )
-
-    class Meta:
-        model = OrdenTrabajoMaterial
-        fields = ["descripcion", "cantidad", "unidad", "costo_unitario", "costo_total"]
-        widgets = {
-            "descripcion": forms.TextInput(
-                attrs={
-                    "class": "form-control form-control-sm",
-                    "placeholder": "Descripción del material / insumo",
-                }
-            ),
-            "unidad": forms.TextInput(
-                attrs={
-                    "class": "form-control form-control-sm",
-                    "placeholder": "Ej: unidad, m, m2, litros, kg",
-                }
-            ),
-        }
-        labels = {
-            "descripcion": "Descripción",
-            "cantidad": "Cant.",
-            "unidad": "Unidad",
-            "costo_unitario": "Costo unit.",
-            "costo_total": "Costo total",
-        }
+        set_queryset('solicitante', Beneficiario)
+        set_queryset('responsable', Beneficiario)
+        set_queryset('vehiculo', Vehiculo)
 
     def clean(self):
-        cleaned_data = super().clean()
-        descripcion = cleaned_data.get("descripcion")
-        cantidad = cleaned_data.get("cantidad")
-        unidad = cleaned_data.get("unidad")
-        costo_unitario = cleaned_data.get("costo_unitario")
-
-        # Form completamente vacío → lo ignora el formset
-        if not (descripcion or cantidad or unidad or costo_unitario):
-            return cleaned_data
-
-        if cantidad is not None and cantidad <= 0:
-            self.add_error("cantidad", "La cantidad debe ser mayor que cero.")
-
-        if cantidad is not None and costo_unitario is not None:
-            cleaned_data["costo_total"] = cantidad * costo_unitario
-
-        return cleaned_data
+        cleaned = super().clean()
+        s = cleaned.get("solicitante")
+        r = cleaned.get("responsable")
+        
+        if s:
+            cleaned["solicitante_texto"] = f"{s.apellido}, {s.nombre}".strip()
+        if r:
+            cleaned["responsable_texto"] = f"{r.apellido}, {r.nombre}".strip()
+        return cleaned
 
 
 OrdenTrabajoMaterialFormSet = inlineformset_factory(
-    OrdenTrabajo,
-    OrdenTrabajoMaterial,
-    form=OrdenTrabajoMaterialForm,
-    extra=1,
+    OrdenTrabajo, OrdenTrabajoMaterial,
+    fields="__all__", 
+    extra=0,
     can_delete=True,
+    formfield_callback=_money_formfield_callback
 )
 
+AdjuntoOrdenTrabajoFormSet = inlineformset_factory(
+    OrdenTrabajo, AdjuntoOrdenTrabajo,
+    fields="__all__", 
+    extra=0,
+    can_delete=True 
+)
 
-class AdjuntoOrdenTrabajoForm(forms.ModelForm):
-    """Adjuntos de OT (fotos, comprobantes, etc.)."""
+# =========================================================
+# 8) DOCUMENTOS DIGITALES (LEGAJO)
+# =========================================================
 
+class DocumentoBeneficiarioForm(EstiloFormMixin, forms.ModelForm):
     class Meta:
-        model = AdjuntoOrdenTrabajo
-        fields = ["archivo", "descripcion"]
+        model = DocumentoBeneficiario
+        fields = ['tipo', 'archivo', 'descripcion']
         widgets = {
-            "archivo": forms.ClearableFileInput(
-                attrs={
-                    "class": "form-control",
-                }
-            ),
-            "descripcion": forms.TextInput(
-                attrs={
-                    "class": "form-control",
-                    "placeholder": "Descripción / contexto del archivo (opcional)",
-                }
-            ),
-        }
-        labels = {
-            "archivo": "Archivo",
-            "descripcion": "Descripción",
+            'tipo': forms.Select(attrs={'class': 'form-select'}),
+            'archivo': forms.FileInput(attrs={'class': 'form-control'}),
+            'descripcion': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: DNI frente y dorso, CUD 2026...'}),
         }

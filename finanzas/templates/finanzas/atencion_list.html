@@ -1,320 +1,121 @@
 {% extends "finanzas/base.html" %}
+{% load humanize %}
 
-{% block title %}Atenciones sociales – Comuna de Tacuarendí{% endblock %}
+{% block title %}Atenciones{% endblock %}
 
 {% block content %}
-
-<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
   <div>
-    <h1 class="h4 mb-1">
-      Atenciones sociales
-    </h1>
-    <div class="text-muted small">
-      Registro de reclamos, trámites, pensiones y acompañamiento a personas y hogares.
-      <br>
-      <span class="text-muted">
-        Vista social sin montos: enfocada en a quién se atendió, por qué y qué gestión se inició.
-      </span>
-    </div>
+    <h1 class="h3 fw-bold text-dark mb-1">Atenciones</h1>
+    <div class="text-muted small">Listado general (con filtros).</div>
   </div>
-
-  <div class="d-flex flex-wrap gap-2">
-    <a href="{% url 'finanzas:persona_list' %}" class="btn btn-outline-secondary btn-sm">
-      Personas / censo
-    </a>
-    <a href="{% url 'finanzas:atencion_create' %}" class="btn btn-primary btn-sm">
-      Nueva atención social
-    </a>
-  </div>
+  <a href="{% url 'finanzas:atencion_create' %}" class="btn btn-primary shadow-sm">
+    <i class="bi bi-plus-lg me-1"></i> Nueva Atención
+  </a>
 </div>
 
-<div class="card shadow-sm border-0 mb-3">
-  <div class="card-body pb-2">
-    <form method="get" class="row g-2 align-items-end">
-      <div class="col-12 col-md-4">
-        <label for="id_q" class="form-label form-label-sm mb-1">
-          Buscar por persona / DNI / texto
-        </label>
-        <input
-          type="text"
-          name="q"
-          id="id_q"
-          value="{{ request.GET.q }}"
-          class="form-control form-control-sm"
-          placeholder="Ej: Pérez, 30123456, pensión, reclamo agua"
-        >
+<div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
+  <div class="card-body p-3 p-md-4">
+    <form class="row g-2 align-items-end" method="get">
+      <div class="col-12 col-md-5">
+        <label class="form-label small text-muted mb-1">Buscar</label>
+        <input type="text" class="form-control" name="q" value="{{ q }}" placeholder="Apellido, nombre, DNI, descripción…">
       </div>
-
       <div class="col-12 col-md-4">
-        <label for="id_area" class="form-label form-label-sm mb-1">
-          Área responsable
-        </label>
-        <select name="area" id="id_area" class="form-select form-select-sm">
+        <label class="form-label small text-muted mb-1">Área</label>
+        <select class="form-select" name="area">
           <option value="">Todas</option>
           {% for a in filtros_areas %}
-            <option
-              value="{{ a.id }}"
-              {% if request.GET.area|stringformat:"s" == a.id|stringformat:"s" %}selected{% endif %}
-            >
-              {{ a.nombre }}
-            </option>
+            <option value="{{ a.id }}" {% if area_sel == a.id|stringformat:"s" %}selected{% endif %}>{{ a.nombre }}</option>
           {% endfor %}
         </select>
       </div>
-
-      <div class="col-12 col-md-4">
-        <label for="id_estado" class="form-label form-label-sm mb-1">
-          Estado
-        </label>
-        <select name="estado" id="id_estado" class="form-select form-select-sm">
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-muted mb-1">Estado</label>
+        <select class="form-select" name="estado">
           <option value="">Todos</option>
-          {% if filtros_estados %}
-            {% for value,label in filtros_estados %}
-              <option
-                value="{{ value }}"
-                {% if request.GET.estado|stringformat:"s" == value|stringformat:"s" %}selected{% endif %}
-              >
-                {{ label }}
-              </option>
-            {% endfor %}
-          {% endif %}
+          {% for val,label in estado_choices %}
+            <option value="{{ val }}" {% if estado_sel == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
         </select>
       </div>
-
-      <div class="col-12 d-flex gap-2 justify-content-end mt-1">
-        <button type="submit" class="btn btn-primary btn-sm">
-          Aplicar filtros
-        </button>
-        <a href="{% url 'finanzas:atencion_list' %}" class="btn btn-outline-secondary btn-sm">
-          Limpiar
-        </a>
+      <div class="col-12 d-flex gap-2 justify-content-end mt-2">
+        <a class="btn btn-light" href="{% url 'finanzas:atencion_list' %}">Limpiar</a>
+        <button class="btn btn-dark" type="submit">Filtrar</button>
       </div>
     </form>
   </div>
 </div>
 
-<div class="card shadow-sm border-0 mb-3">
-  <div class="card-header bg-body border-0 pb-1">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <div>
-        <h2 class="h6 mb-0">Listado de atenciones sociales</h2>
-        <div class="text-muted small">
-          Resultados según los filtros aplicados.
-        </div>
-      </div>
-      <div class="text-muted small">
-        Total: <strong>{{ total_atenciones|default:0 }}</strong> atenciones
-      </div>
-    </div>
+<div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="bg-light small text-uppercase text-muted">
+        <tr>
+          <th class="ps-4">Fecha</th>
+          <th>Persona</th>
+          <th>Área</th>
+          <th>Motivo</th>
+          <th>Estado</th>
+          <th class="text-end pe-4">Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in atenciones %}
+        <tr>
+          <td class="ps-4">
+            <div class="fw-bold text-dark">{{ a.fecha_atencion|date:"d/m/Y" }}</div>
+            <div class="small text-muted">#{{ a.id }}</div>
+          </td>
+          <td>
+            {% if a.persona %}
+              <a class="text-decoration-none fw-semibold" href="{% url 'finanzas:persona_detail' a.persona.pk %}">
+                {{ a.persona.apellido }}, {{ a.persona.nombre }}
+              </a>
+              <div class="small text-muted">{{ a.persona.dni }}</div>
+            {% else %}
+              <div class="fw-semibold text-dark">{{ a.persona_nombre|default:"(Sin nombre)" }}</div>
+              <div class="small text-muted">{{ a.persona_dni }}</div>
+            {% endif %}
+          </td>
+          <td>
+            <span class="text-dark">{{ a.area|default:"-" }}</span>
+          </td>
+          <td>
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+              {{ a.get_motivo_principal_display }}
+            </span>
+          </td>
+          <td>
+            {% if a.estado == "ABIERTA" %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle">ABIERTA</span>
+            {% elif a.estado == "EN_SEGUIMIENTO" %}
+              <span class="badge bg-warning-subtle text-warning border border-warning-subtle">SEGUIMIENTO</span>
+            {% else %}
+              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">CERRADA</span>
+            {% endif %}
+          </td>
+          <td class="text-end pe-4">
+            <a href="{% url 'finanzas:atencion_update' a.pk %}?next={{ request.get_full_path|urlencode }}"
+               class="btn btn-sm btn-outline-secondary">
+              Editar <i class="bi bi-chevron-right ms-1"></i>
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="6" class="text-center py-5">
+            <div class="text-muted opacity-50 mb-3"><i class="bi bi-inboxes fs-1"></i></div>
+            <p class="mb-0 text-muted">No hay atenciones registradas con esos filtros.</p>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 
-  <div class="card-body pt-2">
-    {% if atenciones %}
-      <div class="table-responsive">
-        <table class="table table-sm table-hover align-middle mb-0">
-          <thead class="table-light">
-            <tr>
-              <th class="text-nowrap">Fecha</th>
-              <th>Persona / hogar</th>
-              <th class="text-nowrap">Trámite / motivo</th>
-              <th class="text-nowrap">Canal</th>
-              <th>Área</th>
-              <th class="text-nowrap">Estado</th>
-              <th class="text-nowrap">Seguimiento</th>
-              <th class="text-center text-nowrap">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for at in atenciones %}
-              <tr>
-                <td class="text-nowrap">
-                  {% if at.fecha_atencion %}
-                    {{ at.fecha_atencion|date:"d/m/Y" }}
-                  {% elif at.fecha_operacion %}
-                    {{ at.fecha_operacion|date:"d/m/Y" }}
-                  {% else %}
-                    <span class="text-muted small">Sin fecha</span>
-                  {% endif %}
-                </td>
-
-                <td>
-                  {% if at.persona %}
-                    <a
-                      href="{% url 'finanzas:persona_detail' at.persona.id %}"
-                      class="link-body-emphasis text-decoration-none"
-                    >
-                      {{ at.persona.apellido }}, {{ at.persona.nombre }}
-                    </a>
-                    <div class="text-muted small">
-                      DNI {{ at.persona.dni|default:"-" }}
-                      {% if at.persona.barrio %}
-                        · {{ at.persona.barrio }}
-                      {% endif %}
-                    </div>
-                  {% else %}
-                    <span class="fw-semibold">
-                      {{ at.persona_nombre|default:"(Sin persona asociada)" }}
-                    </span>
-                    {% if at.persona_dni %}
-                      <div class="text-muted small">
-                        DNI {{ at.persona_dni }}
-                      </div>
-                    {% endif %}
-                    {% if at.persona_barrio %}
-                      <div class="text-muted small">
-                        {{ at.persona_barrio }}
-                      </div>
-                    {% endif %}
-                  {% endif %}
-                </td>
-
-                <td class="text-nowrap">
-                  {% if at.get_motivo_principal_display %}
-                    {{ at.get_motivo_principal_display }}
-                  {% elif at.motivo_principal %}
-                    {{ at.motivo_principal }}
-                  {% else %}
-                    <span class="text-muted small">Sin motivo</span>
-                  {% endif %}
-                </td>
-
-                <td class="text-nowrap">
-                  {% if at.get_canal_display %}
-                    {{ at.get_canal_display }}
-                  {% elif at.canal %}
-                    {{ at.canal }}
-                  {% else %}
-                    <span class="text-muted small">Sin canal</span>
-                  {% endif %}
-                </td>
-
-                <td>
-                  {% if at.area %}
-                    <span class="small">{{ at.area.nombre|default:at.area }}</span>
-                  {% else %}
-                    <span class="text-muted small">Sin área</span>
-                  {% endif %}
-                </td>
-
-                <td class="text-nowrap">
-                  {% if at.estado %}
-                    <span class="badge
-                      {% if at.estado == 'cerrada' %}
-                        bg-success-subtle text-success border border-success-subtle
-                      {% elif at.estado == 'en_curso' %}
-                        bg-warning-subtle text-warning border border-warning-subtle
-                      {% else %}
-                        bg-secondary-subtle text-secondary border border-secondary-subtle
-                      {% endif %}
-                    ">
-                      {{ at.get_estado_display|default:at.estado }}
-                    </span>
-                  {% else %}
-                    <span class="text-muted small">Sin estado</span>
-                  {% endif %}
-                </td>
-
-                <td class="text-nowrap">
-                  {% if at.requiere_seguimiento %}
-                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
-                      Requiere seguimiento
-                    </span>
-                  {% elif at.tarea_seguimiento %}
-                    <span class="badge bg-info-subtle text-info border border-info-subtle">
-                      Seguimiento agendado
-                    </span>
-                  {% else %}
-                    <span class="text-muted small">Sin seguimiento</span>
-                  {% endif %}
-                </td>
-
-                <td class="text-center">
-                  {% if at.persona %}
-                    <a
-                      href="{% url 'finanzas:persona_detail' at.persona.id %}"
-                      class="btn btn-outline-primary btn-sm me-1"
-                    >
-                      Ver persona
-                    </a>
-                    <a
-                      href="{% url 'finanzas:atencion_beneficiario_list' at.persona.id %}"
-                      class="btn btn-outline-secondary btn-sm"
-                    >
-                      Ver atenciones
-                    </a>
-                  {% else %}
-                    <span class="text-muted small">—</span>
-                  {% endif %}
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-
-      {% if is_paginated %}
-        <div class="d-flex justify-content-between align-items-center mt-3">
-          <div class="text-muted small">
-            Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
-          </div>
-          <nav>
-            <ul class="pagination pagination-sm mb-0">
-              {% if page_obj.has_previous %}
-                <li class="page-item">
-                  <a
-                    class="page-link"
-                    href="?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}{% if request.GET.area %}&area={{ request.GET.area }}{% endif %}{% if request.GET.estado %}&estado={{ request.GET.estado }}{% endif %}"
-                  >
-                    Anterior
-                  </a>
-                </li>
-              {% else %}
-                <li class="page-item disabled">
-                  <span class="page-link">Anterior</span>
-                </li>
-              {% endif %}
-
-              <li class="page-item active">
-                <span class="page-link">
-                  {{ page_obj.number }}
-                </span>
-              </li>
-
-              {% if page_obj.has_next %}
-                <li class="page-item">
-                  <a
-                    class="page-link"
-                    href="?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}{% if request.GET.area %}&area={{ request.GET.area }}{% endif %}{% if request.GET.estado %}&estado={{ request.GET.estado }}{% endif %}"
-                  >
-                    Siguiente
-                  </a>
-                </li>
-              {% else %}
-                <li class="page-item disabled">
-                  <span class="page-link">Siguiente</span>
-                </li>
-              {% endif %}
-            </ul>
-          </nav>
-        </div>
-      {% endif %}
-    {% else %}
-      <div class="text-center py-4">
-        <div class="mb-2">
-          <i class="bi bi-people text-muted" style="font-size: 1.8rem;"></i>
-        </div>
-        <p class="mb-1">
-          Todavía no se registraron atenciones sociales con los filtros actuales.
-        </p>
-        <p class="text-muted small mb-3">
-          Probá buscar por otra persona, cambiar el área o el estado.
-        </p>
-        <a href="{% url 'finanzas:atencion_create' %}" class="btn btn-primary btn-sm">
-          Cargar primera atención social
-        </a>
-      </div>
-    {% endif %}
+  <div class="card-footer bg-white border-top-0 py-3">
+    {% include "finanzas/components/pagination.html" %}
   </div>
 </div>
-
 {% endblock %}

@@ -1,297 +1,370 @@
 {% extends "finanzas/base.html" %}
 {% load static %}
 {% load humanize %}
-{% load finanzas_extras %}
 
-{% block title %}
-  {% if form.instance.pk %}
-    Editar atención social – Comuna de Tacuarendí
-  {% else %}
-    Nueva atención social – Comuna de Tacuarendí
-  {% endif %}
-{% endblock %}
+{% block title %}{% if object %}Editar Atención{% else %}Nueva Atención{% endif %}{% endblock %}
 
 {% block content %}
+<div class="row justify-content-center animate-fade-in" style="padding-bottom: 120px;">
+  <div class="col-12 col-lg-9 col-xl-8">
 
-<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
-  <div>
-    <h1 class="h4 mb-1">
-      {% if form.instance.pk %}
-        Editar atención social
-      {% else %}
-        Nueva atención social
-      {% endif %}
-    </h1>
-    <p class="small text-muted mb-0">
-      Registrá a quién se atendió, qué vino a pedir y qué gestión se inició.  
-      Si la persona está en el <strong>censo</strong>, podés buscarla por apellido, nombre o DNI
-      para vincular la atención a su ficha.
-    </p>
-  </div>
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+      <div>
+        <h1 class="h3 fw-bold text-dark mb-1">
+          {% if object %}
+            <i class="bi bi-pencil-square me-2 text-primary"></i>Editar Atención
+          {% else %}
+            <i class="bi bi-person-lines-fill me-2 text-primary"></i>Nueva Atención
+          {% endif %}
+        </h1>
+        <div class="text-secondary small fw-medium">
+          Mesa de Entrada Social: Consultas, reclamos y asistencias.
+        </div>
+      </div>
+      <a href="{% url 'finanzas:atencion_list' %}" class="btn btn-white border shadow-sm fw-bold text-secondary">
+        <i class="bi bi-arrow-left me-1"></i> Volver
+      </a>
+    </div>
 
-  <div class="d-flex flex-column align-items-end gap-2">
-    {% if form.instance.pk %}
-      <span class="badge
-        {% if form.instance.estado == form.instance.ESTADO_ABIERTA %}
-          bg-warning-subtle text-warning border border-warning-subtle
-        {% elif form.instance.estado == form.instance.ESTADO_CERRADA %}
-          bg-success-subtle text-success border border-success-subtle
-        {% else %}
-          bg-light text-secondary border border-secondary-subtle
-        {% endif %}
-      ">
-        Estado: {{ form.instance.get_estado_display }}
-      </span>
-    {% endif %}
+    <div class="card border-0 shadow-lg rounded-4 overflow-hidden">
+      <div class="card-header bg-dark py-2"></div>
+      <div class="card-body p-4 p-lg-5">
 
-    <a href="{% url 'finanzas:atencion_list' %}" class="btn btn-outline-secondary btn-sm">
-      Volver al listado
-    </a>
+        <form method="post" novalidate id="atencionForm" 
+              data-url-personas="{% url 'finanzas:persona_autocomplete' %}"
+              data-url-crear-persona="{% url 'finanzas:persona_quick_create' %}">
+          {% csrf_token %}
+          {{ form.next }}
+
+          {% if form.errors %}
+            <div class="alert alert-danger border-0 shadow-sm rounded-3 mb-4">
+              <div class="d-flex align-items-start gap-3">
+                <i class="bi bi-exclamation-triangle-fill fs-4 mt-1"></i>
+                <div class="small">
+                  <div class="fw-bold mb-1">Revisa el formulario:</div>
+                  <ul class="mb-0 ps-3">
+                    {% for field in form %}
+                      {% for error in field.errors %}<li><strong>{{ field.label }}:</strong> {{ error }}</li>{% endfor %}
+                    {% endfor %}
+                    {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          {% endif %}
+
+          <div class="mb-5">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <label class="form-label fw-bold text-dark small text-uppercase ls-1">1. Persona Solicitante</label>
+              <span class="badge bg-light text-secondary border">Vinculación Recomendada</span>
+            </div>
+
+            <div class="input-group shadow-sm">
+              <select name="persona" id="id_persona" class="form-select" data-placeholder="Buscar por DNI o Apellido...">
+                {% if form.instance.persona %}
+                    <option value="{{ form.instance.persona.id }}" selected>
+                        {{ form.instance.persona.apellido }}, {{ form.instance.persona.nombre }} ({{ form.instance.persona.dni }})
+                    </option>
+                {% else %}
+                    <option value=""></option>
+                {% endif %}
+              </select>
+              <button type="button" class="btn btn-primary fw-bold px-3" data-bs-toggle="modal" data-bs-target="#modalQuickPersona">
+                <i class="bi bi-plus-lg"></i>
+              </button>
+            </div>
+            <div class="form-text small mt-1">Si la persona no existe, presiona el botón <strong class="text-primary">(+)</strong> para crearla ahora mismo.</div>
+
+            <div class="row g-3 mt-3 p-3 bg-light rounded-3 border border-secondary-subtle">
+              <div class="col-12">
+                <label class="form-label small fw-bold text-secondary text-uppercase" style="font-size: 0.7rem;">Nombre (Manual / Snapshot)</label>
+                {{ form.persona_nombre }}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold text-secondary text-uppercase" style="font-size: 0.7rem;">DNI</label>
+                {{ form.persona_dni }}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-bold text-secondary text-uppercase" style="font-size: 0.7rem;">Barrio</label>
+                {{ form.persona_barrio }}
+              </div>
+            </div>
+          </div>
+
+          <div class="row g-4 mb-4">
+            <div class="col-12">
+                <label class="form-label fw-bold text-dark small text-uppercase ls-1 border-bottom w-100 pb-2 mb-3">2. Detalles de la Atención</label>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label fw-bold text-dark small">ÁREA RESPONSABLE</label>
+              {{ form.area }}
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label fw-bold text-dark small">FECHA</label>
+              {{ form.fecha_atencion }}
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label fw-bold text-dark small">HORA</label>
+              {{ form.hora_atencion }}
+            </div>
+          </div>
+
+          <div class="row g-3 mb-4">
+            <div class="col-md-4">
+              <label class="form-label fw-bold text-dark small">MOTIVO PRINCIPAL</label>
+              {{ form.motivo_principal }}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold text-dark small">CANAL DE INGRESO</label>
+              {{ form.canal }}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold text-dark small">PRIORIDAD</label>
+              {{ form.prioridad }}
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label fw-bold text-dark small">DESCRIPCIÓN DEL RECLAMO/CONSULTA</label>
+            {{ form.descripcion }}
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label fw-bold text-dark small">RESULTADO / RESPUESTA INICIAL</label>
+            {{ form.resultado }}
+          </div>
+
+          <div class="row g-3 mb-4 align-items-end p-3 bg-light rounded-3">
+            <div class="col-md-5">
+              <label class="form-label fw-bold text-dark small">ESTADO ACTUAL</label>
+              {{ form.estado }}
+            </div>
+            <div class="col-md-5">
+              <label class="form-label fw-bold text-dark small">DERIVADO DE / ORIGEN INTERNO</label>
+              {{ form.origen_interno }}
+            </div>
+            <div class="col-md-2">
+              <div class="form-check mb-2">
+                {{ form.requiere_seguimiento }}
+                <label class="form-check-label fw-bold small text-primary" for="{{ form.requiere_seguimiento.id_for_label }}">
+                   ¿Seguimiento?
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 justify-content-end pt-3 border-top">
+            <a href="{% url 'finanzas:atencion_list' %}" class="btn btn-light text-secondary fw-bold">Cancelar</a>
+            <button type="submit" class="btn btn-primary fw-bold px-4 shadow-sm hover-lift">
+              <i class="bi bi-check2-circle me-2"></i>GUARDAR FICHA
+            </button>
+          </div>
+
+        </form>
+      </div>
+    </div>
+
   </div>
 </div>
 
-<form method="post" class="card shadow-sm">
-  <div class="card-body">
-    {% csrf_token %}
-
-    {# Mensaje global si hay cualquier error #}
-    {% if form.errors %}
-      <div class="alert alert-danger py-2 mb-3" role="alert">
-        Revisá los campos marcados en rojo. Hay errores en el formulario.
+<div class="modal fade" id="modalQuickPersona" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg rounded-4">
+      <div class="modal-header bg-primary text-white border-0">
+        <h5 class="modal-title fw-bold"><i class="bi bi-person-plus-fill me-2"></i>Nueva Persona</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-    {% endif %}
-
-    {# Non field errors explícitos #}
-    {% if form.non_field_errors %}
-      <div class="alert alert-danger py-2 mb-3" role="alert">
-        {{ form.non_field_errors }}
-      </div>
-    {% endif %}
-
-    {# ========== BLOQUE 1: PERSONA / HOGAR (CENSO) ========== #}
-    <h2 class="h6 text-uppercase text-muted mb-2">Persona / hogar (censo)</h2>
-    <p class="text-muted small mb-2">
-      Buscá primero en el censo. Si la persona no está cargada, registrala desde
-      <strong>Personas / censo</strong> y luego volvés a esta pantalla.
-    </p>
-
-    <div
-      id="persona-section"
-      class="mb-3"
-      data-persona-dni-url="{% url 'finanzas:persona_buscar_dni' %}"
-      data-persona-search-url="{% url 'finanzas:persona_suggest' %}"
-    >
-      {# Persona real (FK) oculta #}
-      <div class="d-none">
-        {{ form.persona }}
-      </div>
-
-      <div id="persona-alert" class="alert alert-info py-2 mb-2 d-none small" role="alert"></div>
-
-      <div class="row g-3">
-        <div class="col-12 col-md-6">
-          <label class="form-label mb-1" for="{{ form.persona_nombre.id_for_label }}">
-            Persona / grupo familiar
-          </label>
-          <div class="position-relative">
-            {{ form.persona_nombre }}
-            <div
-              id="persona-suggestions"
-              class="mv-autocomplete-list list-group position-absolute w-100 d-none shadow-sm border bg-white"
-              style="z-index: 1050; max-height: 260px; overflow-y: auto;"
-            ></div>
-          </div>
-          {% if form.persona_nombre.errors %}
-            <div class="text-danger small mt-1">{{ form.persona_nombre.errors|join:", " }}</div>
-          {% endif %}
-          <div class="form-text small">
-            Escribí al menos 2 letras del apellido o nombre para buscar en el censo.
-          </div>
-        </div>
-
-        <div class="col-12 col-md-3">
-          <label class="form-label mb-1" for="{{ form.persona_dni.id_for_label }}">DNI</label>
-          {{ form.persona_dni }}
-          {% if form.persona_dni.errors %}
-            <div class="text-danger small mt-1">{{ form.persona_dni.errors|join:", " }}</div>
-          {% endif %}
-          <div class="form-text small">
-            Al salir del campo, el sistema intenta completar datos desde el censo.
-          </div>
-        </div>
-
-        <div class="col-12 col-md-3">
-          <label class="form-label mb-1" for="{{ form.persona_barrio.id_for_label }}">Barrio / referencia</label>
-          {{ form.persona_barrio }}
-          {% if form.persona_barrio.errors %}
-            <div class="text-danger small mt-1">{{ form.persona_barrio.errors|join:", " }}</div>
-          {% endif %}
-        </div>
+      <div class="modal-body p-4 bg-light">
+        <form id="formQuickPersona">
+            <div class="mb-3">
+                <label class="form-label small fw-bold text-dark">DNI / DOCUMENTO *</label>
+                <input type="text" name="dni" id="quick_dni" class="form-control" required placeholder="Solo números">
+            </div>
+            <div class="row g-2 mb-3">
+                <div class="col-6">
+                    <label class="form-label small fw-bold text-dark">APELLIDO *</label>
+                    <input type="text" name="apellido" id="quick_apellido" class="form-control" required>
+                </div>
+                <div class="col-6">
+                    <label class="form-label small fw-bold text-dark">NOMBRE *</label>
+                    <input type="text" name="nombre" id="quick_nombre" class="form-control" required>
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label small fw-bold text-dark">BARRIO / DIRECCIÓN</label>
+                <input type="text" name="barrio" id="quick_barrio" class="form-control">
+            </div>
+            <div class="d-grid">
+                <button type="submit" class="btn btn-primary fw-bold">Guardar y Seleccionar</button>
+            </div>
+        </form>
       </div>
     </div>
-
-    {# ========== BLOQUE 2: DATOS DE LA ATENCIÓN ========== #}
-    <h2 class="h6 text-uppercase text-muted mb-2">Datos de la atención</h2>
-
-    <div class="row g-3 mb-3">
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.fecha_atencion.id_for_label }}">
-          Fecha de la atención
-        </label>
-        {{ form.fecha_atencion }}
-        {% if form.fecha_atencion.errors %}
-          <div class="text-danger small mt-1">{{ form.fecha_atencion.errors|join:", " }}</div>
-        {% endif %}
-        <div class="form-text small">
-          Fecha en que se tomó la atención.
-        </div>
-      </div>
-
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.motivo_principal.id_for_label }}">
-          Trámite / motivo principal
-        </label>
-        {{ form.motivo_principal }}
-        {% if form.motivo_principal.errors %}
-          <div class="text-danger small mt-1">{{ form.motivo_principal.errors|join:", " }}</div>
-        {% endif %}
-        <div class="form-text small">
-          Ejemplo: pedido de pensión, reclamo por servicio, acompañamiento social, etc.
-        </div>
-      </div>
-
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.canal.id_for_label }}">Canal de atención</label>
-        {{ form.canal }}
-        {% if form.canal.errors %}
-          <div class="text-danger small mt-1">{{ form.canal.errors|join:", " }}</div>
-        {% endif %}
-        <div class="form-text small">
-          Ejemplo: presencial en comuna, teléfono, WhatsApp, visita domiciliaria.
-        </div>
-      </div>
-    </div>
-
-    <div class="row g-3 mb-3">
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.prioridad.id_for_label }}">Prioridad</label>
-        {{ form.prioridad }}
-        {% if form.prioridad.errors %}
-          <div class="text-danger small mt-1">{{ form.prioridad.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.area.id_for_label }}">Área responsable</label>
-        {{ form.area }}
-        {% if form.area.errors %}
-          <div class="text-danger small mt-1">{{ form.area.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.estado.id_for_label }}">Estado de la atención</label>
-        {{ form.estado }}
-        {% if form.estado.errors %}
-          <div class="text-danger small mt-1">{{ form.estado.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-    </div>
-
-    <div class="row g-3 mb-3">
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1 d-block">Seguimiento</label>
-        <div class="form-check">
-          {{ form.requiere_seguimiento }}
-          <label class="form-check-label" for="{{ form.requiere_seguimiento.id_for_label }}">
-            Requiere seguimiento, visita o control posterior
-          </label>
-        </div>
-        {% if form.requiere_seguimiento.errors %}
-          <div class="text-danger small mt-1">{{ form.requiere_seguimiento.errors|join:", " }}</div>
-        {% endif %}
-        <div class="form-text small">
-          Si se marca, puede vincularse una tarea en la agenda.
-        </div>
-      </div>
-
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.tarea_seguimiento.id_for_label }}">
-          Tarea de seguimiento (agenda)
-        </label>
-        {{ form.tarea_seguimiento }}
-        {% if form.tarea_seguimiento.errors %}
-          <div class="text-danger small mt-1">{{ form.tarea_seguimiento.errors|join:", " }}</div>
-        {% endif %}
-        <div class="form-text small">
-          Opcional. Podés asignar la atención a una tarea ya creada en la agenda.
-        </div>
-      </div>
-
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.origen_interno.id_for_label }}">
-          Origen interno / derivación (opcional)
-        </label>
-        {{ form.origen_interno }}
-        {% if form.origen_interno.errors %}
-          <div class="text-danger small mt-1">{{ form.origen_interno.errors|join:", " }}</div>
-        {% endif %}
-        <div class="form-text small">
-          Ejemplo: derivado por escuela, CAPS, juzgado u otra área.
-        </div>
-      </div>
-    </div>
-
-    {# ========== BLOQUE 3: DESCRIPCIÓN Y RESULTADO ========== #}
-    <h2 class="h6 text-uppercase text-muted mb-2">Detalle de la situación</h2>
-    <div class="row g-3 mb-3">
-      <div class="col-12">
-        <label class="form-label mb-1" for="{{ form.descripcion.id_for_label }}">
-          Descripción de la situación / qué vino a pedir
-        </label>
-        {{ form.descripcion }}
-        {% if form.descripcion.errors %}
-          <div class="text-danger small mt-1">{{ form.descripcion.errors|join:", " }}</div>
-        {% endif %}
-      </div>
-    </div>
-
-    <h2 class="h6 text-uppercase text-muted mb-2">Resultado</h2>
-    <div class="row g-3">
-      <div class="col-12">
-        <label class="form-label mb-1" for="{{ form.resultado.id_for_label }}">
-          Qué se hizo / acordó / se resolvió
-        </label>
-        {{ form.resultado }}
-        {% if form.resultado.errors %}
-          <div class="text-danger small mt-1">{{ form.resultado.errors|join:", " }}</div>
-        {% endif %}
-        <div class="form-text small">
-          Si la atención queda abierta, podés completar este campo más adelante.
-        </div>
-      </div>
-    </div>
-
-    {# Campos ocultos extra, por si el form define otros hidden #}
-    {% for field in form.hidden_fields %}
-      {{ field }}
-    {% endfor %}
   </div>
-
-  <div class="card-footer d-flex justify-content-between align-items-center">
-    <a href="{% url 'finanzas:atencion_list' %}" class="btn btn-outline-secondary btn-sm">
-      Cancelar
-    </a>
-
-    <button type="submit" class="btn btn-primary btn-sm">
-      {% if form.instance.pk %}Guardar cambios{% else %}Guardar atención{% endif %}
-    </button>
-  </div>
-</form>
+</div>
 
 {% endblock %}
 
 {% block extra_js %}
-  {{ block.super }}
-  <script src="{% static 'finanzas/js/atencion_form.js' %}"></script>
+<style>
+    /* Estilos PRO */
+    .form-control, .form-select { border-color: #cbd5e1; padding: 0.65rem 0.8rem; border-radius: 8px; font-size: 0.95rem; }
+    .form-control:focus, .form-select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+    
+    /* Readonly inputs */
+    input[readonly].bg-light { background-color: #e2e8f0 !important; color: #334155 !important; border-color: #cbd5e1; }
+    
+    .hover-lift:hover { transform: translateY(-2px); transition: transform 0.2s; }
+</style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const $select = $('#id_persona');
+    const $nombre = $('#id_persona_nombre');
+    const $dni = $('#id_persona_dni');
+    const $barrio = $('#id_persona_barrio');
+    
+    const urlAutocomplete = $('#atencionForm').data('url-personas');
+    const urlCreate = $('#atencionForm').data('url-crear-persona');
+
+    // 1. INICIALIZAR SELECT2 AJAX
+    $select.select2({
+        theme: 'bootstrap-5',
+        width: '100%', // Para que respete el input-group
+        placeholder: 'Escribe para buscar...',
+        allowClear: true,
+        ajax: {
+            url: urlAutocomplete,
+            dataType: 'json',
+            delay: 250,
+            data: function (params) {
+                return {
+                    q: params.term, 
+                    page: params.page
+                };
+            },
+            processResults: function (data) {
+                return { results: data.results };
+            },
+            cache: true
+        },
+        minimumInputLength: 2,
+    });
+
+    // 2. LOGICA DE RELLENADO (SNAPSHOT)
+    function fillSnapshot(data) {
+        if (!data) {
+            // Limpiar si no hay data
+            $nombre.val('').prop('readonly', false).removeClass('bg-light');
+            $dni.val('').prop('readonly', false).removeClass('bg-light');
+            $barrio.val('').prop('readonly', false).removeClass('bg-light');
+            return;
+        }
+
+        // Extraer datos (maneja tanto API object como texto plano)
+        let nombreTexto = '';
+        let dniTexto = '';
+        let barrioTexto = ''; // La API autocomplete a veces no trae barrio, cuidado
+
+        if (data.nombre && data.apellido) {
+            nombreTexto = data.apellido + ", " + data.nombre;
+        } else {
+            nombreTexto = data.text.split('(')[0].trim();
+        }
+
+        if (data.dni || data.documento) {
+            dniTexto = data.dni || data.documento;
+        } else {
+            let match = data.text.match(/\(([^)]+)\)/);
+            if (match) dniTexto = match[1];
+        }
+        
+        // Bloquear campos para que no editen sobre una persona vinculada
+        $nombre.val(nombreTexto).prop('readonly', true).addClass('bg-light');
+        $dni.val(dniTexto).prop('readonly', true).addClass('bg-light');
+        
+        // Barrio es opcional, si no viene data, dejamos editar
+        if(data.barrio) {
+            $barrio.val(data.barrio).prop('readonly', true).addClass('bg-light');
+        }
+    }
+
+    $select.on('select2:select', function(e) {
+        fillSnapshot(e.params.data);
+    });
+
+    $select.on('select2:clear', function() {
+        fillSnapshot(null);
+    });
+
+    // Init state (si es edición)
+    if ($select.val()) {
+        $nombre.prop('readonly', true).addClass('bg-light');
+        $dni.prop('readonly', true).addClass('bg-light');
+        // No sobreescribimos valores al inicio para respetar lo guardado en DB
+    }
+
+    // 3. LOGICA QUICK CREATE (AJAX)
+    $('#formQuickPersona').on('submit', function(e) {
+        e.preventDefault();
+        const btn = $(this).find('button[type="submit"]');
+        const originalText = btn.text();
+        btn.prop('disabled', true).text('Guardando...');
+
+        const formData = {
+            dni: $('#quick_dni').val(),
+            apellido: $('#quick_apellido').val(),
+            nombre: $('#quick_nombre').val(),
+            barrio: $('#quick_barrio').val()
+        };
+
+        $.ajax({
+            url: urlCreate,
+            method: "POST",
+            data: JSON.stringify(formData),
+            contentType: "application/json",
+            headers: { "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]').value },
+            success: function(response) {
+                if (response.ok) {
+                    // Cerrar modal
+                    $('#modalQuickPersona').modal('hide');
+                    $('#formQuickPersona')[0].reset();
+
+                    // Crear la opción en Select2 y seleccionarla
+                    var newOption = new Option(response.text, response.id, true, true);
+                    $select.append(newOption).trigger('change');
+
+                    // Disparar relleno manual con los datos que acabamos de enviar
+                    // (Ya que la respuesta quick-create devuelve el objeto 'result')
+                    if (response.result) {
+                        fillSnapshot(response.result);
+                    } else {
+                        // Fallback con datos del form
+                        fillSnapshot({
+                            nombre: formData.nombre,
+                            apellido: formData.apellido,
+                            dni: formData.dni,
+                            barrio: formData.barrio
+                        });
+                    }
+                    
+                    // Notificación discreta
+                    alert("Persona creada y vinculada con éxito.");
+                } else {
+                    alert("Error: " + (response.error || "Datos inválidos"));
+                }
+            },
+            error: function(xhr) {
+                alert("Error de conexión al crear persona.");
+            },
+            complete: function() {
+                btn.prop('disabled', false).text(originalText);
+            }
+        });
+    });
+});
+</script>
 {% endblock %}

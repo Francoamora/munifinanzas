@@ -1,0 +1,128 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <h3>
+            <i class="bi bi-truck me-2"></i>Hoja de Ruta #{{ hoja.id }}
+            {% if hoja.estado == 'ABIERTA' %}
+                <span class="badge bg-success">EN CURSO</span>
+            {% else %}
+                <span class="badge bg-secondary">CERRADA</span>
+            {% endif %}
+        </h3>
+        <p class="lead mb-0">{{ hoja.vehiculo }} | Chofer: {{ hoja.chofer_nombre|default:hoja.chofer }}</p>
+        <p class="text-muted">{{ hoja.fecha|date:"l d/m/Y" }} | Salida: {{ hoja.hora_salida|default:"--" }} | Inicio: {{ hoja.odometro_inicio|intcomma }} km</p>
+    </div>
+    <div class="col-md-4 text-end">
+        <div class="card bg-light border-0">
+            <div class="card-body">
+                <small class="text-uppercase text-muted fw-bold">Kilómetros Recorridos</small>
+                <div class="fs-2 fw-bold text-dark">{{ hoja.km_recorridos|intcomma }} km</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Traslados Realizados</h5>
+                <span class="badge bg-light text-dark border">{{ hoja.traslados.count }} viajes</span>
+            </div>
+            
+            <div class="list-group list-group-flush">
+                {% for t in traslados %}
+                <div class="list-group-item p-3">
+                    <div class="d-flex justify-content-between">
+                        <h6 class="mb-1 fw-bold">{{ t.destino }}</h6>
+                        <span class="small text-muted">{{ t.motivo }}</span>
+                    </div>
+                    <div class="small text-muted mb-2">Desde: {{ t.origen }}</div>
+                    
+                    <div>
+                        {% for p in t.pasajeros.all %}
+                            <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle me-1">
+                                <i class="bi bi-person"></i> {{ p }}
+                            </span>
+                        {% endfor %}
+                        {% if t.otros_pasajeros %}
+                            <span class="badge bg-secondary-subtle text-secondary me-1">{{ t.otros_pasajeros }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% empty %}
+                <div class="p-4 text-center text-muted">
+                    No se han cargado traslados aún.
+                </div>
+                {% endfor %}
+            </div>
+
+            {% if hoja.estado == 'ABIERTA' %}
+            <div class="card-footer bg-light p-4">
+                <h6 class="fw-bold mb-3"><i class="bi bi-plus-circle me-2"></i>Agregar Nuevo Traslado</h6>
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="row g-2">
+                        <div class="col-md-6">{{ form_traslado.origen }}</div>
+                        <div class="col-md-6">{{ form_traslado.destino }}</div>
+                        <div class="col-12">{{ form_traslado.motivo }}</div>
+                        <div class="col-12">
+                            <label class="form-label small fw-bold">Pasajeros (Beneficiarios)</label>
+                            {{ form_traslado.pasajeros }}
+                        </div>
+                        <div class="col-12">
+                            {{ form_traslado.otros_pasajeros }}
+                        </div>
+                    </div>
+                    <button type="submit" name="agregar_traslado" class="btn btn-primary mt-3 w-100">
+                        Guardar Traslado
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        {% if hoja.estado == 'ABIERTA' %}
+        <div class="card border-primary shadow-sm">
+            <div class="card-header bg-primary text-white py-3">
+                <h5 class="mb-0"><i class="bi bi-stop-circle me-2"></i>Cerrar Turno</h5>
+            </div>
+            <div class="card-body">
+                <p class="small">Al finalizar el día, ingresá el kilometraje final para calcular el recorrido total.</p>
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Odómetro Final</label>
+                        {{ form_cierre.odometro_fin }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Hora Llegada</label>
+                        {{ form_cierre.hora_llegada }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Observaciones</label>
+                        {{ form_cierre.observaciones }}
+                    </div>
+                    <button type="submit" name="cerrar_hoja" class="btn btn-danger w-100" onclick="return confirm('¿Confirmas cerrar la hoja de ruta?');">
+                        Finalizar Jornada
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <div class="card bg-light border-0">
+            <div class="card-body">
+                <h5 class="text-muted"><i class="bi bi-lock-fill me-2"></i>Turno Cerrado</h5>
+                <p class="mb-0">Odómetro Final: <strong>{{ hoja.odometro_fin|intcomma }}</strong></p>
+                <p class="mb-0">Llegada: <strong>{{ hoja.hora_llegada|default:"--" }}</strong></p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

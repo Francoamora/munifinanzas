@@ -2,635 +2,224 @@
 {% load humanize %}
 {% load finanzas_extras %}
 
-{% block title %}Tablero de finanzas – Comuna de Tacuarendí{% endblock %}
+{% block title %}Tablero de Control{% endblock %}
 
 {% block content %}
 
-{# ================= CABECERA DEL TABLERO ================= #}
-<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
-  <div>
-    <h1 class="h4 mb-1">Tablero de finanzas</h1>
-    <div class="text-muted small">
-      Corte al día <strong>{{ hoy|date:"d/m/Y" }}</strong>. Los saldos usan solo
-      <strong>movimientos aprobados</strong>.
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-5 gap-3 animate-fade-in">
+    <div>
+        <h1 class="h3 fw-bold text-dark mb-1">Tablero de Control</h1>
+        <p class="text-secondary mb-0 small fw-medium">
+            Estado al <strong>{{ hoy|date:"d \d\e F" }}</strong> · 
+            <span class="badge bg-light text-dark border fw-normal">
+                {{ user.get_full_name|default:user.username }}
+            </span>
+        </p>
     </div>
-    <div class="mt-1 small text-muted">
-      Tu rol en el sistema:
-      <span class="badge bg-light text-secondary border rounded-pill">
-        {% if rol_staff_finanzas %}
-          Staff de finanzas
-        {% elif rol_operador_finanzas %}
-          Operador de finanzas
-        {% elif rol_operador_social %}
-          Operador social
-        {% elif rol_consulta_politica %}
-          Consulta política
-        {% else %}
-          Usuario
+
+    <div class="d-flex gap-2">
+        {% if rol_operador_finanzas or rol_staff_finanzas %}
+            <a href="{% url 'finanzas:movimiento_create' %}" class="btn btn-primary shadow-sm fw-bold hover-lift">
+                <i class="bi bi-plus-lg me-2"></i>Nuevo Movimiento
+            </a>
         {% endif %}
-      </span>
+        <div class="btn-group shadow-sm">
+            <a href="{% url 'finanzas:balance_resumen' %}" class="btn btn-white border" title="Ver Balance Histórico">
+                <i class="bi bi-graph-up text-secondary"></i>
+            </a>
+            <a href="{% url 'finanzas:movimiento_list' %}" class="btn btn-white border" title="Ver Listado Completo">
+                <i class="bi bi-list-ul text-secondary"></i>
+            </a>
+        </div>
     </div>
-  </div>
-
-  <div class="d-flex flex-wrap gap-2 justify-content-end align-items-center">
-    <span class="badge bg-light text-secondary border rounded-pill px-3 py-2 small">
-      <i class="bi bi-calendar2-week me-1"></i>
-      Mes en análisis: {{ primer_dia_mes|date:"d/m/Y" }} – {{ hoy|date:"d/m/Y" }}
-    </span>
-    <a href="{% url 'finanzas:movimiento_list' %}" class="btn btn-outline-secondary btn-sm">
-      Ver listado de movimientos
-    </a>
-    {% if request.user.is_staff %}
-      <a href="{% url 'finanzas:movimiento_create' %}" class="btn btn-success btn-sm">
-        + Nuevo movimiento
-      </a>
-    {% endif %}
-    <a href="{% url 'finanzas:balance_resumen' %}" class="btn btn-primary btn-sm">
-      Ir a balances analíticos
-    </a>
-  </div>
 </div>
 
-{# ================= TIRA RESUMEN RÁPIDO ================= #}
-<div class="card shadow-sm mb-3 border-0">
-  <div class="card-body py-2 d-flex flex-wrap gap-3 align-items-center">
-    <div class="small text-uppercase text-muted fw-semibold me-2">
-      Resumen rápido
-    </div>
-
-    {# Global #}
-    <div class="badge bg-light text-muted border small d-flex align-items-center gap-1">
-      <i class="bi bi-bank2"></i>
-      <span>Global:</span>
-      <span class="fw-semibold {% if saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
-        ${{ saldo|default:0|formato_pesos }}
-      </span>
-      <span class="text-muted ms-1">
-        ({{ cantidad_movimientos|default:0 }} movs.)
-      </span>
-    </div>
-
-    {# Mes actual #}
-    <div class="badge bg-light text-muted border small d-flex align-items-center gap-1">
-      <i class="bi bi-calendar2-check"></i>
-      <span>Mes actual:</span>
-      <span class="fw-semibold {% if saldo_mes >= 0 %}text-success{% else %}text-danger{% endif %}">
-        ${{ saldo_mes|default:0|formato_pesos }}
-      </span>
-      <span class="text-muted ms-1">
-        ({{ cantidad_movimientos_mes|default:0 }} movs.)
-      </span>
-    </div>
-
-    {# Estados #}
-    <div class="badge bg-light text-muted border small d-flex align-items-center gap-1">
-      <i class="bi bi-journal-check"></i>
-      <span>Estados:</span>
-      <span class="text-warning">
-        Borradores: <strong>{{ total_borradores|default:0 }}</strong>
-      </span>
-      <span>·</span>
-      <span class="text-success">
-        Aprobados: <strong>{{ total_aprobados|default:0 }}</strong>
-      </span>
-      <span>·</span>
-      <span class="text-danger">
-        Rechazados: <strong>{{ total_rechazados|default:0 }}</strong>
-      </span>
-    </div>
-
-    {# Flota / combustible rápido #}
-    <div class="badge bg-light text-muted border small d-flex align-items-center gap-1">
-      <i class="bi bi-truck"></i>
-      <span>Flota mes:</span>
-      <span class="fw-semibold">
-        {{ viajes_mes|default:0|intcomma }} viajes ·
-        {{ total_km_mes|default_if_none:0|floatformat:1|intcomma }} km ·
-        ${{ combustible_mes|default_if_none:0|formato_pesos }} en combustible
-      </span>
-    </div>
-  </div>
-</div>
-
-{# ========== BLOQUE 1: VISIÓN GLOBAL VS MES ACTUAL ========== #}
-<div class="row g-3 mb-3">
-  {# Global #}
-  <div class="col-12 col-lg-6">
-    <div class="card border-secondary-subtle shadow-sm h-100">
-      <div class="card-body">
-        <div class="d-flex justify-content-between align-items-start mb-1">
-          <div class="small text-muted text-uppercase">
-            Visión global (histórico aprobado)
-          </div>
-          <span class="badge bg-light text-muted border small">
-            {{ cantidad_movimientos|default:0 }} movimientos
-          </span>
-        </div>
-        <div class="fs-3 fw-bold {% if saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
-          ${{ saldo|default:0|formato_pesos }}
-        </div>
-        <div class="row g-2 small text-muted mt-2">
-          <div class="col-6">
-            <div class="text-uppercase mb-1">Ingresos acumulados</div>
-            <div class="fw-semibold text-success">
-              ${{ total_ingresos|default:0|formato_pesos }}
+<div class="row g-3 mb-4 animate-fade-in">
+    
+    <div class="col-12 col-md-6 col-xl-3">
+        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
+            <div class="card-body position-relative">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle mb-1">Mes Actual</span>
+                        <h6 class="text-uppercase text-secondary small fw-bold ls-1 mb-0">Ayuda Social</h6>
+                    </div>
+                    <div class="bg-danger text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 42px; height: 42px;">
+                        <i class="bi bi-heart-fill"></i>
+                    </div>
+                </div>
+                <div class="d-flex align-items-baseline gap-2">
+                    <h3 class="fw-bold text-dark mb-0">${{ ayudas_mes_monto|intcomma }}</h3>
+                </div>
+                <div class="small text-muted mt-1">
+                    <strong>{{ ayudas_mes_cant }}</strong> asistencias entregadas.
+                </div>
             </div>
-          </div>
-          <div class="col-6">
-            <div class="text-uppercase mb-1">Gastos acumulados</div>
-            <div class="fw-semibold text-danger">
-              ${{ total_gastos|default:0|formato_pesos }}
+            <div class="progress" style="height: 3px;">
+                <div class="progress-bar bg-danger" role="progressbar" style="width: 65%"></div>
             </div>
-          </div>
         </div>
-        <p class="small text-muted mt-2 mb-0">
-          Resume todo el historial de movimientos <strong>aprobados</strong> registrados.
-        </p>
-      </div>
     </div>
-  </div>
 
-  {# Mes actual #}
-  <div class="col-12 col-lg-6">
-    <div class="card border-primary-subtle shadow-sm h-100">
-      <div class="card-body">
-        <div class="d-flex justify-content-between align-items-start mb-1">
-          <div class="small text-muted text-uppercase">
-            Mes actual ({{ primer_dia_mes|date:"d/m" }} al {{ hoy|date:"d/m" }})
-          </div>
-          <span class="badge bg-light text-muted border small">
-            {{ cantidad_movimientos_mes|default:0 }} movimientos
-          </span>
-        </div>
-        <div class="fs-4 fw-bold {% if saldo_mes >= 0 %}text-success{% else %}text-danger{% endif %}">
-          ${{ saldo_mes|default:0|formato_pesos }}
-        </div>
-        <div class="row g-2 small text-muted mt-2">
-          <div class="col-4">
-            <div class="text-uppercase mb-1">Ingresos mes</div>
-            <div class="fw-semibold text-success">
-              ${{ total_ingresos_mes|default:0|formato_pesos }}
+    <div class="col-12 col-md-6 col-xl-3">
+        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle mb-1">Operativo</span>
+                        <h6 class="text-uppercase text-secondary small fw-bold ls-1 mb-0">Flota</h6>
+                    </div>
+                    <div class="bg-info text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 42px; height: 42px;">
+                        <i class="bi bi-truck-front-fill"></i>
+                    </div>
+                </div>
+                <div class="d-flex align-items-end gap-2">
+                    <h3 class="fw-bold text-dark mb-0">{{ viajes_hoy }}</h3>
+                    <span class="text-muted small mb-1">viajes hoy</span>
+                </div>
+                <div class="small text-muted mt-1">
+                    Acumulado mes: <strong>{{ viajes_mes_cant }}</strong> salidas.
+                </div>
             </div>
-          </div>
-          <div class="col-4">
-            <div class="text-uppercase mb-1">Gastos mes</div>
-            <div class="fw-semibold text-danger">
-              ${{ total_gastos_mes|default:0|formato_pesos }}
+            <div class="progress" style="height: 3px;">
+                <div class="progress-bar bg-info" role="progressbar" style="width: 45%"></div>
             </div>
-          </div>
-          <div class="col-4">
-            <div class="text-uppercase mb-1">Tendencia</div>
-            <div class="fw-semibold {% if saldo_mes >= 0 %}text-success{% else %}text-danger{% endif %}">
-              {% if saldo_mes >= 0 %}Superávit{% else %}Déficit{% endif %}
+        </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-3">
+        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle mb-1">Diario</span>
+                        <h6 class="text-uppercase text-secondary small fw-bold ls-1 mb-0">Atención</h6>
+                    </div>
+                    <div class="bg-warning text-dark rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 42px; height: 42px;">
+                        <i class="bi bi-people-fill"></i>
+                    </div>
+                </div>
+                <h3 class="fw-bold text-dark mb-0">{{ atenciones_hoy }}</h3>
+                <div class="small text-muted mt-1">
+                    Personas atendidas hoy.
+                </div>
             </div>
-          </div>
+            <div class="progress" style="height: 3px;">
+                <div class="progress-bar bg-warning" role="progressbar" style="width: 30%"></div>
+            </div>
         </div>
-        <p class="small text-muted mt-2 mb-0">
-          Foto rápida del mes para seguimiento <strong>político</strong> y <strong>operativo</strong>.
-        </p>
-      </div>
     </div>
-  </div>
+
+    <div class="col-12 col-md-6 col-xl-3">
+        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <span class="badge bg-dark-subtle text-dark border border-dark-subtle mb-1">Gestión</span>
+                        <h6 class="text-uppercase text-secondary small fw-bold ls-1 mb-0">Compras</h6>
+                    </div>
+                    <div class="bg-dark text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 42px; height: 42px;">
+                        <i class="bi bi-cart4"></i>
+                    </div>
+                </div>
+                <h3 class="fw-bold text-dark mb-0">{{ ocs_hoy }}</h3>
+                <div class="small text-muted mt-1">
+                    Órdenes emitidas hoy.
+                </div>
+            </div>
+            <div class="progress" style="height: 3px;">
+                <div class="progress-bar bg-dark" role="progressbar" style="width: 20%"></div>
+            </div>
+        </div>
+    </div>
 </div>
 
-{# ========== BLOQUE 2: MATRIZ SERVICIOS / AYUDAS / PERSONAL ========== #}
-<div class="row g-3 mb-4">
-  <div class="col-12 col-md-4">
-    <div class="card border-success-subtle shadow-sm h-100">
-      <div class="card-body">
-        <div class="small text-muted text-uppercase mb-1">
-          Ingresos por servicios
+<div class="row g-4 mb-4">
+    
+    <div class="col-lg-5 col-xl-4">
+        <div class="card border-0 shadow-sm h-100 rounded-4">
+            <div class="card-body p-4">
+                <h6 class="text-uppercase text-secondary small fw-bold ls-1 mb-4">Balance Mensual</h6>
+                
+                <div class="text-center py-2">
+                    <div class="display-6 fw-bold {% if saldo_mes >= 0 %}text-success{% else %}text-danger{% endif %} mb-0">
+                        ${{ saldo_mes|intcomma }}
+                    </div>
+                    <small class="text-muted">Saldo Neto (Ingresos - Gastos)</small>
+                </div>
+
+                <hr class="border-light my-4">
+
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="bg-success bg-opacity-10 text-success rounded p-1"><i class="bi bi-arrow-down"></i></div>
+                        <span class="text-secondary fw-medium">Ingresos</span>
+                    </div>
+                    <span class="fw-bold text-dark">+ ${{ total_ingresos_mes|intcomma }}</span>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="bg-danger bg-opacity-10 text-danger rounded p-1"><i class="bi bi-arrow-up"></i></div>
+                        <span class="text-secondary fw-medium">Gastos</span>
+                    </div>
+                    <span class="fw-bold text-dark">- ${{ total_gastos_mes|intcomma }}</span>
+                </div>
+            </div>
         </div>
-        <div class="fs-5 fw-bold text-success">
-          ${{ total_servicios|default:0|formato_pesos }}
-        </div>
-        {% if total_ingresos %}
-          <div class="small text-muted mt-1">
-            {{ porcentaje_servicios_sobre_ingresos|default:0|floatformat:1 }}%
-            de los ingresos acumulados.
-          </div>
-        {% else %}
-          <div class="small text-muted mt-1">
-            Sin ingresos registrados aún para calcular proporción.
-          </div>
-        {% endif %}
-        {% if total_servicios_mes %}
-          <div class="small text-muted mt-2">
-            En el mes:
-            <strong>${{ total_servicios_mes|formato_pesos }}</strong>
-            por servicios municipales.
-          </div>
-        {% endif %}
-        <p class="small text-muted mt-2 mb-0">
-          Indicador clave del <strong>esfuerzo contributivo</strong> de vecinos y comercios.
-        </p>
-      </div>
     </div>
-  </div>
 
-  <div class="col-12 col-md-4">
-    <div class="card border-warning-subtle shadow-sm h-100">
-      <div class="card-body">
-        <div class="small text-muted text-uppercase mb-1">
-          Ayudas sociales
+    <div class="col-lg-7 col-xl-8">
+        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
+            <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-bold text-dark text-uppercase small ls-1">
+                    <i class="bi bi-activity me-2 text-primary"></i>Actividad Reciente
+                </h6>
+                {% if cantidad_ordenes_pendientes > 0 %}
+                    <a href="{% url 'finanzas:orden_pago_list' %}" class="badge bg-warning text-dark text-decoration-none border border-warning-subtle">
+                        {{ cantidad_ordenes_pendientes }} Pagos Pendientes
+                    </a>
+                {% endif %}
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light text-secondary small text-uppercase">
+                        <tr>
+                            <th class="ps-4 py-2">Fecha</th>
+                            <th class="py-2">Detalle</th>
+                            <th class="text-end pe-4 py-2">Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in ultimos_movimientos %}
+                        <tr class="cursor-pointer" onclick="window.location='{% url 'finanzas:movimiento_detail' m.pk %}';">
+                            <td class="ps-4 text-secondary small" style="width: 15%;">{{ m.fecha_operacion|date:"d/m" }}</td>
+                            <td>
+                                <div class="fw-medium text-dark text-truncate" style="max-width: 280px;">{{ m.descripcion }}</div>
+                                <div class="d-flex align-items-center gap-2 mt-1">
+                                    <span class="badge bg-light text-secondary border fw-normal" style="font-size: 0.65rem;">
+                                        {{ m.categoria.nombre|default:"General" }}
+                                    </span>
+                                </div>
+                            </td>
+                            <td class="text-end pe-4 fw-bold {% if m.tipo == 'INGRESO' %}text-success{% else %}text-danger{% endif %}" style="width: 25%;">
+                                {% if m.tipo == 'GASTO' %}- {% endif %}${{ m.monto|intcomma }}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="3" class="text-center py-5 text-muted">
+                                <i class="bi bi-inbox fs-1 d-block opacity-25 mb-2"></i>
+                                No hay movimientos registrados este mes.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
-        <div class="fw-bold text-warning fs-6 mb-1">
-          ${{ total_ayudas|default:0|formato_pesos }}
-        </div>
-        {% if total_gastos %}
-          <div class="small text-muted mb-2">
-            {{ porcentaje_ayudas_sobre_gastos|default:0|floatformat:1 }}%
-            del gasto acumulado.
-          </div>
-        {% else %}
-          <div class="small text-muted mb-2">
-            Aún no hay gastos cargados para calcular proporción.
-          </div>
-        {% endif %}
-        <p class="small text-muted mb-0">
-          Resume el <strong>esfuerzo social</strong> de la Comuna
-          (alimentos, materiales, apoyos puntuales, etc.).
-        </p>
-      </div>
     </div>
-  </div>
 
-  <div class="col-12 col-md-4">
-    <div class="card border-info-subtle shadow-sm h-100">
-      <div class="card-body">
-        <div class="small text-muted text-uppercase mb-1">
-          Personal · sueldos / jornales / changas
-        </div>
-        <div class="fw-bold text-info fs-6 mb-1">
-          ${{ total_personal|default:0|formato_pesos }}
-        </div>
-        {% if total_gastos %}
-          <div class="small text-muted mb-2">
-            {{ porcentaje_personal_sobre_gastos|default:0|floatformat:1 }}%
-            del gasto acumulado.
-          </div>
-        {% else %}
-          <div class="small text-muted mb-2">
-            Aún no hay gastos cargados para calcular proporción.
-          </div>
-        {% endif %}
-        <p class="small text-muted mb-0">
-          Mide el costo de <strong>recursos humanos</strong>:
-          planta, contratados y trabajo eventual.
-        </p>
-      </div>
-    </div>
-  </div>
-</div>
-
-{# ========== BLOQUE 3: FLOTA / ÓRDENES / AGENDA ========== #}
-<div class="row g-3 mb-4">
-  {# Flota y movilidad #}
-  <div class="col-12 col-lg-4">
-    <div class="card border-info-subtle shadow-sm h-100">
-      <div class="card-body">
-        <div class="small text-muted text-uppercase mb-1">
-          Flota y movilidad (mes actual)
-        </div>
-        <p class="small text-muted mb-1">
-          Datos tomados de <strong>viajes de vehículos</strong> registrados.
-        </p>
-        <p class="small mb-1">
-          <span class="text-muted">Viajes registrados:</span>
-          <span class="fw-bold">{{ viajes_mes|default:0|intcomma }}</span>
-        </p>
-        <p class="small mb-1">
-          <span class="text-muted">Kilómetros cargados:</span>
-          <span class="fw-bold">
-            {{ total_km_mes|default_if_none:0|floatformat:1|intcomma }} km
-          </span>
-        </p>
-        <p class="small mb-0">
-          <span class="text-muted">Combustible mes:</span>
-          <span class="fw-bold text-primary">
-            ${{ combustible_mes|default_if_none:0|formato_pesos }}
-          </span>
-        </p>
-        <div class="mt-2">
-          <a href="{% url 'finanzas:viaje_vehiculo_list' %}" class="small text-decoration-none">
-            Ver detalle de viajes →
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  {# Órdenes de pago y compras #}
-  <div class="col-12 col-lg-4">
-    <div class="card border-primary-subtle shadow-sm h-100">
-      <div class="card-body">
-        <div class="small text-muted text-uppercase mb-1">
-          Órdenes de pago y compras
-        </div>
-        <p class="small mb-1">
-          <span class="text-muted">Órdenes de pago pendientes:</span>
-          <span class="fw-bold">
-            {{ cantidad_ordenes_pendientes|default:0 }}
-          </span>
-        </p>
-        <p class="small mb-2">
-          <span class="text-muted">Monto comprometido:</span>
-          <span class="fw-bold text-primary">
-            ${{ total_ordenes_pendientes|default:0|formato_pesos }}
-          </span>
-        </p>
-        <p class="small text-muted mb-0">
-          Las OP solo impactan en caja cuando se cargan como
-          <strong>movimientos pagados</strong>.
-        </p>
-        <div class="mt-2 d-flex flex-wrap gap-2 small">
-          <a href="{% url 'finanzas:orden_pago_list' %}" class="text-decoration-none">
-            Ver órdenes de pago →
-          </a>
-          <span class="text-muted">|</span>
-          <a href="{% url 'finanzas:oc_list' %}" class="text-decoration-none">
-            Ver órdenes de compra →
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  {# Agenda y tareas #}
-  <div class="col-12 col-lg-4">
-    <div class="card border-danger-subtle shadow-sm h-100">
-      <div class="card-body">
-        <div class="small text-muted text-uppercase mb-1">
-          Agenda y vencimientos
-        </div>
-        <p class="small mb-1">
-          <span class="text-muted">Tareas pendientes asignadas a vos:</span>
-          <span class="fw-bold text-danger">
-            {{ tareas_pendientes_usuario|default:0 }}
-          </span>
-        </p>
-        <p class="small text-muted mb-0">
-          Usá la agenda para seguir vencimientos de <strong>impuestos, órdenes,
-          ayudas y gestiones</strong> que pegan en la caja de la comuna.
-        </p>
-        <div class="mt-2">
-          <a href="{% url 'agenda:agenda_list' %}" class="small text-decoration-none">
-            Ir a la agenda completa →
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-{# ========== BLOQUE 4: ESTADO Y CALIDAD DE LA CARGA ========== #}
-<div class="row g-3 mb-3">
-  <div class="col-12 col-lg-6">
-    <div class="card border-light shadow-sm h-100">
-      <div class="card-body">
-        <div class="small text-muted text-uppercase mb-1">
-          Estado de los movimientos
-        </div>
-
-        <div class="d-flex flex-wrap gap-2 mb-2">
-          <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
-            Borradores: <strong>{{ total_borradores|default:0 }}</strong>
-          </span>
-          <span class="badge bg-success-subtle text-success border border-success-subtle">
-            Aprobados: <strong>{{ total_aprobados|default:0 }}</strong>
-          </span>
-          <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
-            Rechazados: <strong>{{ total_rechazados|default:0 }}</strong>
-          </span>
-        </div>
-
-        {% if total_borradores %}
-          <div class="small text-muted mb-2">
-            Hay <strong>{{ total_borradores }}</strong> movimiento{{ total_borradores|pluralize:"s" }}
-            en <strong>BORRADOR</strong> que todavía no impactan en balances.
-          </div>
-          <a
-            href="{% url 'finanzas:movimiento_list' %}?estado=BORRADOR"
-            class="btn btn-outline-warning btn-sm"
-          >
-            Revisar borradores en el listado
-          </a>
-        {% else %}
-          <div class="small text-muted">
-            No hay borradores pendientes: todos los movimientos están aprobados o rechazados.
-          </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-
-  {# Rechazados recientes #}
-  <div class="col-12 col-lg-6">
-    <div class="card shadow-sm h-100">
-      <div class="card-header py-2 d-flex justify-content-between align-items-center">
-        <span class="small text-uppercase text-muted fw-semibold">
-          Movimientos rechazados recientes
-        </span>
-        <span class="badge bg-light text-muted border small">
-          {{ rechazados_recientes|length }} mostrados
-        </span>
-      </div>
-      <div class="card-body p-0">
-        {% if rechazados_recientes %}
-          <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0 align-middle">
-              <thead class="table-light small">
-                <tr>
-                  <th style="width: 90px;">Fecha</th>
-                  <th>Tipo</th>
-                  <th class="text-end" style="width: 120px;">Monto</th>
-                  <th>Detalle</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for m in rechazados_recientes %}
-                  <tr>
-                    <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
-                    <td>
-                      {% if m.tipo == m.TIPO_INGRESO %}
-                        <span class="badge bg-success-subtle text-success border border-success-subtle">
-                          Ingreso
-                        </span>
-                      {% elif m.tipo == m.TIPO_GASTO %}
-                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
-                          Gasto
-                        </span>
-                      {% else %}
-                        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
-                          Transferencia
-                        </span>
-                      {% endif %}
-                    </td>
-                    <td class="text-end">
-                      ${{ m.monto|formato_pesos }}
-                    </td>
-                    <td>
-                      <a
-                        href="{% url 'finanzas:movimiento_detail' m.pk %}"
-                        class="text-decoration-none"
-                      >
-                        {{ m.descripcion|default:"(sin detalle)"|truncatechars:50 }}
-                      </a>
-                    </td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        {% else %}
-          <div class="p-3 text-muted small">
-            No hay movimientos rechazados recientes.
-          </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-</div>
-
-{# ========== BLOQUE 5: BORRADORES PENDIENTES ========== #}
-<div class="card shadow-sm mb-3">
-  <div class="card-header py-2 d-flex justify-content-between align-items-center">
-    <span class="small text-uppercase text-muted fw-semibold">
-      Borradores pendientes de revisión
-    </span>
-    <span class="badge bg-light text-muted border small">
-      {{ borradores_recientes|length }} mostrados
-    </span>
-  </div>
-  <div class="card-body p-0">
-    {% if borradores_recientes %}
-      <div class="table-responsive">
-        <table class="table table-sm table-hover mb-0 align-middle">
-          <thead class="table-light small">
-            <tr>
-              <th style="width: 90px;">Fecha</th>
-              <th>Tipo</th>
-              <th>Categoría</th>
-              <th>Área</th>
-              <th class="text-end" style="width: 120px;">Monto</th>
-              <th>Detalle</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for m in borradores_recientes %}
-              <tr>
-                <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
-                <td>
-                  {% if m.tipo == m.TIPO_INGRESO %}
-                    <span class="badge bg-success-subtle text-success border border-success-subtle">
-                      Ingreso
-                    </span>
-                  {% elif m.tipo == m.TIPO_GASTO %}
-                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
-                      Gasto
-                    </span>
-                  {% else %}
-                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
-                      Transferencia
-                    </span>
-                  {% endif %}
-                </td>
-                <td>{{ m.categoria }}</td>
-                <td>{{ m.area|default:"-" }}</td>
-                <td class="text-end">
-                  ${{ m.monto|formato_pesos }}
-                </td>
-                <td>
-                  <a
-                    href="{% url 'finanzas:movimiento_detail' m.pk %}"
-                    class="text-decoration-none"
-                  >
-                    {{ m.descripcion|default:"(sin detalle)"|truncatechars:60 }}
-                  </a>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="p-3 text-muted small">
-        No hay movimientos en estado borrador. El tablero está al día ✅.
-      </div>
-    {% endif %}
-  </div>
-</div>
-
-{# ========== BLOQUE 6: ÚLTIMOS APROBADOS ========== #}
-<div class="card shadow-sm mt-3">
-  <div class="card-header py-2 d-flex justify-content-between align-items-center">
-    <span class="small text-uppercase text-muted fw-semibold">
-      Últimos movimientos aprobados
-    </span>
-    <div class="small text-muted">
-      Mostrando {{ ultimos_movimientos|length }} ·
-      <a href="{% url 'finanzas:movimiento_list' %}" class="text-decoration-none">
-        Ver listado completo →
-      </a>
-    </div>
-  </div>
-  <div class="card-body p-0">
-    {% if ultimos_movimientos %}
-      <div class="table-responsive">
-        <table class="table table-sm table-hover mb-0 align-middle">
-          <thead class="table-light small">
-            <tr>
-              <th style="width: 90px;">Fecha</th>
-              <th>Tipo</th>
-              <th>Categoría</th>
-              <th>Área</th>
-              <th class="text-end" style="width: 120px;">Monto</th>
-              <th>Detalle</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for m in ultimos_movimientos %}
-              <tr>
-                <td>{{ m.fecha_operacion|date:"d/m/Y" }}</td>
-                <td>
-                  {% if m.tipo == m.TIPO_INGRESO %}
-                    <span class="badge bg-success-subtle text-success border border-success-subtle">
-                      Ingreso
-                    </span>
-                  {% elif m.tipo == m.TIPO_GASTO %}
-                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
-                      Gasto
-                    </span>
-                  {% else %}
-                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
-                      Transferencia
-                    </span>
-                  {% endif %}
-                </td>
-                <td>{{ m.categoria }}</td>
-                <td>{{ m.area|default:"-" }}</td>
-                <td class="text-end">
-                  ${{ m.monto|formato_pesos }}
-                </td>
-                <td>
-                  <a
-                    href="{% url 'finanzas:movimiento_detail' m.pk %}"
-                    class="text-decoration-none"
-                  >
-                    {{ m.descripcion|default:"(sin detalle)"|truncatechars:60 }}
-                  </a>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <div class="p-3 text-muted small">
-        Todavía no hay movimientos aprobados cargados.
-      </div>
-    {% endif %}
-  </div>
 </div>
 
 {% endblock %}

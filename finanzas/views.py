@@ -1,1075 +1,687 @@
-from datetime import datetime
-from decimal import Decimal
 import json
+from decimal import Decimal
+from datetime import datetime, timedelta
+from datetime import date
 
-from django.db import transaction
+# Django Imports
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
-from django.db.models import Sum, Count, Q, F
+from django.db import transaction
+from django.db.models import Sum, Q, Count, F, Avg
 from django.http import JsonResponse
-from django.shortcuts import redirect, get_object_or_404
-from django.urls import reverse_lazy
+from django.shortcuts import redirect, get_object_or_404, render
+from django.urls import reverse_lazy, reverse
 from django.utils import timezone
 from django.views import View
-from django.views.decorators.http import require_GET
-from django.views.generic import (
-    ListView,
-    CreateView,
-    DetailView,
-    UpdateView,
-    TemplateView,
-)
-from django.forms import inlineformset_factory
-from django.core.serializers.json import DjangoJSONEncoder
-from django.apps import apps
+from django.views.decorators.http import require_GET, require_POST
+from django.views.generic import ListView, CreateView, DetailView, UpdateView, TemplateView
+from num2words import num2words
+from django.contrib.auth.mixins import LoginRequiredMixin
 
-from .forms import (
-    MovimientoForm,
-    BeneficiarioForm,
-    OrdenPagoForm,
-    OrdenPagoLineaFormSet,
-    # Órdenes de trabajo
-    OrdenTrabajoForm,
-    OrdenTrabajoMaterialFormSet,
-    AdjuntoOrdenTrabajoForm,
+# === MIXINS PROPIOS ===
+from .mixins import (
+    roles_ctx, StaffRequiredMixin, OperadorFinanzasRequiredMixin,
+    MovimientosAccessMixin, DashboardAccessMixin, OrdenPagoAccessMixin,
+    OrdenPagoEditMixin, PersonaCensoAccessMixin, PersonaCensoEditMixin,
+    es_staff_finanzas
 )
+
+# === MODELOS DE OTRAS APPS (Agenda / Operativo) ===
+try:
+    from agenda.models import Atencion
+except ImportError:
+    Atencion = None
+
+# === MODELOS LOCALES (Finanzas) ===
 from .models import (
-    Movimiento,
-    Categoria,
-    Area,
-    Cuenta,
-    Proveedor,
-    Beneficiario,
-    Vehiculo,
-    OrdenPago,
-    # Órdenes de trabajo
-    OrdenTrabajo,
-    OrdenTrabajoMaterial,
-    AdjuntoOrdenTrabajo,
-    # Flota / viajes
-    ViajeVehiculo,
+    Movimiento, Categoria, Area, Proveedor, Beneficiario,
+    OrdenPago, OrdenPagoLinea, OrdenCompra, OrdenCompraLinea, 
+    Vehiculo, ProgramaAyuda, HojaRuta, 
+    OrdenTrabajo, OrdenTrabajoMaterial
 )
 
-
-# ===== AGENDA (nuevo módulo) =====
-
-
-def _get_tarea_model():
-    """
-    Devuelve el modelo Tarea de la app agenda de forma segura,
-    evitando imports circulares. Si no existe o la app no está
-    lista (por ejemplo durante migraciones), devuelve None.
-    """
-    try:
-        return apps.get_model("agenda", "Tarea")
-    except Exception:
-        return None
-
-
-# ===== FORMSETS ADJUNTOS OT =====
-
-AdjuntoOrdenTrabajoFormSet = inlineformset_factory(
-    OrdenTrabajo,
-    AdjuntoOrdenTrabajo,
-    form=AdjuntoOrdenTrabajoForm,
-    extra=1,
-    can_delete=True,
+# === FORMULARIOS ===
+from .forms import (
+    MovimientoForm, BeneficiarioForm, OrdenPagoForm, OrdenPagoLineaFormSet,
+    OrdenCompraForm, OrdenCompraLineaFormSet,
+    OrdenTrabajoForm, OrdenTrabajoMaterialFormSet
 )
 
+# === SUBIR DOCUMENTACION BENEFICIARIOS===
+from .models import DocumentoBeneficiario
+from .forms import DocumentoBeneficiarioForm
 
-# ========= ROLES Y PERMISOS =========
+# =========================================================
+# IMPORTACIONES MODULARES (FLOTA, OC, OT, ATENCIONES)
+# =========================================================
+try:
+    from .views_flota import (
+        VehiculoListView, VehiculoCreateView, VehiculoUpdateView, VehiculoDetailView,
+        HojaRutaListView, HojaRutaCreateView, HojaRutaDetailView,
+        FlotaCombustibleResumenView, vehiculo_autocomplete
+    )
+except ImportError: pass
 
+try:
+    from .views_oc import (
+        OCListView, OCCreateView, OCUpdateView, OCDetailView,
+        OCCambiarEstadoView, OCGenerarMovimientoView,
+        proveedor_por_cuit, proveedor_suggest, vehiculo_por_patente
+    )
+except ImportError: pass
 
-def _user_in_groups(user, group_names):
-    """Helper: verifica si el usuario pertenece a alguno de los grupos indicados."""
-    if not user.is_authenticated:
-        return False
-    return user.groups.filter(name__in=group_names).exists()
+try:
+    from .views_ot import (
+        OrdenTrabajoListView, OrdenTrabajoCreateView, OrdenTrabajoUpdateView,
+        OrdenTrabajoDetailView, OrdenTrabajoGenerarMovimientoIngresoView,
+    )
+except ImportError: pass
 
-
-def es_admin_sistema(user):
-    """
-    ADMIN_SISTEMA:
-      - superusuario de Django
-      - o usuario en grupo "ADMIN_SISTEMA"
-    """
-    if not user.is_authenticated:
-        return False
-    return user.is_superuser or _user_in_groups(user, ["ADMIN_SISTEMA"])
-
-
-def es_staff_finanzas(user):
-    """
-    STAFF_FINANZAS:
-      - ADMIN_SISTEMA
-      - o grupo "STAFF_FINANZAS"
-      - fallback de compatibilidad:
-        usuario is_staff sin otros roles específicos (operadores/consulta)
-    """
-    if not user.is_authenticated:
-        return False
-
-    if es_admin_sistema(user):
-        return True
-
-    if _user_in_groups(user, ["STAFF_FINANZAS"]):
-        return True
-
-    # Compatibilidad: si hoy ya usás is_staff y todavía no creaste grupos,
-    # tratamos a esos usuarios como staff financiero mientras no tengan
-    # asignado un rol más acotado.
-    if user.is_staff and not _user_in_groups(
-        user,
-        ["OPERADOR_FINANZAS", "OPERADOR_SOCIAL", "CONSULTA_POLITICA"],
-    ):
-        return True
-
-    return False
+try:
+    from .views_atenciones import (
+        AtencionListView, AtencionCreateView, AtencionBeneficiarioListView, AtencionUpdateView
+    )
+except ImportError: pass
 
 
-def es_operador_finanzas(user):
-    """
-    OPERADOR_FINANZAS:
-      - grupo "OPERADOR_FINANZAS"
-      - o cualquier STAFF_FINANZAS / ADMIN_SISTEMA (>= operador)
-    """
-    if not user.is_authenticated:
-        return False
-    if es_staff_finanzas(user):
-        return True
-    return _user_in_groups(user, ["OPERADOR_FINANZAS"])
+# =========================================================
+# 1) UTILIDADES INTERNAS
+# =========================================================
 
-
-def es_operador_social(user):
-    """
-    OPERADOR_SOCIAL:
-      - grupo "OPERADOR_SOCIAL"
-      - o cualquier STAFF_FINANZAS
-    """
-    if not user.is_authenticated:
-        return False
-    if es_staff_finanzas(user):
-        return True
-    return _user_in_groups(user, ["OPERADOR_SOCIAL"])
-
-
-def es_consulta_politica(user):
-    """
-    CONSULTA_POLITICA:
-      - grupo "CONSULTA_POLITICA"
-    """
-    if not user.is_authenticated:
-        return False
-    return _user_in_groups(user, ["CONSULTA_POLITICA"])
-
-
-def _roles_ctx(user):
-    """
-    Helper centralizado para inyectar al contexto los flags de rol.
-    Así no repetimos lo mismo en todas las vistas.
-    """
-    return {
-        "rol_staff_finanzas": es_staff_finanzas(user),
-        "rol_operador_finanzas": es_operador_finanzas(user),
-        "rol_operador_social": es_operador_social(user),
-        "rol_consulta_politica": es_consulta_politica(user),
-    }
-
-
-# ========= HELPERS =========
-
-
-def _parse_date_or_none(value: str):
-    """
-    Convierte 'YYYY-MM-DD' -> date.
-    Si viene vacío o inválido, devuelve None.
-    """
-    if not value:
-        return None
-    try:
-        return datetime.strptime(value, "%Y-%m-%d").date()
-    except (ValueError, TypeError):
-        return None
-
-
-def _resolver_proveedor_y_beneficiario(form, movimiento):
-    """
-    Reutiliza la lógica de alta/edición para vincular proveedor y beneficiario
-    a partir de los campos de formulario (CUIT / DNI + datos básicos).
-    No guarda el movimiento; solo ajusta sus FKs.
-    """
+def _resolver_proveedor_y_beneficiario(form, movimiento: Movimiento) -> None:
+    """Sincroniza FKs con campos de texto (snapshot)."""
     cleaned = form.cleaned_data
+    
+    # Proveedor
+    prov_obj = cleaned.get("proveedor")
+    if prov_obj:
+        movimiento.proveedor = prov_obj
+        movimiento.proveedor_nombre = prov_obj.razon_social # Ajuste: Usamos razon_social
+        movimiento.proveedor_cuit = prov_obj.cuit or ""
+    
+    # Beneficiario
+    ben_obj = cleaned.get("beneficiario")
+    if ben_obj:
+        movimiento.beneficiario = ben_obj
+        movimiento.beneficiario_nombre = f"{ben_obj.apellido}, {ben_obj.nombre}".strip()
+        movimiento.beneficiario_dni = ben_obj.dni or ""
 
-    # ===== PROVEEDOR por CUIT =====
-    cuit = (cleaned.get("proveedor_cuit") or "").strip()
-    nombre_proveedor = (cleaned.get("proveedor_nombre") or "").strip()
+def _redirect_movimiento_post_save(request, mov: Movimiento, msg: str):
+    """Redirección inteligente según estado."""
+    messages.success(request, msg)
+    if mov.estado == Movimiento.ESTADO_APROBADO:
+        return redirect("finanzas:movimiento_detail", pk=mov.pk)
+    # Si es borrador, volver a la lista filtrada
+    url = reverse("finanzas:movimiento_list")
+    return redirect(f"{url}?estado={mov.estado}&highlight={mov.pk}")
 
-    if cuit or nombre_proveedor:
-        proveedor = None
-        if cuit:
-            proveedor, created = Proveedor.objects.get_or_create(
-                cuit=cuit,
-                defaults={"nombre": nombre_proveedor or ""},
-            )
-            if not created and nombre_proveedor and not proveedor.nombre:
-                proveedor.nombre = nombre_proveedor
-                proveedor.save()
-        else:
-            proveedor, _ = Proveedor.objects.get_or_create(
-                nombre=nombre_proveedor or "Proveedor sin nombre"
-            )
-        movimiento.proveedor = proveedor
-
-    # ===== BENEFICIARIO / PERSONA por DNI =====
-    dni = (cleaned.get("beneficiario_dni") or "").strip()
-    nombre_beneficiario = (cleaned.get("beneficiario_nombre") or "").strip()
-    benef_direccion = (cleaned.get("beneficiario_direccion") or "").strip()
-    benef_barrio = (cleaned.get("beneficiario_barrio") or "").strip()
-
-    beneficiario = None
-    if dni or nombre_beneficiario:
-        if dni:
-            apellido = ""
-            nombre = ""
-            if nombre_beneficiario:
-                partes = nombre_beneficiario.strip().split(" ", 1)
-                if len(partes) == 2:
-                    apellido, nombre = partes[0], partes[1]
-                else:
-                    nombre = nombre_beneficiario
-
-            beneficiario, created = Beneficiario.objects.get_or_create(
-                dni=dni,
-                defaults={
-                    "nombre": nombre or nombre_beneficiario or "",
-                    "apellido": apellido or "",
-                    "direccion": benef_direccion or "",
-                    "barrio": benef_barrio or "",
-                },
-            )
-
-            if not created:
-                updated = False
-                if benef_direccion and not beneficiario.direccion:
-                    beneficiario.direccion = benef_direccion
-                    updated = True
-                if benef_barrio and not beneficiario.barrio:
-                    beneficiario.barrio = benef_barrio
-                    updated = True
-                if updated:
-                    beneficiario.save()
-        else:
-            beneficiario, _ = Beneficiario.objects.get_or_create(
-                nombre=nombre_beneficiario or "Sin nombre",
-                apellido="",
-            )
-            if benef_direccion and not beneficiario.direccion:
-                beneficiario.direccion = benef_direccion
-            if benef_barrio and not beneficiario.barrio:
-                beneficiario.barrio = benef_barrio
-            beneficiario.save()
-
-        movimiento.beneficiario = beneficiario
+def _label_caja_por_tipo(tipo: str) -> str:
+    t = (tipo or "").upper()
+    if "ING" in t: return "Ingreso"
+    if "GAS" in t: return "Gasto"
+    return "Movimiento"
 
 
-def _flota_metrics_mes(hoy, primer_dia_mes):
-    """
-    Métricas de flota para el mes actual.
+# =========================================================
+# 2) APIs AJAX (Categorías y Proveedor Express)
+# =========================================================
 
-    Devuelve (viajes_mes, total_km_mes).
+@login_required
+def categorias_por_tipo(request):
+    """API para llenar el select de categorías dinámicamente."""
+    tipo = request.GET.get('tipo')
+    if not tipo:
+        return JsonResponse({'results': []})
+    
+    cats = Categoria.objects.filter(tipo=tipo, activa=True).order_by('nombre')
+    data = [{
+        'id': c.id, 
+        'text': c.nombre,
+        'es_ayuda_social': c.es_ayuda_social,
+        'es_combustible': c.es_combustible
+    } for c in cats]
+    
+    return JsonResponse({'results': data})
 
-    - Intenta usar el modelo ViajeVehiculo si existe.
-    - No rompe si el modelo cambia o aún no está migrado.
-    """
-    viajes_mes = 0
-    total_km_mes = 0
-
+@login_required
+@require_POST
+def proveedor_create_express(request):
+    """API para crear proveedores al vuelo desde el formulario de movimientos."""
     try:
-        # import local para evitar problemas en migraciones
-        from .models import ViajeVehiculo as ViajeModel
-    except Exception:
-        return 0, 0
+        razon_social = request.POST.get('razon_social', '').strip()
+        cuit = request.POST.get('cuit', '').strip()
+        telefono = request.POST.get('telefono', '').strip()
 
-    viajes_qs = ViajeModel.objects.all()
+        if not razon_social:
+            return JsonResponse({'status': 'error', 'message': 'La Razón Social es obligatoria.'}, status=400)
 
-    # Intentamos detectar campo de fecha (prioridad: fecha_salida, luego otros nombres legacy)
-    if hasattr(ViajeModel, "fecha_salida"):
-        viajes_qs = viajes_qs.filter(
-            fecha_salida__gte=primer_dia_mes,
-            fecha_salida__lte=hoy,
-        )
-    elif hasattr(ViajeModel, "fecha"):
-        viajes_qs = viajes_qs.filter(fecha__gte=primer_dia_mes, fecha__lte=hoy)
-    elif hasattr(ViajeModel, "fecha_viaje"):
-        viajes_qs = viajes_qs.filter(
-            fecha_viaje__gte=primer_dia_mes,
-            fecha_viaje__lte=hoy,
+        if cuit and Proveedor.objects.filter(cuit=cuit).exists():
+            return JsonResponse({'status': 'error', 'message': 'Ya existe un proveedor con ese CUIT.'}, status=400)
+
+        proveedor = Proveedor.objects.create(
+            razon_social=razon_social,
+            cuit=cuit,
+            telefono=telefono,
+            creado_por=request.user
         )
 
-    viajes_mes = viajes_qs.count()
+        return JsonResponse({
+            'status': 'success',
+            'id': proveedor.id,
+            'text': f"{proveedor.razon_social} ({proveedor.cuit or 'S/C'})",
+            'razon_social': proveedor.razon_social,
+            'cuit': proveedor.cuit or ''
+        })
 
-    # Kilómetros recorridos
-    try:
-        if hasattr(ViajeModel, "km_recorridos"):
-            total_km_mes = sum(
-                (getattr(v, "km_recorridos", 0) or 0) for v in viajes_qs
-            )
-        else:
-            total_km = Decimal("0.00")
-            for v in viajes_qs:
-                ini = getattr(v, "odometro_inicial", None)
-                fin = getattr(v, "odometro_final", None)
-                if ini is not None and fin is not None:
-                    diff = fin - ini
-                    if diff > 0:
-                        total_km += diff
-            total_km_mes = total_km
-    except Exception:
-        total_km_mes = 0
-
-    return viajes_mes, total_km_mes
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
-# ========= MIXINS DE ACCESO =========
+# =========================================================
+# 2) DASHBOARD (HOME)
+# =========================================================
 
-
-class StaffRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
-    """Acceso restringido a STAFF_FINANZAS / ADMIN_SISTEMA."""
-
-    def test_func(self):
-        return es_staff_finanzas(self.request.user)
-
-
-class OperadorFinanzasRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
-    """Vistas que pueden usar STAFF_FINANZAS y OPERADOR_FINANZAS."""
-
-    def test_func(self):
-        return es_operador_finanzas(self.request.user)
-
-
-class PersonaCensoAccessMixin(LoginRequiredMixin, UserPassesTestMixin):
-    """
-    Vistas del censo de personas:
-    - STAFF_FINANZAS / ADMIN_SISTEMA
-    - OPERADOR_FINANZAS
-    - OPERADOR_SOCIAL
-    - CONSULTA_POLITICA
-    """
-
-    def test_func(self):
-        user = self.request.user
-        return (
-            es_staff_finanzas(user)
-            or es_operador_finanzas(user)
-            or es_operador_social(user)
-            or es_consulta_politica(user)
-        )
-
-
-class PersonaCensoEditMixin(LoginRequiredMixin, UserPassesTestMixin):
-    """
-    Edición del censo de personas:
-    - STAFF_FINANZAS
-    - OPERADOR_FINANZAS
-    - OPERADOR_SOCIAL
-    """
-
-    def test_func(self):
-        user = self.request.user
-        return (
-            es_staff_finanzas(user)
-            or es_operador_finanzas(user)
-            or es_operador_social(user)
-        )
-
-
-class DashboardAccessMixin(LoginRequiredMixin, UserPassesTestMixin):
-    """
-    Acceso a Dashboard y Balances:
-    - STAFF_FINANZAS / ADMIN_SISTEMA
-    - CONSULTA_POLITICA (solo lectura)
-    """
-
-    def test_func(self):
-        user = self.request.user
-        return es_staff_finanzas(user) or es_consulta_politica(user)
-
-
-class MovimientosAccessMixin(LoginRequiredMixin, UserPassesTestMixin):
-    """
-    Listado / detalle de movimientos:
-    - STAFF_FINANZAS
-    - OPERADOR_FINANZAS
-    - CONSULTA_POLITICA (solo lectura)
-    """
-
-    def test_func(self):
-        user = self.request.user
-        return (
-            es_staff_finanzas(user)
-            or es_operador_finanzas(user)
-            or es_consulta_politica(user)
-        )
-
-
-class OrdenPagoAccessMixin(LoginRequiredMixin, UserPassesTestMixin):
-    """
-    Listado / detalle de Órdenes de pago:
-    - STAFF_FINANZAS
-    - OPERADOR_FINANZAS
-    - CONSULTA_POLITICA (solo lectura)
-    """
-
-    def test_func(self):
-        user = self.request.user
-        return (
-            es_staff_finanzas(user)
-            or es_operador_finanzas(user)
-            or es_consulta_politica(user)
-        )
-
-
-class OrdenPagoEditMixin(LoginRequiredMixin, UserPassesTestMixin):
-    """
-    Alta / edición de Órdenes de pago:
-    - STAFF_FINANZAS
-    - OPERADOR_FINANZAS
-    """
-
-    def test_func(self):
-        user = self.request.user
-        return es_staff_finanzas(user) or es_operador_finanzas(user)
-
-
-class FlotaAccessMixin(LoginRequiredMixin, UserPassesTestMixin):
-    """
-    Flota / Vehículos / Viajes:
-    - STAFF_FINANZAS
-    - OPERADOR_FINANZAS
-    - OPERADOR_SOCIAL (por si usan viajes para traslados sociales)
-    """
-
-    def test_func(self):
-        user = self.request.user
-        return (
-            es_staff_finanzas(user)
-            or es_operador_finanzas(user)
-            or es_operador_social(user)
-        )
-
-
-class FlotaEditMixin(LoginRequiredMixin, UserPassesTestMixin):
-    """
-    Edición Flota / Viajes:
-    - STAFF_FINANZAS
-    - OPERADOR_FINANZAS
-    """
-
-    def test_func(self):
-        user = self.request.user
-        return es_staff_finanzas(user) or es_operador_finanzas(user)
-
-
-class OrdenTrabajoAccessMixin(LoginRequiredMixin, UserPassesTestMixin):
-    """
-    Órdenes de trabajo:
-    - STAFF_FINANZAS
-    - OPERADOR_FINANZAS
-    - CONSULTA_POLITICA (solo lectura)
-    """
-
-    def test_func(self):
-        user = self.request.user
-        return (
-            es_staff_finanzas(user)
-            or es_operador_finanzas(user)
-            or es_consulta_politica(user)
-        )
-
-
-class OrdenTrabajoEditMixin(LoginRequiredMixin, UserPassesTestMixin):
-    """
-    Alta / edición de órdenes de trabajo:
-    - STAFF_FINANZAS
-    - OPERADOR_FINANZAS
-    """
-
-    def test_func(self):
-        user = self.request.user
-        return es_staff_finanzas(user) or es_operador_finanzas(user)
-
-
-# ========= HOME / TABLERO PRINCIPAL =========
-
-
-class HomeView(LoginRequiredMixin, TemplateView):
-    """Tablero de inicio para cualquier usuario autenticado."""
-
+class HomeView(DashboardAccessMixin, TemplateView):
     template_name = "finanzas/home.html"
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
+        
+        # --- 1. CONFIGURACIÓN DEL TIEMPO (CEREBRO DEL DASHBOARD) ---
         hoy = timezone.now().date()
-        primer_dia_mes = hoy.replace(day=1)
+        inicio_mes_actual = hoy.replace(day=1)
+        
+        # FECHA CLAVE: INICIO DE GESTIÓN
+        inicio_gestion = date(2025, 12, 10) 
 
-        movimientos_mes = Movimiento.objects.filter(
+        # Detectar qué quiere ver el usuario
+        filtro = self.request.GET.get('ver', 'mes') # 'mes' (default) o 'gestion'
+        
+        if filtro == 'gestion':
+            fecha_inicio = inicio_gestion
+            titulo_periodo = "Gestión (Desde 10/12/2025)"
+        else:
+            fecha_inicio = inicio_mes_actual
+            titulo_periodo = "Mes en Curso"
+
+        # =================================================
+        # 2. PULSO OPERATIVO (SIEMPRE ES "HOY")
+        # =================================================
+        ctx['viajes_hoy'] = HojaRuta.objects.filter(fecha=hoy).count()
+        ctx['atenciones_hoy'] = Atencion.objects.filter(fecha_atencion=hoy).count() if Atencion else 0
+        ctx['ocs_hoy'] = OrdenCompra.objects.filter(fecha_oc=hoy).count()
+
+        # =================================================
+        # 3. DATOS FINANCIEROS (SENSIBLES AL FILTRO)
+        # =================================================
+        
+        # Base de Movimientos Aprobados en el rango seleccionado
+        movs_periodo = Movimiento.objects.filter(
             estado=Movimiento.ESTADO_APROBADO,
-            fecha_operacion__gte=primer_dia_mes,
+            fecha_operacion__gte=fecha_inicio,
             fecha_operacion__lte=hoy,
         )
-
-        total_ingresos_mes = (
-            movimientos_mes.filter(tipo=Movimiento.TIPO_INGRESO)
-            .aggregate(total=Sum("monto"))["total"]
-            or 0
+        
+        # Cálculo de Balance
+        balance = movs_periodo.aggregate(
+            ingresos=Sum("monto", filter=Q(tipo__iexact="INGRESO")),
+            gastos=Sum("monto", filter=Q(tipo__iexact="GASTO")),
         )
-        total_gastos_mes = (
-            movimientos_mes.filter(tipo=Movimiento.TIPO_GASTO)
-            .aggregate(total=Sum("monto"))["total"]
-            or 0
+        ingresos = balance["ingresos"] or 0
+        gastos = balance["gastos"] or 0
+        
+        # KPIs Específicos (Ayudas y Combustible) en el rango seleccionado
+        ctx['ayudas_mes_cant'] = movs_periodo.filter(
+            tipo__iexact="GASTO", categoria__es_ayuda_social=True
+        ).count()
+        
+        ctx['ayudas_mes_monto'] = movs_periodo.filter(
+            tipo__iexact="GASTO", categoria__es_ayuda_social=True
+        ).aggregate(t=Sum('monto'))['t'] or 0
+
+        ctx['combustible_mes'] = movs_periodo.filter(
+            tipo__iexact="GASTO", categoria__es_combustible=True
+        ).aggregate(t=Sum('monto'))['t'] or 0
+        
+        # Viajes en el periodo
+        ctx['viajes_mes'] = HojaRuta.objects.filter(fecha__gte=fecha_inicio, fecha__lte=hoy).count()
+
+        # Últimos Movimientos (Siempre mostramos los últimos reales, sin importar el filtro)
+        # CORREGIDO: Usamos relaciones reales (beneficiario, proveedor) en lugar de 'persona'
+        ultimos = Movimiento.objects.filter(
+            estado=Movimiento.ESTADO_APROBADO
+        ).select_related(
+            "categoria", "cuenta_destino", "cuenta_origen", "beneficiario", "proveedor"
+        ).order_by("-fecha_operacion", "-id")[:7]
+
+        # Contexto final
+        ctx.update({
+            "hoy": hoy,
+            "titulo_periodo": titulo_periodo,
+            "filtro_activo": filtro, # Para pintar el botón activo
+            "saldo_mes": ingresos - gastos,
+            "total_ingresos_mes": ingresos,
+            "total_gastos_mes": gastos,
+            "cantidad_ordenes_pendientes": OrdenPago.objects.filter(estado="BORRADOR").count(),
+            "ultimos_movimientos": ultimos,
+        })
+        
+        if 'roles_ctx' in globals(): ctx.update(roles_ctx(self.request.user))
+        return ctx
+
+# Alias para compatibilidad
+DashboardView = HomeView
+
+
+# =========================================================
+# 3) BALANCE RESUMEN
+# =========================================================
+
+class BalanceResumenView(DashboardAccessMixin, TemplateView):
+    template_name = "finanzas/balance_resumen.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        
+        # 1. CONFIGURACIÓN DE FECHAS
+        hoy = timezone.now().date()
+        periodo = self.request.GET.get("periodo", "mes")
+        fecha_desde_str = self.request.GET.get("fecha_desde")
+        fecha_hasta_str = self.request.GET.get("fecha_hasta")
+
+        fecha_desde = hoy.replace(day=1)
+        fecha_hasta = hoy
+        titulo_periodo = "Mes Actual"
+
+        # Lógica de filtros del Balance
+        if periodo == "hoy":
+            fecha_desde = hoy
+            fecha_hasta = hoy
+            titulo_periodo = "Día de Hoy"
+        elif periodo == "ayer":
+            fecha_desde = hoy - timedelta(days=1)
+            fecha_hasta = hoy - timedelta(days=1)
+            titulo_periodo = "Ayer"
+        elif periodo == "semana":
+            fecha_desde = hoy - timedelta(days=hoy.weekday())
+            titulo_periodo = "Esta Semana"
+        elif periodo == "mes":
+            fecha_desde = hoy.replace(day=1)
+            titulo_periodo = "Mes Actual"
+        elif periodo == "anio":
+            fecha_desde = hoy.replace(month=1, day=1)
+            titulo_periodo = "Año en Curso"
+        elif periodo == "custom" and fecha_desde_str and fecha_hasta_str:
+            try:
+                fecha_desde = timezone.datetime.strptime(fecha_desde_str, "%Y-%m-%d").date()
+                fecha_hasta = timezone.datetime.strptime(fecha_hasta_str, "%Y-%m-%d").date()
+                titulo_periodo = f"Del {fecha_desde.strftime('%d/%m')} al {fecha_hasta.strftime('%d/%m')}"
+            except ValueError:
+                pass
+
+        # 2. QUERYSETS BASE
+        qs_historico = Movimiento.objects.filter(estado=Movimiento.ESTADO_APROBADO)
+        qs_periodo = qs_historico.filter(fecha_operacion__range=[fecha_desde, fecha_hasta])
+
+        # 3. KPI FINANCIEROS
+        ingresos_periodo = qs_periodo.filter(tipo__iexact="INGRESO").aggregate(s=Sum("monto"))["s"] or 0
+        gastos_periodo = qs_periodo.filter(tipo__iexact="GASTO").aggregate(s=Sum("monto"))["s"] or 0
+        saldo_periodo = ingresos_periodo - gastos_periodo
+
+        # 4. KPI HISTÓRICOS
+        hist_ingresos = qs_historico.filter(tipo__iexact="INGRESO").aggregate(s=Sum("monto"))["s"] or 0
+        hist_gastos = qs_historico.filter(tipo__iexact="GASTO").aggregate(s=Sum("monto"))["s"] or 0
+        saldo_caja = hist_ingresos - hist_gastos
+
+        # 5. DESGLOSES FINANCIEROS
+        top_categorias = (qs_periodo.filter(tipo__iexact="GASTO")
+                          .values("categoria__nombre")
+                          .annotate(total=Sum("monto"), cantidad=Count("id"))
+                          .order_by("-total")[:5])
+
+        top_areas = (qs_periodo.filter(tipo__iexact="GASTO")
+                     .values("area__nombre")
+                     .annotate(total=Sum("monto"))
+                     .order_by("-total")[:5])
+
+        # 6. TERMÓMETRO SOCIAL (LIMPIEZA)
+        filtro_exclusiones_laborales = (
+            Q(categoria__nombre__icontains="Sueldo") |
+            Q(categoria__nombre__icontains="Haber") |
+            Q(categoria__nombre__icontains="Personal") |
+            Q(categoria__nombre__icontains="Honorario") |
+            Q(categoria__nombre__icontains="Jornal") |     
+            Q(categoria__nombre__icontains="Changarin") |  
+            Q(categoria__nombre__icontains="Changarín") |  
+            Q(categoria__nombre__icontains="Prestacion") | 
+            Q(categoria__nombre__icontains="Servicio")     
         )
-        saldo_mes = total_ingresos_mes - total_gastos_mes
 
-        ayudas_mes = (
-            movimientos_mes.filter(
-                tipo=Movimiento.TIPO_GASTO,
-                categoria__es_ayuda_social=True,
-            )
-            .aggregate(total=Sum("monto"))["total"]
-            or 0
+        top_beneficiarios = (qs_periodo
+            .filter(tipo__iexact="GASTO", beneficiario__isnull=False)
+            .exclude(filtro_exclusiones_laborales) 
+            .values("beneficiario__nombre", "beneficiario__apellido", "beneficiario__dni", "beneficiario__direccion")
+            .annotate(total=Sum("monto"), cantidad=Count("id"))
+            .order_by("-total")[:5]
+        )
+        
+        top_barrios = (qs_periodo
+            .filter(tipo__iexact="GASTO", beneficiario__isnull=False)
+            .exclude(filtro_exclusiones_laborales)
+            .values("beneficiario__direccion") 
+            .annotate(total=Sum("monto"), ayudas=Count("id"))
+            .order_by("-total")[:5]
         )
 
-        personal_mes = (
-            movimientos_mes.filter(
-                tipo=Movimiento.TIPO_GASTO,
-                categoria__es_personal=True,
-            )
-            .aggregate(total=Sum("monto"))["total"]
-            or 0
-        )
+        # 7. EFICIENCIA OPERATIVA
+        qs_viajes = HojaRuta.objects.filter(fecha__range=[fecha_desde, fecha_hasta])
+        total_viajes = qs_viajes.count()
+        
+        kms_data = qs_viajes.aggregate(total_km=Sum(F('odometro_fin') - F('odometro_inicio')))
+        kms_recorridos = kms_data['total_km'] or 0
+        
+        gasto_combustible = qs_periodo.filter(
+            Q(categoria__nombre__icontains="Combustible") | 
+            Q(categoria__nombre__icontains="Nafta") |
+            Q(categoria__nombre__icontains="Gasoil")
+        ).aggregate(s=Sum("monto"))["s"] or 0
+        
+        costo_promedio_viaje = gasto_combustible / total_viajes if total_viajes > 0 else 0
 
-        servicios_mes = (
-            movimientos_mes.filter(
-                tipo=Movimiento.TIPO_INGRESO,
-                categoria__es_servicio=True,
-            )
-            .aggregate(total=Sum("monto"))["total"]
-            or 0
-        )
+        # 8. TRAZABILIDAD
+        movs_con_op = qs_periodo.filter(orden_pago__isnull=False).count()
+        movs_directos = qs_periodo.filter(orden_pago__isnull=True, tipo__iexact="GASTO").count()
 
-        # Combustible del mes (gasto en categorías marcadas como combustible)
-        combustible_mes = (
-            movimientos_mes.filter(
-                tipo=Movimiento.TIPO_GASTO,
-                categoria__es_combustible=True,
-            )
-            .aggregate(total=Sum("monto"))["total"]
-            or 0
-        )
-
-        # Métricas de flota (viajes / km) usando helper robusto
-        try:
-            viajes_mes, total_km_mes = _flota_metrics_mes(hoy, primer_dia_mes)
-        except Exception:
-            viajes_mes, total_km_mes = 0, 0
-
-        ultimos_movimientos = (
-            Movimiento.objects.filter(estado=Movimiento.ESTADO_APROBADO)
-            .select_related("categoria", "area")
-            .order_by("-fecha_operacion", "-id")[:5]
-        )
-
-        # Órdenes de pago pendientes (no pagadas ni anuladas)
-        ordenes_pendientes_qs = OrdenPago.objects.exclude(
-            estado__in=[OrdenPago.ESTADO_PAGADA, OrdenPago.ESTADO_ANULADA]
-        )
-        cantidad_ordenes_pendientes = ordenes_pendientes_qs.count()
-        monto_ordenes_pendientes = Decimal("0.00")
-        for op in ordenes_pendientes_qs:
-            monto_ordenes_pendientes += op.total_monto
-
-        # ===== Agenda: pendientes del usuario (badge en home/header) =====
-        user = self.request.user
-        tareas_pendientes_usuario = 0
-        TareaModel = _get_tarea_model()
-        if TareaModel is not None:
-            tareas_pendientes_usuario = TareaModel.objects.filter(
-                responsable=user,
-                estado__in=[
-                    TareaModel.ESTADO_PENDIENTE,
-                    TareaModel.ESTADO_EN_PROCESO,
-                ],
-            ).count()
-
-        ctx.update(
-            {
-                "hoy": hoy,
-                "primer_dia_mes": primer_dia_mes,
-                "total_ingresos_mes": total_ingresos_mes,
-                "total_gastos_mes": total_gastos_mes,
-                "saldo_mes": saldo_mes,
-                "ayudas_mes": ayudas_mes,
-                "personal_mes": personal_mes,
-                "servicios_mes": servicios_mes,
-                "combustible_mes": combustible_mes,
-                "viajes_mes": viajes_mes,
-                "total_km_mes": total_km_mes,
-                "ultimos_movimientos": ultimos_movimientos,
-                "cantidad_ordenes_pendientes": cantidad_ordenes_pendientes,
-                "total_ordenes_pendientes": monto_ordenes_pendientes,
-                "tareas_pendientes_usuario": tareas_pendientes_usuario,
-            }
-        )
-        ctx.update(_roles_ctx(user))
+        ctx.update({
+            "hoy": hoy,
+            "titulo_periodo": titulo_periodo,
+            "periodo_seleccionado": periodo,
+            "fecha_desde": fecha_desde,
+            "fecha_hasta": fecha_hasta,
+            "ingresos_periodo": ingresos_periodo,
+            "gastos_periodo": gastos_periodo,
+            "saldo_periodo": saldo_periodo,
+            "movimientos_count": qs_periodo.count(),
+            "saldo_caja": saldo_caja,
+            "top_categorias": top_categorias,
+            "top_areas": top_areas,
+            "top_beneficiarios": top_beneficiarios,
+            "top_barrios": top_barrios,
+            "total_viajes": total_viajes,
+            "kms_recorridos": kms_recorridos,
+            "gasto_combustible": gasto_combustible,
+            "costo_promedio_viaje": costo_promedio_viaje,
+            "movs_con_op": movs_con_op,
+            "movs_directos": movs_directos,
+        })
+        
+        if 'roles_ctx' in globals(): ctx.update(roles_ctx(self.request.user))
         return ctx
 
 
-# ======= MOVIMIENTOS =======
+# =========================================================
+# 3) PROVEEDORES
+# =========================================================
 
+class ProveedorListView(StaffRequiredMixin, ListView):
+    model = Proveedor
+    template_name = "finanzas/proveedor_list.html"
+    context_object_name = "proveedores"
+    paginate_by = 20
+
+    def get_queryset(self):
+        qs = Proveedor.objects.all().order_by("nombre")
+        q = (self.request.GET.get("q") or "").strip()
+        if q:
+            qs = qs.filter(Q(nombre__icontains=q) | Q(cuit__icontains=q) | Q(rubro__icontains=q))
+        return qs
+
+class ProveedorCreateView(StaffRequiredMixin, CreateView):
+    model = Proveedor
+    fields = ["nombre", "cuit", "telefono", "email", "direccion", "rubro", "cbu", "alias"] 
+    template_name = "finanzas/proveedor_form.html"
+    success_url = reverse_lazy("finanzas:proveedor_list")
+
+    def form_valid(self, form):
+        messages.success(self.request, "Proveedor registrado exitosamente.")
+        return super().form_valid(form)
+
+class ProveedorUpdateView(StaffRequiredMixin, UpdateView):
+    model = Proveedor
+    fields = ["nombre", "cuit", "telefono", "email", "direccion", "rubro", "cbu", "alias"]
+    template_name = "finanzas/proveedor_form.html"
+    success_url = reverse_lazy("finanzas:proveedor_list")
+    
+    def form_valid(self, form):
+        messages.success(self.request, "Datos actualizados.")
+        return super().form_valid(form)
+
+class ProveedorDetailView(StaffRequiredMixin, DetailView):
+    model = Proveedor
+    template_name = "finanzas/proveedor_detail.html"
+    context_object_name = "proveedor"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        pagos = Movimiento.objects.filter(proveedor=self.object, tipo=Movimiento.TIPO_GASTO, estado=Movimiento.ESTADO_APROBADO).order_by("-fecha_operacion")
+        total_pagado = pagos.aggregate(Sum("monto"))["monto__sum"] or 0
+        ocs = OrdenCompra.objects.filter(proveedor=self.object).order_by("-fecha_oc")
+        
+        ctx["ultimos_pagos"] = pagos[:10]
+        ctx["ultimas_ocs"] = ocs[:10]
+        ctx["total_pagado_historico"] = total_pagado
+        return ctx
+
+
+# =========================================================
+# 4) MOVIMIENTOS
+# =========================================================
 
 class MovimientoListView(MovimientosAccessMixin, ListView):
     model = Movimiento
     template_name = "finanzas/movimiento_list.html"
     context_object_name = "movimientos"
     paginate_by = 25
+    
+    # CLAVE: Ordenar por fecha descendente y ID descendente (Lo último cargado aparece primero)
+    ordering = ["-fecha_operacion", "-id"]
 
     def get_queryset(self):
-        qs = (
-            super()
-            .get_queryset()
-            .select_related("categoria", "area", "proveedor", "beneficiario")
+        # 1. Optimización: Traemos todas las relaciones necesarias para la tabla
+        qs = super().get_queryset().select_related(
+            "categoria", "area", "proveedor", "beneficiario", "vehiculo", "orden_pago",
+            "cuenta_origen", "cuenta_destino"
         )
-        user = self.request.user
-
-        tipo = (self.request.GET.get("tipo") or "").strip()
-        fecha_desde = _parse_date_or_none(self.request.GET.get("desde"))
-        fecha_hasta = _parse_date_or_none(self.request.GET.get("hasta"))
+        
+        # 2. Obtener Parámetros de Filtro
         q = (self.request.GET.get("q") or "").strip()
+        tipo = self.request.GET.get("tipo")
+        estado = self.request.GET.get("estado")
+        categoria_id = self.request.GET.get("categoria")
+        fecha_desde = self.request.GET.get("fecha_desde")
+        fecha_hasta = self.request.GET.get("fecha_hasta")
+        
+        # 3. Aplicar Filtros Lógicos
+        
+        # Estado (Por defecto solo APROBADO, salvo que se pida otro explícitamente)
+        if estado == "BORRADOR":
+            qs = qs.filter(estado=Movimiento.ESTADO_BORRADOR)
+        elif estado == "TODOS":
+            pass # No filtramos estado
+        else:
+            qs = qs.filter(estado=Movimiento.ESTADO_APROBADO) # Default: Caja Real
 
-        estado = (self.request.GET.get("estado") or Movimiento.ESTADO_APROBADO).strip()
+        # Tipo (Ingreso / Gasto)
+        if tipo:
+            qs = qs.filter(tipo__iexact=tipo)
 
-        if es_consulta_politica(user):
-            estado = Movimiento.ESTADO_APROBADO
+        # Categoría
+        if categoria_id:
+            qs = qs.filter(categoria_id=categoria_id)
 
-        if tipo in [
-            Movimiento.TIPO_INGRESO,
-            Movimiento.TIPO_GASTO,
-            Movimiento.TIPO_TRANSFERENCIA,
-        ]:
-            qs = qs.filter(tipo=tipo)
-
-        if fecha_desde:
+        # Rango de Fechas
+        if fecha_desde and fecha_hasta:
+            qs = qs.filter(fecha_operacion__range=[fecha_desde, fecha_hasta])
+        elif fecha_desde:
             qs = qs.filter(fecha_operacion__gte=fecha_desde)
-        if fecha_hasta:
+        elif fecha_hasta:
             qs = qs.filter(fecha_operacion__lte=fecha_hasta)
-
+        
+        # Búsqueda Global (Texto)
         if q:
             qs = qs.filter(
-                Q(descripcion__icontains=q)
-                | Q(categoria__nombre__icontains=q)
-                | Q(beneficiario__nombre__icontains=q)
-                | Q(beneficiario__apellido__icontains=q)
-                | Q(proveedor__nombre__icontains=q)
-                | Q(programa_ayuda_texto__icontains=q)
+                Q(descripcion__icontains=q) | 
+                Q(monto__icontains=q) |
+                Q(categoria__nombre__icontains=q) | 
+                Q(beneficiario__nombre__icontains=q) | 
+                Q(beneficiario__apellido__icontains=q) |
+                Q(proveedor__nombre__icontains=q) |
+                Q(vehiculo__patente__icontains=q)
             )
-
-        if estado != "TODOS" and estado in [
-            Movimiento.ESTADO_BORRADOR,
-            Movimiento.ESTADO_APROBADO,
-            Movimiento.ESTADO_RECHAZADO,
-        ]:
-            qs = qs.filter(estado=estado)
-
+            
         return qs.order_by("-fecha_operacion", "-id")
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        user = self.request.user
+        
+        # Datos para poblar los selects del filtro
+        ctx["categorias"] = Categoria.objects.all().order_by("nombre")
+        ctx["q"] = self.request.GET.get("q", "")
+        ctx["estado_actual"] = self.request.GET.get("estado", "APROBADO")
+        
+        # Detectar si hay filtros activos (para UX: mostrar botón limpiar)
+        filtros = [
+            self.request.GET.get("q"), self.request.GET.get("tipo"),
+            self.request.GET.get("categoria"), self.request.GET.get("fecha_desde"),
+            self.request.GET.get("fecha_hasta"), self.request.GET.get("estado")
+        ]
+        ctx["hay_filtros"] = any(f for f in filtros if f and f != "APROBADO")
 
-        estado = (self.request.GET.get("estado") or Movimiento.ESTADO_APROBADO).strip()
-        if es_consulta_politica(user):
-            estado = Movimiento.ESTADO_APROBADO
-
-        q = (self.request.GET.get("q") or "").strip()
-
-        hay_filtros = bool(
-            self.request.GET.get("tipo")
-            or self.request.GET.get("desde")
-            or self.request.GET.get("hasta")
-            or q
-            or estado
-            in [Movimiento.ESTADO_BORRADOR, Movimiento.ESTADO_RECHAZADO, "TODOS"]
+        # CINTA DE RESUMEN (Calculada sobre el total filtrado, no solo la página)
+        resumen = self.object_list.aggregate(
+            ing=Sum("monto", filter=Q(tipo=Movimiento.TIPO_INGRESO)), 
+            gas=Sum("monto", filter=Q(tipo=Movimiento.TIPO_GASTO))
         )
-
-        totales = self.object_list.aggregate(
-            total_ingresos=Sum("monto", filter=Q(tipo=Movimiento.TIPO_INGRESO)),
-            total_gastos=Sum("monto", filter=Q(tipo=Movimiento.TIPO_GASTO)),
-        )
-        total_ingresos = totales["total_ingresos"] or 0
-        total_gastos = totales["total_gastos"] or 0
-
-        ctx.update(
-            {
-                "hoy": timezone.now().date(),
-                "tipos": Movimiento.TIPO_CHOICES,
-                "estado_actual": estado,
-                "q": q,
-                "hay_filtros": hay_filtros,
-                "total_ingresos_filtro": total_ingresos,
-                "total_gastos_filtro": total_gastos,
-                "saldo_filtro": total_ingresos - total_gastos,
-            }
-        )
-        ctx.update(_roles_ctx(user))
+        
+        ing = resumen["ing"] or 0
+        gas = resumen["gas"] or 0
+        
+        ctx.update({
+            "total_ingresos_filtro": ing,
+            "total_gastos_filtro": gas,
+            "saldo_filtro": ing - gas
+        })
         return ctx
-
 
 class MovimientoCreateView(OperadorFinanzasRequiredMixin, CreateView):
     model = Movimiento
     form_class = MovimientoForm
     template_name = "finanzas/movimiento_form.html"
-    success_url = reverse_lazy("finanzas:movimiento_list")
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        data = {str(c.id): c.tipo for c in Categoria.objects.all()}
-        ctx["categoria_tipos_json"] = json.dumps(data, cls=DjangoJSONEncoder)
-        ctx.update(_roles_ctx(self.request.user))
-        return ctx
-
-    def get_success_url(self):
-        # Evitamos depender de self.object para no disparar el bug de NoneType.__dict__
-        return str(self.success_url)
 
     @transaction.atomic
     def form_valid(self, form):
-        movimiento = form.save(commit=False)
-        user = self.request.user
-
-        if user.is_authenticated:
-            if hasattr(movimiento, "creado_por") and not movimiento.creado_por:
-                movimiento.creado_por = user
-            if hasattr(movimiento, "actualizado_por"):
-                movimiento.actualizado_por = user
-
-        accion = (self.request.POST.get("accion") or "borrador").strip()
-
-        if es_staff_finanzas(user) and accion == "aprobar":
-            movimiento.estado = Movimiento.ESTADO_APROBADO
-            mensaje = "Movimiento guardado y aprobado correctamente."
+        mov = form.save(commit=False)
+        mov.creado_por = self.request.user
+        accion = (self.request.POST.get("accion") or "").strip().lower()
+        
+        # Lógica de aprobación automática para Staff
+        if accion == "aprobar" and es_staff_finanzas(self.request.user):
+            mov.estado = Movimiento.ESTADO_APROBADO
+            msg = "Movimiento aprobado e impactado en caja."
         else:
-            movimiento.estado = Movimiento.ESTADO_BORRADOR
-            if es_staff_finanzas(user):
-                mensaje = "Movimiento guardado como borrador."
-            else:
-                mensaje = (
-                    "Movimiento guardado como borrador. Un responsable de finanzas "
-                    "debe aprobarlo para que impacte en balances."
-                )
-
-        _resolver_proveedor_y_beneficiario(form, movimiento)
-
-        movimiento.save()
-        # Dejamos self.object seteado por prolijidad
-        self.object = movimiento
-
-        messages.success(self.request, mensaje)
-        return redirect(self.get_success_url())
-
+            mov.estado = Movimiento.ESTADO_BORRADOR
+            msg = "Guardado como borrador (Pendiente de revisión)."
+        
+        # Helper para vincular la entidad correcta (Definido en tu archivo utils o al final)
+        if hasattr(self, '_resolver_proveedor_y_beneficiario'):
+             self._resolver_proveedor_y_beneficiario(form, mov)
+        elif '_resolver_proveedor_y_beneficiario' in globals():
+             _resolver_proveedor_y_beneficiario(form, mov)
+        
+        # Defaults de seguridad
+        if not mov.tipo_pago_persona: 
+            mov.tipo_pago_persona = "NINGUNO"
+        
+        mov.save() # Aquí se dispara la lógica del modelo que actualiza saldos
+        
+        # Redirección
+        if '_redirect_movimiento_post_save' in globals():
+            return _redirect_movimiento_post_save(self.request, mov, msg)
+        return redirect('finanzas:movimiento_list')
 
 class MovimientoUpdateView(OperadorFinanzasRequiredMixin, UpdateView):
     model = Movimiento
     form_class = MovimientoForm
     template_name = "finanzas/movimiento_form.html"
-    context_object_name = "movimiento"
-    success_url = reverse_lazy("finanzas:movimiento_list")
 
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        data = {str(c.id): c.tipo for c in Categoria.objects.all()}
-        ctx["categoria_tipos_json"] = json.dumps(data, cls=DjangoJSONEncoder)
-        ctx.update(_roles_ctx(self.request.user))
-        return ctx
-
-    def get_success_url(self):
-        # URL fija, no depende de self.object
-        return str(self.success_url)
+    def dispatch(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        # Seguridad: Bloquear edición de movimientos cerrados para no-staff
+        if self.object.estado == Movimiento.ESTADO_APROBADO and not es_staff_finanzas(request.user):
+            messages.error(request, "Este movimiento ya está cerrado. Solo un administrador puede editarlo.")
+            return redirect("finanzas:movimiento_detail", pk=self.object.pk)
+        return super().dispatch(request, *args, **kwargs)
 
     @transaction.atomic
     def form_valid(self, form):
-        original = self.get_object()
-        movimiento = form.save(commit=False)
-        user = self.request.user
-        es_staff = es_staff_finanzas(user)
-
-        if original.estado != Movimiento.ESTADO_BORRADOR and not es_staff:
-            messages.error(
-                self.request,
-                "Solo el staff financiero puede editar movimientos aprobados o rechazados.",
-            )
-            return redirect(self.get_success_url())
-
-        if hasattr(movimiento, "creado_por"):
-            movimiento.creado_por = getattr(original, "creado_por", None)
-        if user.is_authenticated and hasattr(movimiento, "actualizado_por"):
-            movimiento.actualizado_por = user
-
-        accion = (self.request.POST.get("accion") or "").strip()
-
-        if original.estado == Movimiento.ESTADO_BORRADOR:
-            if es_staff and accion == "aprobar":
-                movimiento.estado = Movimiento.ESTADO_APROBADO
-                mensaje = "Movimiento guardado y aprobado correctamente."
-            else:
-                movimiento.estado = Movimiento.ESTADO_BORRADOR
-                if es_staff:
-                    mensaje = "Movimiento guardado como borrador."
-                else:
-                    mensaje = (
-                        "Movimiento guardado como borrador. Solo el staff financiero "
-                        "puede aprobarlo para que impacte en balances."
-                    )
-
-            _resolver_proveedor_y_beneficiario(form, movimiento)
-
+        mov = form.save(commit=False)
+        mov.actualizado_por = self.request.user
+        accion = (self.request.POST.get("accion") or "").strip().lower()
+        
+        if accion == "aprobar" and es_staff_finanzas(self.request.user):
+            mov.estado = Movimiento.ESTADO_APROBADO
+            msg = "Movimiento aprobado exitosamente."
+        elif accion == "borrador":
+            mov.estado = Movimiento.ESTADO_BORRADOR
+            msg = "Guardado como borrador."
         else:
-            movimiento.estado = original.estado
+            msg = "Movimiento actualizado."
+            
+        if '_resolver_proveedor_y_beneficiario' in globals():
+             _resolver_proveedor_y_beneficiario(form, mov)
 
-            campos_bloqueados = [
-                "tipo",
-                "fecha_operacion",
-                "monto",
-                "cuenta_origen_texto",
-                "cuenta_destino_texto",
-            ]
-            for nombre in campos_bloqueados:
-                setattr(movimiento, nombre, getattr(original, nombre))
-
-            for nombre_fk in ["cuenta_origen", "cuenta_destino"]:
-                if hasattr(original, nombre_fk):
-                    setattr(movimiento, nombre_fk, getattr(original, nombre_fk))
-
-            _resolver_proveedor_y_beneficiario(form, movimiento)
-
-            mensaje = (
-                "Cambios guardados. Se actualizaron la clasificación contable, "
-                "el área y otros datos descriptivos del movimiento."
-            )
-
-        movimiento.save()
-        self.object = movimiento
-
-        messages.success(self.request, mensaje)
-        return redirect(self.get_success_url())
-
-
-# ========= DETALLE DE MOVIMIENTO =========
-
+        mov.save()
+        
+        if '_redirect_movimiento_post_save' in globals():
+            return _redirect_movimiento_post_save(self.request, mov, msg)
+        return redirect('finanzas:movimiento_list')
 
 class MovimientoDetailView(MovimientosAccessMixin, DetailView):
     model = Movimiento
     template_name = "finanzas/movimiento_detail.html"
     context_object_name = "movimiento"
 
-    def get_queryset(self):
-        return (
-            Movimiento.objects.select_related(
-                "categoria",
-                "area",
-                "cuenta_origen",
-                "cuenta_destino",
-                "proveedor",
-                "beneficiario",
-                "vehiculo",
-                "programa_ayuda",
-                "creado_por",
-                "actualizado_por",
-            )
-            .prefetch_related("adjuntos")
-        )
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        m = self.object
-        user = self.request.user
-        ctx.update(
-            {
-                "es_ingreso": m.tipo == Movimiento.TIPO_INGRESO,
-                "es_gasto": m.tipo == Movimiento.TIPO_GASTO,
-                "es_transferencia": m.tipo == Movimiento.TIPO_TRANSFERENCIA,
-                # Flags robustos: si no existen en el modelo, no rompen
-                "es_pago_servicio": getattr(m, "es_pago_servicio", False),
-                "es_ayuda_social": getattr(m, "es_ayuda_social", False),
-                "es_gasto_personal": getattr(m, "es_gasto_personal", False),
-                "es_combustible": getattr(m, "es_combustible", False),
-            }
-        )
-        ctx.update(_roles_ctx(user))
-        return ctx
-
-
 class MovimientoCambiarEstadoView(StaffRequiredMixin, View):
-    @transaction.atomic
     def post(self, request, pk, accion):
-        movimiento = get_object_or_404(Movimiento, pk=pk)
-
-        estado_anterior = movimiento.estado
-
-        if accion == "aprobar":
-            nuevo_estado = Movimiento.ESTADO_APROBADO
-            mensaje_ok = (
-                "Movimiento aprobado correctamente. Desde este momento impacta "
-                "en balances y resúmenes."
-            )
-        elif accion == "rechazar":
-            nuevo_estado = Movimiento.ESTADO_RECHAZADO
-            mensaje_ok = (
-                "Movimiento marcado como RECHAZADO. No impacta en balances ni resúmenes."
-            )
-        elif accion == "borrador":
-            nuevo_estado = Movimiento.ESTADO_BORRADOR
-            mensaje_ok = (
-                "Movimiento devuelto a BORRADOR. Podés revisarlo antes de aprobarlo."
-            )
-        else:
-            messages.error(request, "Acción de estado no reconocida.")
-            return redirect("finanzas:movimiento_detail", pk=movimiento.pk)
-
-        if estado_anterior == nuevo_estado:
-            messages.info(request, "El movimiento ya estaba en ese estado.")
-            return redirect("finanzas:movimiento_detail", pk=movimiento.pk)
-
-        movimiento.estado = nuevo_estado
-        if request.user.is_authenticated and hasattr(movimiento, "actualizado_por"):
-            movimiento.actualizado_por = request.user
-        movimiento.save()
-
-        messages.success(request, mensaje_ok)
-        return redirect("finanzas:movimiento_detail", pk=movimiento.pk)
-
-
-# ========= ORDEN DE PAGO / FACTURA (LEGACY) =========
-
+        mov = get_object_or_404(Movimiento, pk=pk)
+        
+        if accion == "aprobar": 
+            mov.estado = Movimiento.ESTADO_APROBADO
+        elif accion == "rechazar": 
+            mov.estado = Movimiento.ESTADO_RECHAZADO
+        elif accion == "borrador": 
+            mov.estado = Movimiento.ESTADO_BORRADOR
+            
+        mov.save()
+        messages.success(request, f"Estado actualizado a: {mov.get_estado_display()}")
+        return redirect("finanzas:movimiento_detail", pk=pk)
 
 class MovimientoOrdenPagoView(StaffRequiredMixin, DetailView):
     model = Movimiento
     template_name = "finanzas/orden_pago.html"
     context_object_name = "movimiento"
-
-    def get(self, request, *args, **kwargs):
-        self.object = self.get_object()
-        movimiento = self.object
-
-        if movimiento.estado != Movimiento.ESTADO_APROBADO:
-            messages.error(
-                request,
-                "Solo se puede emitir orden de pago para movimientos en estado APROBADO.",
-            )
-            return redirect("finanzas:movimiento_detail", pk=movimiento.pk)
-
-        return super().get(request, *args, **kwargs)
-
-    @transaction.atomic
+    
     def post(self, request, *args, **kwargs):
-        self.object = self.get_object()
-        movimiento = self.object
-
-        if movimiento.estado != Movimiento.ESTADO_APROBADO:
-            messages.error(
-                request,
-                "Solo se pueden cargar datos de orden de pago para movimientos APROBADOS.",
-            )
-            return redirect("finanzas:movimiento_detail", pk=movimiento.pk)
-
-        condicion = (request.POST.get("condicion_pago") or "").strip()
-        medio = (request.POST.get("medio_pago") or "").strip()
-        orden_fecha_raw = (request.POST.get("orden_pago_fecha") or "").strip()
-        orden_obs = (request.POST.get("orden_pago_observaciones") or "").strip()
-
-        factura_tipo = (request.POST.get("factura_tipo") or "").strip()
-        factura_numero = (request.POST.get("factura_numero") or "").strip()
-        factura_fecha_raw = (request.POST.get("factura_fecha") or "").strip()
-
-        # Campos legacy: solo los tocamos si existen en el modelo
-        if hasattr(movimiento, "condicion_pago"):
-            movimiento.condicion_pago = condicion
-        if hasattr(movimiento, "medio_pago"):
-            movimiento.medio_pago = medio
-        if hasattr(movimiento, "orden_pago_observaciones"):
-            movimiento.orden_pago_observaciones = orden_obs
-        if hasattr(movimiento, "factura_tipo"):
-            movimiento.factura_tipo = factura_tipo
-        if hasattr(movimiento, "factura_numero"):
-            movimiento.factura_numero = factura_numero
-
-        orden_fecha = _parse_date_or_none(orden_fecha_raw)
-        if orden_fecha_raw and not orden_fecha:
-            messages.warning(
-                request,
-                "La fecha de la orden de pago no tiene un formato válido (aaaa-mm-dd).",
-            )
-        if hasattr(movimiento, "orden_pago_fecha"):
-            movimiento.orden_pago_fecha = orden_fecha
-
-        factura_fecha = _parse_date_or_none(factura_fecha_raw)
-        if factura_fecha_raw and not factura_fecha:
-            messages.warning(
-                request,
-                "La fecha de la factura no tiene un formato válido (aaaa-mm-dd).",
-            )
-        if hasattr(movimiento, "factura_fecha"):
-            movimiento.factura_fecha = factura_fecha
-
-        if request.user.is_authenticated and hasattr(movimiento, "actualizado_por"):
-            movimiento.actualizado_por = request.user
-
-        movimiento.save()
-        messages.success(
-            request,
-            "Datos de orden de pago y factura actualizados correctamente.",
-        )
-        return redirect("finanzas:movimiento_orden_pago", pk=movimiento.pk)
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        m = self.object
-        user = self.request.user
-
-        cargado_por = (
-            m.creado_por.get_full_name() if getattr(m, "creado_por", None) else ""
-        )
-        autorizado_por = (
-            m.actualizado_por.get_full_name()
-            if getattr(m, "actualizado_por", None)
-            else ""
-        )
-
-        ctx.update(
-            {
-                "cargado_por": cargado_por
-                or (m.creado_por.username if getattr(m, "creado_por", None) else ""),
-                "autorizado_por": autorizado_por
-                or (
-                    m.actualizado_por.username
-                    if getattr(m, "actualizado_por", None)
-                    else ""
-                ),
-                "CONDICION_PAGO_CHOICES": getattr(
-                    Movimiento, "CONDICION_PAGO_CHOICES", []
-                ),
-                "MEDIO_PAGO_CHOICES": getattr(Movimiento, "MEDIO_PAGO_CHOICES", []),
-                "FACTURA_TIPO_CHOICES": getattr(
-                    Movimiento, "FACTURA_TIPO_CHOICES", []
-                ),
-            }
-        )
-        ctx.update(_roles_ctx(user))
-        return ctx
+        mov = self.get_object()
+        mov.factura_numero = request.POST.get("factura_numero")
+        mov.save()
+        messages.success(request, "Datos de comprobante actualizados.")
+        return redirect("finanzas:movimiento_orden_pago", pk=mov.pk)
 
 
-# ======= ÓRDENES DE PAGO =======
-
+# =========================================================
+# 5) ORDENES DE PAGO
+# =========================================================
 
 class OrdenPagoListView(OrdenPagoAccessMixin, ListView):
     model = OrdenPago
@@ -1078,118 +690,38 @@ class OrdenPagoListView(OrdenPagoAccessMixin, ListView):
     paginate_by = 25
 
     def get_queryset(self):
-        qs = OrdenPago.objects.select_related("proveedor", "area")
-        estado = (self.request.GET.get("estado") or "PENDIENTES").strip()
-        fecha_desde = _parse_date_or_none(self.request.GET.get("desde"))
-        fecha_hasta = _parse_date_or_none(self.request.GET.get("hasta"))
+        # Optimización: Traemos proveedor y área para evitar N+1 queries
+        qs = super().get_queryset().select_related("proveedor", "area")
+        
+        # Filtros
+        estado = self.request.GET.get("estado")
         q = (self.request.GET.get("q") or "").strip()
 
-        if estado == "PENDIENTES":
-            qs = qs.exclude(
-                estado__in=[OrdenPago.ESTADO_PAGADA, OrdenPago.ESTADO_ANULADA]
-            )
-        elif estado == "TODAS":
-            pass
-        elif estado in [
-            OrdenPago.ESTADO_BORRADOR,
-            OrdenPago.ESTADO_AUTORIZADA,
-            OrdenPago.ESTADO_FACTURADA,
-            OrdenPago.ESTADO_PAGADA,
-            OrdenPago.ESTADO_ANULADA,
-        ]:
+        # Por defecto ocultamos las pagadas/anuladas para limpiar la vista, salvo que se pida explícitamente
+        if estado == "TODAS":
+            pass # No filtramos nada
+        elif estado:
             qs = qs.filter(estado=estado)
+        else:
+            qs = qs.exclude(estado__in=[OrdenPago.ESTADO_PAGADA, OrdenPago.ESTADO_ANULADA])
 
-        if fecha_desde:
-            qs = qs.filter(fecha_orden__gte=fecha_desde)
-        if fecha_hasta:
-            qs = qs.filter(fecha_orden__lte=fecha_hasta)
-
+        # Buscador inteligente
         if q:
             qs = qs.filter(
-                Q(numero__icontains=q)
-                | Q(proveedor_nombre__icontains=q)
-                | Q(proveedor_cuit__icontains=q)
-                | Q(observaciones__icontains=q)
+                Q(numero__icontains=q) |
+                Q(proveedor_nombre__icontains=q) |
+                Q(proveedor__nombre__icontains=q) |
+                Q(proveedor_cuit__icontains=q) |
+                Q(observaciones__icontains=q) |
+                Q(factura_numero__icontains=q)
             )
-
+            
         return qs.order_by("-fecha_orden", "-id")
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        user = self.request.user
-        estado = (self.request.GET.get("estado") or "PENDIENTES").strip()
-        q = (self.request.GET.get("q") or "").strip()
-        hoy = timezone.now().date()
-        primer_dia_mes = hoy.replace(day=1)
-
-        hay_filtros = bool(
-            self.request.GET.get("desde")
-            or self.request.GET.get("hasta")
-            or q
-            or estado not in ["PENDIENTES"]
-        )
-
-        # Monto total del listado actual
-        total_monto_listado = Decimal("0.00")
-        for op in self.object_list:
-            total_monto_listado += op.total_monto
-
-        # Resumen global: borradores, autorizadas y pagadas este mes
-        borradores_qs = OrdenPago.objects.filter(estado=OrdenPago.ESTADO_BORRADOR)
-        autorizadas_qs = OrdenPago.objects.filter(estado=OrdenPago.ESTADO_AUTORIZADA)
-        pagadas_mes_qs = OrdenPago.objects.filter(
-            estado=OrdenPago.ESTADO_PAGADA,
-            fecha_orden__gte=primer_dia_mes,
-            fecha_orden__lte=hoy,
-        )
-
-        resumen_borradores_cantidad = borradores_qs.count()
-        resumen_autorizadas_cantidad = autorizadas_qs.count()
-        resumen_pagadas_mes_cantidad = pagadas_mes_qs.count()
-
-        resumen_borradores_monto = (
-            borradores_qs.aggregate(total=Sum("lineas__monto"))["total"]
-            or Decimal("0.00")
-        )
-        resumen_autorizadas_monto = (
-            autorizadas_qs.aggregate(total=Sum("lineas__monto"))["total"]
-            or Decimal("0.00")
-        )
-        resumen_pagadas_mes_monto = (
-            pagadas_mes_qs.aggregate(total=Sum("lineas__monto"))["total"]
-            or Decimal("0.00")
-        )
-
-        ctx.update(
-            {
-                "hoy": hoy,
-                "estado_actual": estado,
-                "q": q,
-                "hay_filtros": hay_filtros,
-                "total_monto_listado": total_monto_listado,
-                "ESTADO_CHOICES": OrdenPago.ESTADO_CHOICES,
-                "resumen_borradores_cantidad": resumen_borradores_cantidad,
-                "resumen_borradores_monto": resumen_borradores_monto,
-                "resumen_autorizadas_cantidad": resumen_autorizadas_cantidad,
-                "resumen_autorizadas_monto": resumen_autorizadas_monto,
-                "resumen_pagadas_mes_cantidad": resumen_pagadas_mes_cantidad,
-                "resumen_pagadas_mes_monto": resumen_pagadas_mes_monto,
-            }
-        )
-        ctx.update(_roles_ctx(user))
-        return ctx
-
 
 class OrdenPagoCreateView(OrdenPagoEditMixin, CreateView):
     model = OrdenPago
     form_class = OrdenPagoForm
     template_name = "finanzas/orden_pago_form.html"
-
-    def get_initial(self):
-        initial = super().get_initial()
-        if "fecha_orden" not in initial:
-            initial["fecha_orden"] = timezone.now().date()
-        return initial
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -1197,44 +729,53 @@ class OrdenPagoCreateView(OrdenPagoEditMixin, CreateView):
             ctx["lineas_formset"] = OrdenPagoLineaFormSet(self.request.POST)
         else:
             ctx["lineas_formset"] = OrdenPagoLineaFormSet()
-        ctx.update(_roles_ctx(self.request.user))
         return ctx
 
     @transaction.atomic
     def form_valid(self, form):
-        context = self.get_context_data()
-        formset = context["lineas_formset"]
+        ctx = self.get_context_data()
+        formset = ctx["lineas_formset"]
+        
+        if form.is_valid() and formset.is_valid():
+            op = form.save(commit=False)
+            op.creado_por = self.request.user
+            
+            # Snapshot de datos del proveedor (Congelamos datos fiscales al momento de la orden)
+            if op.proveedor: 
+                op.proveedor_nombre = op.proveedor.nombre
+                op.proveedor_cuit = op.proveedor.cuit or ""
+            
+            # Determinamos estado inicial
+            accion = self.request.POST.get("accion")
+            if accion == "autorizar" and es_staff_finanzas(self.request.user):
+                op.estado = OrdenPago.ESTADO_AUTORIZADA
+            else:
+                op.estado = OrdenPago.ESTADO_BORRADOR
+                
+            op.save()
+            
+            # Guardamos las líneas manuales
+            formset.instance = op
+            formset.save()
+            
+            # === LOGICA PRO: AUTO-GENERACIÓN DE LÍNEA ===
+            # Si el usuario puso el monto total pero no cargó el detalle en la tabla,
+            # generamos una línea automática para que el total contable coincida.
+            if op.lineas.count() == 0 and op.factura_monto and op.factura_monto > 0:
+                OrdenPagoLinea.objects.create(
+                    orden=op,
+                    area=op.area,
+                    # Intentamos buscar una categoría genérica o dejamos null
+                    categoria=Categoria.objects.filter(nombre__icontains="General").first(),
+                    descripcion=f"Pago Factura {op.factura_numero or 'S/N'} (Generado Automáticamente)",
+                    monto=op.factura_monto
+                )
+            # ============================================
 
-        if not formset.is_valid():
-            return self.form_invalid(form)
-
-        orden = form.save(commit=False)
-        user = self.request.user
-
-        if user.is_authenticated:
-            if hasattr(orden, "creado_por") and not orden.creado_por:
-                orden.creado_por = user
-            if hasattr(orden, "actualizado_por"):
-                orden.actualizado_por = user
-
-        accion = (self.request.POST.get("accion") or "borrador").strip()
-        if es_staff_finanzas(user) and accion == "autorizar":
-            orden.estado = OrdenPago.ESTADO_AUTORIZADA
-            mensaje = "Orden de pago creada y autorizada correctamente."
-        else:
-            orden.estado = OrdenPago.ESTADO_BORRADOR
-            mensaje = "Orden de pago creada como borrador."
-
-        if not orden.fecha_orden:
-            orden.fecha_orden = timezone.now().date()
-
-        orden.save()
-        formset.instance = orden
-        formset.save()
-
-        messages.success(self.request, mensaje)
-        return redirect("finanzas:orden_pago_detail", pk=orden.pk)
-
+            messages.success(self.request, f"Orden de Pago #{op.id} registrada correctamente.")
+            return redirect("finanzas:orden_pago_detail", pk=op.pk)
+            
+        return self.render_to_response(self.get_context_data(form=form))
 
 class OrdenPagoUpdateView(OrdenPagoEditMixin, UpdateView):
     model = OrdenPago
@@ -1242,53 +783,53 @@ class OrdenPagoUpdateView(OrdenPagoEditMixin, UpdateView):
     template_name = "finanzas/orden_pago_form.html"
     context_object_name = "orden"
 
+    def dispatch(self, request, *args, **kwargs):
+        obj = self.get_object()
+        # Protección: No editar si ya está pagada o anulada (salvo superuser)
+        if obj.estado in [OrdenPago.ESTADO_PAGADA, OrdenPago.ESTADO_ANULADA] and not request.user.is_superuser:
+            messages.warning(request, "No se puede editar una OP Pagada o Anulada.")
+            return redirect("finanzas:orden_pago_detail", pk=obj.pk)
+        return super().dispatch(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         if self.request.POST:
-            ctx["lineas_formset"] = OrdenPagoLineaFormSet(
-                self.request.POST, instance=self.object
-            )
+            ctx["lineas_formset"] = OrdenPagoLineaFormSet(self.request.POST, instance=self.object)
         else:
             ctx["lineas_formset"] = OrdenPagoLineaFormSet(instance=self.object)
-
-        ctx.update(_roles_ctx(self.request.user))
         return ctx
 
     @transaction.atomic
     def form_valid(self, form):
-        context = self.get_context_data()
-        formset = context["lineas_formset"]
+        ctx = self.get_context_data()
+        formset = ctx["lineas_formset"]
+        
+        if form.is_valid() and formset.is_valid():
+            op = form.save(commit=False)
+            
+            # Actualizamos snapshot si cambió el proveedor
+            if op.proveedor:
+                op.proveedor_nombre = op.proveedor.nombre
+                op.proveedor_cuit = op.proveedor.cuit or ""
+            
+            op.save()
+            formset.save()
+            
+            # === LOGICA PRO: AUTO-GENERACIÓN EN EDICIÓN ===
+            # Misma lógica: si borraron todas las líneas pero dejaron el monto
+            if op.lineas.count() == 0 and op.factura_monto and op.factura_monto > 0:
+                OrdenPagoLinea.objects.create(
+                    orden=op,
+                    area=op.area,
+                    categoria=Categoria.objects.filter(nombre__icontains="General").first(),
+                    descripcion=f"Pago Factura {op.factura_numero or 'S/N'} (Automático)",
+                    monto=op.factura_monto
+                )
 
-        if not formset.is_valid():
-            return self.form_invalid(form)
-
-        orden_original = self.get_object()
-        orden = form.save(commit=False)
-        user = self.request.user
-        es_staff = es_staff_finanzas(user)
-
-        # Operadores solo pueden editar borradores
-        if not es_staff and orden_original.estado != OrdenPago.ESTADO_BORRADOR:
-            messages.error(
-                self.request,
-                "Solo el staff financiero puede editar órdenes que ya fueron autorizadas, facturadas o pagadas.",
-            )
-            return redirect("finanzas:orden_pago_detail", pk=orden_original.pk)
-
-        orden.estado = orden_original.estado
-        if user.is_authenticated:
-            if hasattr(orden, "creado_por") and not orden.creado_por:
-                orden.creado_por = orden_original.creado_por or user
-            if hasattr(orden, "actualizado_por"):
-                orden.actualizado_por = user
-
-        orden.save()
-        formset.instance = orden
-        formset.save()
-
-        messages.success(self.request, "Orden de pago actualizada correctamente.")
-        return redirect("finanzas:orden_pago_detail", pk=orden.pk)
-
+            messages.success(self.request, "Orden de Pago actualizada.")
+            return redirect("finanzas:orden_pago_detail", pk=op.pk)
+            
+        return self.render_to_response(self.get_context_data(form=form))
 
 class OrdenPagoDetailView(OrdenPagoAccessMixin, DetailView):
     model = OrdenPago
@@ -1297,272 +838,99 @@ class OrdenPagoDetailView(OrdenPagoAccessMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        orden = self.object
-        lineas = orden.lineas.select_related("categoria", "area")
-        total = orden.total_monto
-        movimientos = (
-            orden.movimientos.select_related("categoria", "area")
-            .order_by("-fecha_operacion", "-id")
+        # Pasamos los movimientos vinculados para el historial
+        ctx["movimientos"] = Movimiento.objects.filter(orden_pago=self.object)
+        ctx["total_movimientos"] = ctx["movimientos"].aggregate(Sum("monto"))["monto__sum"] or 0
+        
+        # Validaciones para botones
+        ctx["tiene_movimientos"] = ctx["movimientos"].exists()
+        ctx["puede_generar_movimiento"] = (
+            self.object.estado == OrdenPago.ESTADO_AUTORIZADA 
+            and not ctx["tiene_movimientos"]
         )
-
-        total_movimientos = (
-            movimientos.aggregate(total=Sum("monto"))["total"] or Decimal("0.00")
-        )
-        tiene_movimientos = movimientos.exists()
-
-        user = self.request.user
-        puede_generar_movimiento = (
-            es_staff_finanzas(user)
-            and orden.estado == OrdenPago.ESTADO_PAGADA
-            and not tiene_movimientos
-        )
-
-        ctx.update(
-            {
-                "lineas": lineas,
-                "total_monto": total,
-                "movimientos": movimientos,
-                "total_movimientos": total_movimientos,
-                "tiene_movimientos": tiene_movimientos,
-                "puede_generar_movimiento": puede_generar_movimiento,
-            }
-        )
-        ctx.update(_roles_ctx(user))
         return ctx
 
-
 class OrdenPagoCambiarEstadoView(StaffRequiredMixin, View):
-    @transaction.atomic
     def post(self, request, pk, accion):
-        orden = get_object_or_404(OrdenPago, pk=pk)
-        estado_anterior = orden.estado
-
-        if accion == "borrador":
-            nuevo_estado = OrdenPago.ESTADO_BORRADOR
-            mensaje_ok = "La orden volvió a estado BORRADOR."
-        elif accion == "autorizar":
-            nuevo_estado = OrdenPago.ESTADO_AUTORIZADA
-            mensaje_ok = "Orden de pago autorizada correctamente."
-        elif accion == "facturar":
-            nuevo_estado = OrdenPago.ESTADO_FACTURADA
-            mensaje_ok = "Orden marcada como FACTURADA."
+        op = get_object_or_404(OrdenPago, pk=pk)
+        
+        if accion == "autorizar":
+            # Validar que tenga monto > 0
+            if op.total_monto <= 0 and (not op.factura_monto or op.factura_monto <= 0):
+                messages.error(request, "No se puede autorizar una orden con monto $0.")
+                return redirect("finanzas:orden_pago_detail", pk=pk)
+            op.estado = OrdenPago.ESTADO_AUTORIZADA
+            
         elif accion == "pagar":
-            nuevo_estado = OrdenPago.ESTADO_PAGADA
-            mensaje_ok = "Orden marcada como PAGADA."
+            op.estado = OrdenPago.ESTADO_PAGADA
+            
         elif accion == "anular":
-            nuevo_estado = OrdenPago.ESTADO_ANULADA
-            mensaje_ok = (
-                "Orden ANULADA. No debería generar pagos ni movimientos nuevos."
-            )
-        else:
-            messages.error(
-                request, "Acción de estado no reconocida para la orden de pago."
-            )
-            return redirect("finanzas:orden_pago_detail", pk=orden.pk)
-
-        if estado_anterior == nuevo_estado:
-            messages.info(request, "La orden ya estaba en ese estado.")
-            return redirect("finanzas:orden_pago_detail", pk=orden.pk)
-
-        orden.estado = nuevo_estado
-        if request.user.is_authenticated and hasattr(orden, "actualizado_por"):
-            orden.actualizado_por = request.user
-        orden.save()
-
-        # ===== HOOKS AGENDA (si la app existe) =====
-        TareaModel = _get_tarea_model()
-        if TareaModel is not None:
-            # 1) Al autorizar: crear tarea de pago/vencimiento
-            if nuevo_estado == OrdenPago.ESTADO_AUTORIZADA:
-                titulo = f"Pagar OP #{orden.numero or orden.id}"
-                if orden.proveedor_nombre or orden.proveedor:
-                    titulo += f" – {orden.proveedor_nombre or orden.proveedor.nombre}"
-
-                existe = TareaModel.objects.filter(
-                    orden_pago=orden,
-                    tipo=getattr(TareaModel, "TIPO_PAGO_VENCIMIENTO", None),
-                    estado__in=[
-                        TareaModel.ESTADO_PENDIENTE,
-                        TareaModel.ESTADO_EN_PROCESO,
-                    ],
-                ).exists()
-
-                if not existe:
-                    tarea = TareaModel(
-                        titulo=titulo,
-                        descripcion=(
-                            "Tarea creada automáticamente al autorizar la Orden de pago."
-                        ),
-                        tipo=getattr(TareaModel, "TIPO_PAGO_VENCIMIENTO", None),
-                        origen=getattr(TareaModel, "ORIGEN_SISTEMA", None),
-                        prioridad=getattr(TareaModel, "PRIORIDAD_ALTA", None),
-                        estado=TareaModel.ESTADO_PENDIENTE,
-                        fecha_vencimiento=orden.fecha_orden,
-                        responsable=request.user,
-                        ambito=getattr(TareaModel, "AMBITO_FINANZAS", None),
-                        orden_pago=orden,
-                        proveedor=orden.proveedor if orden.proveedor else None,
-                        creado_por=request.user,
-                        actualizado_por=request.user,
-                    )
-                    tarea.save()
-
-            # 2) Al pagar: cerrar tareas ligadas a esa OP
-            if nuevo_estado == OrdenPago.ESTADO_PAGADA:
-                tareas = TareaModel.objects.filter(
-                    orden_pago=orden,
-                    estado__in=[
-                        TareaModel.ESTADO_PENDIENTE,
-                        TareaModel.ESTADO_EN_PROCESO,
-                    ],
-                )
-                for t in tareas:
-                    if hasattr(t, "marcar_completada"):
-                        t.marcar_completada(user=request.user)
-                    else:
-                        t.estado = TareaModel.ESTADO_COMPLETADA
-                        t.save()
-
-        messages.success(request, mensaje_ok)
-        return redirect("finanzas:orden_pago_detail", pk=orden.pk)
-
+            # Si tiene movimientos, advertir (idealmente bloquear, pero permitimos flexibilidad)
+            if Movimiento.objects.filter(orden_pago=op).exists():
+                messages.warning(request, "Atención: Esta orden tiene movimientos contables asociados.")
+            op.estado = OrdenPago.ESTADO_ANULADA
+            
+        elif accion == "borrador":
+            op.estado = OrdenPago.ESTADO_BORRADOR
+            
+        op.save()
+        messages.success(request, f"Estado actualizado a: {op.get_estado_display()}")
+        return redirect("finanzas:orden_pago_detail", pk=pk)
 
 class OrdenPagoGenerarMovimientoView(StaffRequiredMixin, View):
     """
-    Genera un Movimiento de GASTO a partir de una Orden de pago PAGADA.
-    - Usa el total de la orden.
-    - Usa categoría única de las líneas (si hay más de una, no genera).
-    - Usa área de la orden o, si no, área única de las líneas.
-    - Proveedor / CUIT se copian desde la orden.
+    Genera el EGRESO real en la caja (Movimiento) y marca la OP como PAGADA.
     """
-
     @transaction.atomic
     def post(self, request, pk):
-        orden = get_object_or_404(OrdenPago, pk=pk)
+        op = get_object_or_404(OrdenPago, pk=pk)
+        
+        # 1. Validaciones
+        if op.estado != OrdenPago.ESTADO_AUTORIZADA and op.estado != OrdenPago.ESTADO_PAGADA:
+            messages.error(request, "La orden debe estar AUTORIZADA para generar el pago.")
+            return redirect("finanzas:orden_pago_detail", pk=pk)
+            
+        if Movimiento.objects.filter(orden_pago=op).exists():
+            messages.warning(request, "Ya existe un movimiento de caja para esta orden.")
+            return redirect("finanzas:orden_pago_detail", pk=pk)
 
-        if orden.estado != OrdenPago.ESTADO_PAGADA:
-            messages.error(
-                request,
-                "Solo se puede generar el movimiento cuando la orden está en estado PAGADA.",
-            )
-            return redirect("finanzas:orden_pago_detail", pk=orden.pk)
+        # 2. Determinar Monto
+        monto_real = op.total_monto
+        if monto_real <= 0:
+            messages.error(request, "El monto total de la orden es $0. Verifique las líneas.")
+            return redirect("finanzas:orden_pago_detail", pk=pk)
 
-        if orden.movimientos.exists():
-            messages.warning(
-                request,
-                "Esta orden ya tiene movimientos vinculados. No se generó otro para evitar duplicados.",
-            )
-            return redirect("finanzas:orden_pago_detail", pk=orden.pk)
+        # 3. Determinar Categoría (Tomamos la de la primera línea o una genérica)
+        primera_linea = op.lineas.first()
+        categoria_ref = primera_linea.categoria if primera_linea else None
 
-        lineas = list(orden.lineas.select_related("categoria", "area"))
-
-        if not lineas:
-            messages.error(
-                request,
-                "La orden no tiene líneas de detalle. Agregá al menos una línea con monto antes de generar el movimiento.",
-            )
-            return redirect("finanzas:orden_pago_detail", pk=orden.pk)
-
-        categorias_ids = {l.categoria_id for l in lineas if l.categoria_id is not None}
-        if not categorias_ids:
-            messages.error(
-                request,
-                "Las líneas de la orden no tienen categoría asignada. Completalas antes de generar el movimiento.",
-            )
-            return redirect("finanzas:orden_pago_detail", pk=orden.pk)
-
-        if len(categorias_ids) > 1:
-            messages.error(
-                request,
-                (
-                    "La orden tiene líneas con distintas categorías. "
-                    "Por ahora solo se puede generar el movimiento automático cuando todas las líneas "
-                    "comparten la misma categoría (para no mezclar rubros contables). "
-                    "Podés cargar el movimiento manualmente desde el módulo de Movimientos."
-                ),
-            )
-            return redirect("finanzas:orden_pago_detail", pk=orden.pk)
-
-        categoria = lineas[0].categoria
-
-        # Área: priorizamos el área general de la orden; si no, un área única de las líneas
-        area = orden.area
-        if area is None:
-            areas_ids = {l.area_id for l in lineas if l.area_id is not None}
-            if len(areas_ids) == 1:
-                area = lineas[0].area
-
-        total_orden = orden.total_monto or Decimal("0.00")
-        if total_orden <= 0:
-            messages.error(
-                request,
-                "El total de la orden es cero o negativo. Revisá los montos de las líneas antes de generar el movimiento.",
-            )
-            return redirect("finanzas:orden_pago_detail", pk=orden.pk)
-
-        # Datos de proveedor
-        proveedor = orden.proveedor
-        proveedor_nombre = orden.proveedor_nombre or (
-            proveedor.nombre if proveedor else ""
-        )
-        proveedor_cuit = orden.proveedor_cuit or (proveedor.cuit if proveedor else "")
-
-        descripcion = f"Orden de pago {orden.numero or orden.id}"
-        if proveedor_nombre:
-            descripcion += f" – {proveedor_nombre}"
-
-        # Creamos el movimiento con los campos seguros (existen sí o sí)
-        movimiento = Movimiento(
+        # 4. Crear Movimiento (Egreso de Caja)
+        mov = Movimiento.objects.create(
             tipo=Movimiento.TIPO_GASTO,
+            monto=monto_real,
             fecha_operacion=timezone.now().date(),
-            monto=total_orden,
-            categoria=categoria,
-            area=area,
-            descripcion=descripcion,
-            observaciones=(
-                f"Movimiento generado automáticamente desde la Orden de pago "
-                f"{orden.numero or orden.id}."
-            ),
-            estado=Movimiento.ESTADO_APROBADO,
+            descripcion=f"Pago OP #{op.numero} - {op.proveedor_nombre}",
+            orden_pago=op,
+            proveedor=op.proveedor,
+            proveedor_nombre=op.proveedor_nombre,
+            proveedor_cuit=op.proveedor_cuit,
+            area=op.area,
+            categoria=categoria_ref,
+            estado=Movimiento.ESTADO_APROBADO, # Impacta directo en saldo
+            creado_por=request.user
         )
-
-        # Campos opcionales del modelo Movimiento
-        if hasattr(movimiento, "tipo_pago_persona"):
-            movimiento.tipo_pago_persona = getattr(
-                Movimiento,
-                "PAGO_PERSONA_NINGUNO",
-                movimiento.tipo_pago_persona,
-            )
-
-        if hasattr(movimiento, "proveedor"):
-            movimiento.proveedor = proveedor
-
-        if hasattr(movimiento, "proveedor_nombre"):
-            movimiento.proveedor_nombre = proveedor_nombre or ""
-
-        if hasattr(movimiento, "proveedor_cuit"):
-            movimiento.proveedor_cuit = proveedor_cuit or ""
-
-        if hasattr(movimiento, "orden_pago"):
-            movimiento.orden_pago = orden
-
-        if request.user.is_authenticated:
-            if hasattr(movimiento, "creado_por") and not movimiento.creado_por:
-                movimiento.creado_por = request.user
-            if hasattr(movimiento, "actualizado_por"):
-                movimiento.actualizado_por = request.user
-
-        movimiento.save()
-
-        messages.success(
-            request,
-            "Movimiento de gasto generado y aprobado correctamente a partir de la orden de pago.",
-        )
-        return redirect("finanzas:movimiento_detail", pk=movimiento.pk)
+        
+        # 5. Actualizar estado OP
+        op.estado = OrdenPago.ESTADO_PAGADA
+        op.save()
+        
+        messages.success(request, f"Pago de ${monto_real} registrado exitosamente. OP cerrada.")
+        return redirect("finanzas:movimiento_detail", pk=mov.pk)
 
 
-# ======= PERSONAS / CENSO =======
-
+# =========================================================
+# 6) PERSONAS (SOCIAL)
+# =========================================================
 
 class PersonaListView(PersonaCensoAccessMixin, ListView):
     model = Beneficiario
@@ -1571,1395 +939,320 @@ class PersonaListView(PersonaCensoAccessMixin, ListView):
     paginate_by = 25
 
     def get_queryset(self):
-        qs = Beneficiario.objects.filter(activo=True).select_related("sector_laboral")
+        # Ordenamos alfabéticamente por defecto
+        qs = Beneficiario.objects.all().order_by("apellido", "nombre")
+        
+        # 1. Búsqueda por Texto (Nombre, Apellido, DNI)
         q = (self.request.GET.get("q") or "").strip()
-        flag = (self.request.GET.get("flag") or "").strip()
-
         if q:
             qs = qs.filter(
-                Q(nombre__icontains=q)
-                | Q(apellido__icontains=q)
-                | Q(dni__icontains=q)
-                | Q(barrio__icontains=q)
-                | Q(direccion__icontains=q)
+                Q(nombre__icontains=q) | 
+                Q(apellido__icontains=q) | 
+                Q(dni__icontains=q)
             )
 
-        # Filtros rápidos por indicadores
-        if flag == "beneficio":
+        # 2. Filtro de Estado (Activo / Inactivo / Todos)
+        estado = self.request.GET.get("estado", "activos")
+        if estado == "activos":
+            qs = qs.filter(activo=True)
+        elif estado == "inactivos":
+            qs = qs.filter(activo=False)
+        
+        # 3. Filtros Avanzados (INTELIGENTES)
+        
+        # ¿Trabaja en la Comuna?
+        vinculo = self.request.GET.get("vinculo")
+        if vinculo == "si":
+            qs = qs.exclude(tipo_vinculo="NINGUNO")
+        
+        # ¿Tiene Beneficio Social?
+        beneficio = self.request.GET.get("beneficio")
+        if beneficio == "si":
             qs = qs.filter(percibe_beneficio=True)
-        elif flag == "servicios":
-            qs = qs.filter(paga_servicios=True)
-        elif flag == "laboral":
-            qs = qs.exclude(tipo_vinculo=Beneficiario.TIPO_VINCULO_NINGUNO)
-        elif flag == "sin_indicadores":
+            
+        # ¿Paga Servicios? (LÓGICA MEJORADA)
+        # Busca si tiene la marca manual O si tiene movimientos de INGRESO en su historial
+        servicios = self.request.GET.get("servicios")
+        if servicios == "si":
             qs = qs.filter(
-                percibe_beneficio=False,
-                paga_servicios=False,
-                tipo_vinculo=Beneficiario.TIPO_VINCULO_NINGUNO,
-            )
+                Q(paga_servicios=True) | 
+                Q(movimientos__tipo='INGRESO')
+            ).distinct() # Evita duplicados si pagó varias veces
 
-        # IMPORTANTÍSIMO: censo y balances solo con APROBADOS
-        qs = qs.annotate(
-            total_ayudas=Sum(
-                "movimientos__monto",
-                filter=Q(
-                    movimientos__estado=Movimiento.ESTADO_APROBADO,
-                    movimientos__tipo=Movimiento.TIPO_GASTO,
-                    movimientos__categoria__es_ayuda_social=True,
-                ),
-            ),
-            cantidad_ayudas=Count(
-                "movimientos",
-                filter=Q(
-                    movimientos__estado=Movimiento.ESTADO_APROBADO,
-                    movimientos__tipo=Movimiento.TIPO_GASTO,
-                    movimientos__categoria__es_ayuda_social=True,
-                ),
-                distinct=True,
-            ),
-            total_servicios=Sum(
-                "movimientos__monto",
-                filter=Q(
-                    movimientos__estado=Movimiento.ESTADO_APROBADO,
-                    movimientos__tipo=Movimiento.TIPO_INGRESO,
-                    movimientos__categoria__es_servicio=True,
-                ),
-            ),
-            cantidad_servicios=Count(
-                "movimientos",
-                filter=Q(
-                    movimientos__estado=Movimiento.ESTADO_APROBADO,
-                    movimientos__tipo=Movimiento.TIPO_INGRESO,
-                    movimientos__categoria__es_servicio=True,
-                ),
-                distinct=True,
-            ),
-            total_personal=Sum(
-                "movimientos__monto",
-                filter=Q(
-                    movimientos__estado=Movimiento.ESTADO_APROBADO,
-                    movimientos__tipo=Movimiento.TIPO_GASTO,
-                    movimientos__categoria__es_personal=True,
-                ),
-            ),
-            cantidad_personal=Count(
-                "movimientos",
-                filter=Q(
-                    movimientos__estado=Movimiento.ESTADO_APROBADO,
-                    movimientos__tipo=Movimiento.TIPO_GASTO,
-                    movimientos__categoria__es_personal=True,
-                ),
-                distinct=True,
-            ),
-        )
-
-        return qs.order_by("apellido", "nombre")
+        return qs
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        user = self.request.user
-        ctx["q"] = (self.request.GET.get("q") or "").strip()
-        ctx["flag"] = (self.request.GET.get("flag") or "").strip()
-        ctx.update(_roles_ctx(user))
+        
+        # --- KPI CARDS (CONTADORES PARA EL DASHBOARD) ---
+        
+        # Base de usuarios activos para cálculos precisos
+        activos_qs = Beneficiario.objects.filter(activo=True)
+        
+        ctx["count_total"] = Beneficiario.objects.count()
+        ctx["count_activos"] = activos_qs.count()
+        ctx["count_inactivos"] = Beneficiario.objects.filter(activo=False).count()
+        
+        # ✅ CORRECCIÓN: Contar empleados reales (Activos y con vínculo laboral)
+        ctx["count_empleados"] = activos_qs.exclude(tipo_vinculo="NINGUNO").count()
+        
+        # Otros contadores
+        ctx["count_beneficios"] = activos_qs.filter(percibe_beneficio=True).count()
+        ctx["count_pagadores"] = activos_qs.filter(paga_servicios=True).count()
+        
+        # Mantenemos el estado de los filtros en la UI para la paginación
+        ctx["estado_actual"] = self.request.GET.get("estado", "activos")
+        ctx["q_actual"] = self.request.GET.get("q", "")
+        ctx["f_vinculo"] = self.request.GET.get("vinculo", "")
+        ctx["f_beneficio"] = self.request.GET.get("beneficio", "")
+        ctx["f_servicios"] = self.request.GET.get("servicios", "")
+        
+        # Highlight: Si venimos de crear/editar, resaltamos esa fila
+        ctx["highlight_id"] = self.request.GET.get("highlight")
+        
         return ctx
-
-
-class PersonaDetailView(PersonaCensoAccessMixin, DetailView):
-    """
-    Ficha de persona (Beneficiario) con:
-      - Ayudas / sueldos / servicios.
-      - Historial de viajes donde figura como beneficiario (flota).
-    """
-
-    model = Beneficiario
-    template_name = "finanzas/persona_detail.html"
-    context_object_name = "persona"
-
-    def _get_viajes_queryset(self, persona):
-        """
-        Viajes donde la persona figura como beneficiaria.
-        Reutiliza el mismo orden que el listado general de viajes.
-        """
-        qs = (
-            ViajeVehiculo.objects.select_related("vehiculo", "area", "chofer")
-            .prefetch_related("beneficiarios")
-            .filter(beneficiarios=persona)
-        )
-
-        # Permitimos filtros opcionales por fecha en la URL (?viajes_desde= & viajes_hasta=)
-        fecha_desde = _parse_date_or_none(
-            self.request.GET.get("viajes_desde") or self.request.GET.get("desde")
-        )
-        fecha_hasta = _parse_date_or_none(
-            self.request.GET.get("viajes_hasta") or self.request.GET.get("hasta")
-        )
-
-        if fecha_desde:
-            qs = qs.filter(fecha_salida__gte=fecha_desde)
-        if fecha_hasta:
-            qs = qs.filter(fecha_salida__lte=fecha_hasta)
-
-        qs = qs.order_by("-fecha_salida", "-hora_salida", "-id")
-        return qs, fecha_desde, fecha_hasta
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        persona = self.object
-
-        # ===== Ayudas / sueldos / servicios =====
-        ayudas = (
-            persona.movimientos.select_related("categoria", "area")
-            .filter(
-                estado=Movimiento.ESTADO_APROBADO,
-                tipo=Movimiento.TIPO_GASTO,
-                categoria__es_ayuda_social=True,
-            )
-            .order_by("-fecha_operacion", "-id")
-        )
-        total_ayudas = ayudas.aggregate(total=Sum("monto"))["total"] or 0
-
-        sueldos_changas = (
-            persona.movimientos.select_related("categoria", "area")
-            .filter(
-                estado=Movimiento.ESTADO_APROBADO,
-                tipo=Movimiento.TIPO_GASTO,
-                categoria__es_personal=True,
-            )
-            .order_by("-fecha_operacion", "-id")
-        )
-        total_sueldos_changas = (
-            sueldos_changas.aggregate(total=Sum("monto"))["total"] or 0
-        )
-        cantidad_sueldos_changas = sueldos_changas.count()
-
-        pagos_servicios = (
-            persona.movimientos.select_related("categoria")
-            .filter(
-                estado=Movimiento.ESTADO_APROBADO,
-                tipo=Movimiento.TIPO_INGRESO,
-                categoria__es_servicio=True,
-            )
-            .order_by("-fecha_operacion", "-id")
-        )
-        total_servicios_persona = (
-            pagos_servicios.aggregate(total=Sum("monto"))["total"] or 0
-        )
-        cantidad_servicios_persona = pagos_servicios.count()
-
-        # ===== Historial de viajes (Flota) =====
-        viajes_qs, fecha_desde, fecha_hasta = self._get_viajes_queryset(persona)
-        total_viajes_persona = viajes_qs.count()
-
-        total_km_persona = Decimal("0.00")
-        total_viajes_con_km_persona = 0
-        viajes_persona = []
-
-        for viaje in viajes_qs:
-            km = getattr(viaje, "km_recorridos", None)
-            if (
-                km is None
-                and viaje.odometro_inicial is not None
-                and viaje.odometro_final is not None
-            ):
-                km = viaje.odometro_final - viaje.odometro_inicial
-
-            if km:
-                try:
-                    km_val = Decimal(km)
-                except Exception:
-                    km_val = Decimal(str(km))
-                if km_val > 0:
-                    total_km_persona += km_val
-                    total_viajes_con_km_persona += 1
-
-            # Para la ficha mostramos solo los últimos 20 viajes
-            if len(viajes_persona) < 20:
-                viajes_persona.append(viaje)
-
-        user = self.request.user
-        ctx.update(
-            {
-                # Movimientos
-                "ayudas": ayudas,
-                "total_ayudas": total_ayudas,
-                "sueldos_changas": sueldos_changas,
-                "total_sueldos_changas": total_sueldos_changas,
-                "cantidad_sueldos_changas": cantidad_sueldos_changas,
-                "pagos_servicios": pagos_servicios,
-                "total_servicios_persona": total_servicios_persona,
-                "cantidad_servicios_persona": cantidad_servicios_persona,
-                # Viajes
-                "viajes_persona": viajes_persona,
-                "total_viajes_persona": total_viajes_persona,
-                "total_km_persona": total_km_persona,
-                "total_viajes_con_km_persona": total_viajes_con_km_persona,
-                "viajes_fecha_desde": fecha_desde,
-                "viajes_fecha_hasta": fecha_hasta,
-            }
-        )
-        ctx.update(_roles_ctx(user))
-        return ctx
-
 
 class PersonaCreateView(PersonaCensoEditMixin, CreateView):
     model = Beneficiario
     form_class = BeneficiarioForm
     template_name = "finanzas/persona_form.html"
-    success_url = reverse_lazy("finanzas:persona_list")
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        ctx.update(_roles_ctx(self.request.user))
-        return ctx
-
+    
+    def form_valid(self, form):
+        self.object = form.save(commit=False)
+        self.object.activo = True
+        self.object.save()
+        form.save_m2m()
+        
+        messages.success(self.request, f"Persona '{self.object}' registrada correctamente.")
+        
+        # Redirigir a la lista resaltando el nuevo registro (UX Pro)
+        base_url = reverse("finanzas:persona_list")
+        return redirect(f"{base_url}?q={self.object.dni}&highlight={self.object.id}")
 
 class PersonaUpdateView(PersonaCensoEditMixin, UpdateView):
     model = Beneficiario
     form_class = BeneficiarioForm
     template_name = "finanzas/persona_form.html"
+    
+    def get_success_url(self):
+        # Al editar, volvemos al detalle para ver los cambios
+        return reverse("finanzas:persona_detail", kwargs={"pk": self.object.pk})
+
+    def form_valid(self, form):
+        messages.success(self.request, "Datos de la persona actualizados exitosamente.")
+        return super().form_valid(form)
+
+class PersonaDetailView(PersonaCensoAccessMixin, DetailView):
+    model = Beneficiario
+    template_name = "finanzas/persona_detail.html"
     context_object_name = "persona"
-    success_url = reverse_lazy("finanzas:persona_list")
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx.update(_roles_ctx(self.request.user))
+        
+        # --- HISTORIAL DE PAGOS DE SERVICIOS (INGRESO) ---
+        # Traemos todos los movimientos de tipo INGRESO asociados a esta persona
+        # Ordenados del más reciente al más antiguo
+        pagos = Movimiento.objects.filter(
+            beneficiario=self.object,
+            tipo='INGRESO'
+        ).order_by('-fecha_operacion')
+        
+        ctx['pagos_servicios'] = pagos
+        
+        # Calculamos el total histórico pagado por la persona para mostrar en la tarjeta
+        total_pagado = pagos.aggregate(total=Sum('monto'))['total'] or 0
+        ctx['total_pagado_historico'] = total_pagado
+        
+        # Flag de permisos para ver dinero (usado en el template)
+        ctx['perms_ver_dinero'] = self.request.user.is_staff
+        
         return ctx
 
-
-class PersonaViajesListView(PersonaCensoAccessMixin, ListView):
-    """
-    Listado paginado de viajes para una persona (historial completo).
-    Opcional: usar en URL /personas/<pk>/viajes/.
-    """
-
-    template_name = "finanzas/persona_viajes_list.html"
-    context_object_name = "viajes"
-    paginate_by = 25
-
-    def dispatch(self, request, *args, **kwargs):
-        self.persona = get_object_or_404(Beneficiario, pk=kwargs["pk"])
-        return super().dispatch(request, *args, **kwargs)
-
-    def get_queryset(self):
-        qs = (
-            ViajeVehiculo.objects.select_related("vehiculo", "area", "chofer")
-            .prefetch_related("beneficiarios")
-            .filter(beneficiarios=self.persona)
-        )
-
-        fecha_desde = _parse_date_or_none(self.request.GET.get("desde"))
-        fecha_hasta = _parse_date_or_none(self.request.GET.get("hasta"))
-        q = (self.request.GET.get("q") or "").strip()
-        estado = (self.request.GET.get("estado") or "").strip()
-
-        if fecha_desde:
-            qs = qs.filter(fecha_salida__gte=fecha_desde)
-        if fecha_hasta:
-            qs = qs.filter(fecha_salida__lte=fecha_hasta)
-
-        if estado and estado != "TODOS":
-            qs = qs.filter(estado=estado)
-
-        if q:
-            qs = qs.filter(
-                Q(origen__icontains=q)
-                | Q(destino__icontains=q)
-                | Q(motivo__icontains=q)
-                | Q(chofer_nombre__icontains=q)
-                | Q(vehiculo__patente__icontains=q)
-                | Q(vehiculo__descripcion__icontains=q)
-            )
-
-        return qs.order_by("-fecha_salida", "-hora_salida", "-id")
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        viajes = self.object_list
-
-        total_km = Decimal("0.00")
-        viajes_con_km = 0
-        for v in viajes:
-            km = getattr(v, "km_recorridos", None)
-            if (
-                km is None
-                and v.odometro_inicial is not None
-                and v.odometro_final is not None
-            ):
-                km = v.odometro_final - v.odometro_inicial
-            if km:
-                try:
-                    km_val = Decimal(km)
-                except Exception:
-                    km_val = Decimal(str(km))
-                if km_val > 0:
-                    total_km += km_val
-                    viajes_con_km += 1
-
-        ctx.update(
-            {
-                "persona": self.persona,
-                "q": (self.request.GET.get("q") or "").strip(),
-                "fecha_desde": _parse_date_or_none(self.request.GET.get("desde")),
-                "fecha_hasta": _parse_date_or_none(self.request.GET.get("hasta")),
-                "estado_actual": (self.request.GET.get("estado") or "TODOS").strip(),
-                "total_viajes_persona": viajes.count(),
-                "total_km_persona": total_km,
-                "total_viajes_con_km_persona": viajes_con_km,
-            }
-        )
-        ctx.update(_roles_ctx(self.request.user))
-        return ctx
-
-
-# ======= BALANCES =======
-
-
-class BalanceResumenView(DashboardAccessMixin, TemplateView):
-    template_name = "finanzas/balance_resumen.html"
-
-    def get_context_data(self, **kwargs):
-        # ===== COPIA BASE con mejoras de combustible =====
-        ctx = super().get_context_data(**kwargs)
-        hoy = timezone.now().date()
-        primer_dia_mes = hoy.replace(day=1)
-
-        movimientos = Movimiento.objects.filter(estado=Movimiento.ESTADO_APROBADO)
-        movimientos_mes = movimientos.filter(
-            fecha_operacion__gte=primer_dia_mes,
-            fecha_operacion__lte=hoy,
-        )
-
-        totales_globales = movimientos.aggregate(
-            total_ingresos=Sum("monto", filter=Q(tipo=Movimiento.TIPO_INGRESO)),
-            total_gastos=Sum("monto", filter=Q(tipo=Movimiento.TIPO_GASTO)),
-            cantidad_movimientos=Count("id"),
-        )
-        total_ingresos = totales_globales["total_ingresos"] or 0
-        total_gastos = totales_globales["total_gastos"] or 0
-
-        totales_mes = movimientos_mes.aggregate(
-            total_ingresos_mes=Sum("monto", filter=Q(tipo=Movimiento.TIPO_INGRESO)),
-            total_gastos_mes=Sum("monto", filter=Q(tipo=Movimiento.TIPO_GASTO)),
-            cantidad_movimientos_mes=Count("id"),
-        )
-        total_ingresos_mes = totales_mes["total_ingresos_mes"] or 0
-        total_gastos_mes = totales_mes["total_gastos_mes"] or 0
-
-        ayudas_qs = movimientos.filter(
-            tipo=Movimiento.TIPO_GASTO,
-            categoria__es_ayuda_social=True,
-        )
-        ayudas_mes_qs = ayudas_qs.filter(
-            fecha_operacion__gte=primer_dia_mes,
-            fecha_operacion__lte=hoy,
-        )
-        total_ayudas = ayudas_qs.aggregate(total=Sum("monto"))["total"] or 0
-        total_ayudas_mes = ayudas_mes_qs.aggregate(total=Sum("monto"))["total"] or 0
-
-        porcentaje_ayudas_sobre_gastos = (
-            (total_ayudas / total_gastos) * 100 if total_gastos else 0
-        )
-
-        personal_qs = movimientos.filter(
-            tipo=Movimiento.TIPO_GASTO,
-            categoria__es_personal=True,
-        )
-        personal_mes_qs = personal_qs.filter(
-            fecha_operacion__gte=primer_dia_mes,
-            fecha_operacion__lte=hoy,
-        )
-        total_personal = personal_qs.aggregate(total=Sum("monto"))["total"] or 0
-        total_personal_mes = (
-            personal_mes_qs.aggregate(total=Sum("monto"))["total"] or 0
-        )
-        porcentaje_personal_sobre_gastos = (
-            (total_personal / total_gastos) * 100 if total_gastos else 0
-        )
-
-        servicios_qs = movimientos.filter(
-            tipo=Movimiento.TIPO_INGRESO,
-            categoria__es_servicio=True,
-        )
-        servicios_mes_qs = servicios_qs.filter(
-            fecha_operacion__gte=primer_dia_mes,
-            fecha_operacion__lte=hoy,
-        )
-        total_servicios = servicios_qs.aggregate(total=Sum("monto"))["total"] or 0
-        total_servicios_mes = (
-            servicios_mes_qs.aggregate(total=Sum("monto"))["total"] or 0
-        )
-        porcentaje_servicios_sobre_ingresos = (
-            (total_servicios / total_ingresos) * 100 if total_ingresos else 0
-        )
-
-        # Combustible (global y mes)
-        combustible_qs = movimientos.filter(
-            tipo=Movimiento.TIPO_GASTO,
-            categoria__es_combustible=True,
-        )
-        combustible_mes_qs = combustible_qs.filter(
-            fecha_operacion__gte=primer_dia_mes,
-            fecha_operacion__lte=hoy,
-        )
-        combustible_total = combustible_qs.aggregate(total=Sum("monto"))["total"] or 0
-        combustible_mes = combustible_mes_qs.aggregate(total=Sum("monto"))["total"] or 0
-
-        top_categorias = (
-            movimientos.filter(tipo=Movimiento.TIPO_GASTO)
-            .values("categoria__nombre")
-            .annotate(total=Sum("monto"), cantidad=Count("id"))
-            .order_by("-total")[:8]
-        )
-
-        top_areas = (
-            movimientos.filter(tipo=Movimiento.TIPO_GASTO, area__isnull=False)
-            .values("area__nombre")
-            .annotate(total=Sum("monto"), cantidad=Count("id"))
-            .order_by("-total")[:8]
-        )
-
-        top_programas = (
-            ayudas_qs.exclude(programa_ayuda_texto__isnull=True)
-            .exclude(programa_ayuda_texto__exact="")
-            .values("programa_ayuda_texto")
-            .annotate(total=Sum("monto"), cantidad=Count("id"))
-            .order_by("-total")[:8]
-        )
-
-        top_barrios = (
-            ayudas_qs.exclude(beneficiario__barrio__isnull=True)
-            .exclude(beneficiario__barrio__exact="")
-            .values(barrio=F("beneficiario__barrio"))
-            .annotate(total=Sum("monto"), cantidad=Count("id"))
-            .order_by("-total")[:8]
-        )
-
-        top_beneficiarios = (
-            ayudas_qs.filter(beneficiario__isnull=False)
-            .values(
-                "beneficiario__dni",
-                apellido=F("beneficiario__apellido"),
-                nombre=F("beneficiario__nombre"),
-            )
-            .annotate(total=Sum("monto"), cantidad=Count("id"))
-            .order_by("-total")[:8]
-        )
-
-        top_contribuyentes_servicios = (
-            servicios_qs.filter(beneficiario__isnull=False)
-            .values(
-                "beneficiario__dni",
-                apellido=F("beneficiario__apellido"),
-                nombre=F("beneficiario__nombre"),
-            )
-            .annotate(total=Sum("monto"), cantidad=Count("id"))
-            .order_by("-total")[:8]
-        )
-
-        ultimos_movimientos = (
-            movimientos.select_related("categoria", "area")
-            .order_by("-fecha_operacion", "-id")[:10]
-        )
-
-        ctx.update(
-            {
-                "hoy": hoy,
-                "primer_dia_mes": primer_dia_mes,
-                "total_ingresos": total_ingresos,
-                "total_gastos": total_gastos,
-                "saldo": total_ingresos - total_gastos,
-                "cantidad_movimientos": totales_globales["cantidad_movimientos"] or 0,
-                "total_ingresos_mes": total_ingresos_mes,
-                "total_gastos_mes": total_gastos_mes,
-                "saldo_mes": total_ingresos_mes - total_gastos_mes,
-                "cantidad_movimientos_mes": totales_mes["cantidad_movimientos_mes"]
-                or 0,
-                "total_ayudas": total_ayudas,
-                "total_ayudas_mes": total_ayudas_mes,
-                "porcentaje_ayudas_sobre_gastos": porcentaje_ayudas_sobre_gastos,
-                "total_personal": total_personal,
-                "total_personal_mes": total_personal_mes,
-                "porcentaje_personal_sobre_gastos": porcentaje_personal_sobre_gastos,
-                "total_servicios": total_servicios,
-                "total_servicios_mes": total_servicios_mes,
-                "porcentaje_servicios_sobre_ingresos": porcentaje_servicios_sobre_ingresos,
-                "combustible_total": combustible_total,
-                "combustible_mes": combustible_mes,
-                "top_categorias": top_categorias,
-                "top_areas": top_areas,
-                "top_programas": top_programas,
-                "top_barrios": top_barrios,
-                "top_beneficiarios": top_beneficiarios,
-                "top_contribuyentes_servicios": top_contribuyentes_servicios,
-                "ultimos_movimientos": ultimos_movimientos,
-            }
-        )
-        ctx.update(_roles_ctx(self.request.user))
-        return ctx
-
-
-class DashboardView(BalanceResumenView):
-    template_name = "finanzas/dashboard.html"
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        user = self.request.user
-
-        # ============================
-        # 1) Estados de movimientos
-        # ============================
-        estado_counts = Movimiento.objects.values("estado").annotate(
-            cantidad=Count("id")
-        )
-        mapa = {row["estado"]: row["cantidad"] for row in estado_counts}
-
-        ctx["total_borradores"] = mapa.get(Movimiento.ESTADO_BORRADOR, 0)
-        ctx["total_aprobados"] = mapa.get(Movimiento.ESTADO_APROBADO, 0)
-        ctx["total_rechazados"] = mapa.get(Movimiento.ESTADO_RECHAZADO, 0)
-
-        ctx["borradores_recientes"] = (
-            Movimiento.objects.filter(estado=Movimiento.ESTADO_BORRADOR)
-            .select_related("categoria", "area")
-            .order_by("-fecha_operacion", "-id")[:10]
-        )
-
-        ctx["rechazados_recientes"] = (
-            Movimiento.objects.filter(estado=Movimiento.ESTADO_RECHAZADO)
-            .select_related("categoria", "area")
-            .order_by("-fecha_operacion", "-id")[:5]
-        )
-
-        # ============================
-        # 2) Flota: viajes + km mes actual
-        # ============================
-        hoy = ctx.get("hoy") or timezone.now().date()
-        primer_dia_mes = ctx.get("primer_dia_mes") or hoy.replace(day=1)
-        try:
-            viajes_mes, total_km_mes = _flota_metrics_mes(hoy, primer_dia_mes)
-        except Exception:
-            viajes_mes, total_km_mes = 0, 0
-
-        ctx["viajes_mes"] = viajes_mes
-        ctx["total_km_mes"] = total_km_mes
-
-        # ============================
-        # 3) Órdenes de pago pendientes (panel OP/Compras)
-        # ============================
-        ordenes_pendientes_qs = OrdenPago.objects.exclude(
-            estado__in=[OrdenPago.ESTADO_PAGADA, OrdenPago.ESTADO_ANULADA]
-        )
-        cantidad_ordenes_pendientes = ordenes_pendientes_qs.count()
-
-        monto_ordenes_pendientes = Decimal("0.00")
-        for op in ordenes_pendientes_qs:
-            monto_ordenes_pendientes += op.total_monto
-
-        ctx["cantidad_ordenes_pendientes"] = cantidad_ordenes_pendientes
-        ctx["total_ordenes_pendientes"] = monto_ordenes_pendientes
-
-        # ============================
-        # 4) Órdenes de compra (si el modelo existe)
-        # ============================
-        oc_pendientes_cantidad = 0
-        oc_pendientes_monto = Decimal("0.00")
-
-        try:
-            from .models import OrdenCompra as OCModel
-        except Exception:
-            OCModel = None
-
-        if OCModel is not None:
-            oc_qs = OCModel.objects.all()
-
-            estados_cerrados = []
-            if hasattr(OCModel, "ESTADO_CERRADA"):
-                estados_cerrados.append(OCModel.ESTADO_CERRADA)
-            if hasattr(OCModel, "ESTADO_ANULADA"):
-                estados_cerrados.append(OCModel.ESTADO_ANULADA)
-
-            if estados_cerrados:
-                oc_qs = oc_qs.exclude(estado__in=estados_cerrados)
-
-            oc_pendientes_cantidad = oc_qs.count()
-            oc_pendientes_monto = (
-                oc_qs.aggregate(total=Sum("lineas__monto"))["total"]
-                or Decimal("0.00")
-            )
-
-        ctx["oc_pendientes_cantidad"] = oc_pendientes_cantidad
-        ctx["oc_pendientes_monto"] = oc_pendientes_monto
-
-        # ============================
-        # 5) Agenda / tareas pendientes
-        # ============================
-        tareas_pendientes_usuario = 0
-        tareas_pendientes_totales = 0
-        TareaModel = _get_tarea_model()
-        if TareaModel is not None:
-            tareas_pendientes_usuario = TareaModel.objects.filter(
-                responsable=user,
-                estado__in=[
-                    TareaModel.ESTADO_PENDIENTE,
-                    TareaModel.ESTADO_EN_PROCESO,
-                ],
-            ).count()
-            tareas_pendientes_totales = TareaModel.objects.filter(
-                estado__in=[
-                    TareaModel.ESTADO_PENDIENTE,
-                    TareaModel.ESTADO_EN_PROCESO,
-                ],
-            ).count()
-
-        ctx["tareas_pendientes_usuario"] = tareas_pendientes_usuario
-        ctx["tareas_pendientes_totales"] = tareas_pendientes_totales
-
-        # ============================
-        # 6) Órdenes de trabajo (OT)
-        # ============================
-        ot_total = OrdenTrabajo.objects.count()
-        estado_finalizada = getattr(OrdenTrabajo, "ESTADO_FINALIZADA", None)
-        estado_anulada = getattr(OrdenTrabajo, "ESTADO_ANULADA", None)
-
-        ot_finalizadas = 0
-        ot_anuladas = 0
-
-        if estado_finalizada:
-            ot_finalizadas = OrdenTrabajo.objects.filter(
-                estado=estado_finalizada
-            ).count()
-        if estado_anulada:
-            ot_anuladas = OrdenTrabajo.objects.filter(estado=estado_anulada).count()
-
-        ot_abiertas = ot_total - ot_finalizadas - ot_anuladas
-
-        ot_mes_qs = OrdenTrabajo.objects.all()
-        if hasattr(OrdenTrabajo, "fecha_ot"):
-            ot_mes_qs = ot_mes_qs.filter(
-                fecha_ot__gte=primer_dia_mes,
-                fecha_ot__lte=hoy,
-            )
-
-        ot_importe_estimado_mes = (
-            ot_mes_qs.aggregate(total=Sum("importe_estimado"))["total"]
-            or Decimal("0.00")
-        )
-        ot_importe_final_mes = (
-            ot_mes_qs.aggregate(total=Sum("importe_final"))["total"]
-            or Decimal("0.00")
-        )
-
-        ctx["ot_total"] = ot_total
-        ctx["ot_abiertas"] = ot_abiertas
-        ctx["ot_finalizadas"] = ot_finalizadas
-        ctx["ot_anuladas"] = ot_anuladas
-        ctx["ot_importe_estimado_mes"] = ot_importe_estimado_mes
-        ctx["ot_importe_final_mes"] = ot_importe_final_mes
-
-        ctx.update(_roles_ctx(user))
-        return ctx
-
-
-# ======= FLOTA: CONSUMO DE COMBUSTIBLE (resumen pro) =======
-
-
-class ConsumoCombustibleView(FlotaAccessMixin, TemplateView):
-    """
-    Vista de consumo de combustible por vehículo.
-
-    Usa el template `finanzas/flota_combustible_resumen.html` y expone:
-
-      - vehiculos: queryset de vehículos activos
-      - vehiculo_actual: id (string) del vehículo filtrado o ""
-      - fecha_desde / fecha_hasta: rango de fechas
-      - resumen_vehiculos: lista de dicts con:
-            vehiculo, total_combustible, total_km,
-            costo_por_km, total_viajes, viajes_con_km
-      - total_combustible, total_km, total_viajes, viajes_con_km
-      - costo_promedio_km: costo global por km
-      - top_destino: dict {destino, cantidad, porcentaje} o None
-      - top_choferes: lista de dicts {nombre, cantidad, porcentaje}
-      - top_beneficiarios: lista de dicts {dni, nombre, cantidad}
-    """
-
-    template_name = "finanzas/flota_combustible_resumen.html"
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        user = self.request.user
-        hoy = timezone.now().date()
-
-        fecha_desde = _parse_date_or_none(self.request.GET.get("desde")) or hoy.replace(
-            day=1
-        )
-        fecha_hasta = _parse_date_or_none(self.request.GET.get("hasta")) or hoy
-
-        vehiculo_actual = (self.request.GET.get("vehiculo") or "").strip()
-
-        # Vehículos activos
-        vehiculos = Vehiculo.objects.filter(activo=True).order_by(
-            "descripcion", "patente"
-        )
-        vehiculos_filtrados = vehiculos
-        if vehiculo_actual:
-            vehiculos_filtrados = vehiculos_filtrados.filter(pk=vehiculo_actual)
-
-        resumen_vehiculos = []
-
-        total_combustible = Decimal("0.00")
-        total_km = Decimal("0.00")
-        total_viajes = 0
-        viajes_con_km_global = 0
-
-        # Intentamos importar ViajeVehiculo de forma segura
-        try:
-            from .models import ViajeVehiculo as ViajeModel
-        except Exception:
-            ViajeModel = None
-
-        # ---- RESUMEN POR VEHÍCULO ----
-        for v in vehiculos_filtrados:
-            # Movimientos de combustible del vehículo en el período
-            cargas_qs = v.cargas_combustible.filter(
-                estado=Movimiento.ESTADO_APROBADO,
-                tipo=Movimiento.TIPO_GASTO,
-                categoria__es_combustible=True,
-                fecha_operacion__gte=fecha_desde,
-                fecha_operacion__lte=fecha_hasta,
-            )
-
-            monto_combustible = (
-                cargas_qs.aggregate(total=Sum("monto"))["total"]
-                or Decimal("0.00")
-            )
-
-            km = Decimal("0.00")
-            viajes_count = 0
-            viajes_con_km = 0
-
-            if ViajeModel is not None:
-                viajes_qs_v = v.viajes_vehiculo.all()
-
-                # Campo de fecha robusto
-                if hasattr(ViajeModel, "fecha_salida"):
-                    viajes_qs_v = viajes_qs_v.filter(
-                        fecha_salida__gte=fecha_desde,
-                        fecha_salida__lte=fecha_hasta,
-                    )
-                elif hasattr(ViajeModel, "fecha"):
-                    viajes_qs_v = viajes_qs_v.filter(
-                        fecha__gte=fecha_desde,
-                        fecha__lte=fecha_hasta,
-                    )
-                elif hasattr(ViajeModel, "fecha_viaje"):
-                    viajes_qs_v = viajes_qs_v.filter(
-                        fecha_viaje__gte=fecha_desde,
-                        fecha_viaje__lte=fecha_hasta,
-                    )
-
-                viajes_count = viajes_qs_v.count()
-
-                # Km recorridos por odómetro
-                for viaje in viajes_qs_v:
-                    ini = getattr(viaje, "odometro_inicial", None)
-                    fin = getattr(viaje, "odometro_final", None)
-                    if ini is not None and fin is not None:
-                        diff = fin - ini
-                        if diff > 0:
-                            km += diff
-                            viajes_con_km += 1
-
-            costo_por_km = monto_combustible / km if km > 0 else None
-
-            total_combustible += monto_combustible
-            total_km += km
-            total_viajes += viajes_count
-            viajes_con_km_global += viajes_con_km
-
-            resumen_vehiculos.append(
-                {
-                    "vehiculo": v,
-                    "total_combustible": monto_combustible,
-                    "total_km": km,
-                    "costo_por_km": costo_por_km,
-                    "total_viajes": viajes_count,
-                    "viajes_con_km": viajes_con_km,
-                }
-            )
-
-        costo_promedio_km = total_combustible / total_km if total_km > 0 else None
-
-        # ---- INSIGHTS RÁPIDOS ----
-        top_destino = None
-        top_choferes = []
-        top_beneficiarios = []
-
-        if ViajeModel is not None:
-            viajes_periodo = ViajeModel.objects.all()
-
-            # Filtro por fecha (campo robusto)
-            if hasattr(ViajeModel, "fecha_salida"):
-                viajes_periodo = viajes_periodo.filter(
-                    fecha_salida__gte=fecha_desde,
-                    fecha_salida__lte=fecha_hasta,
-                )
-            elif hasattr(ViajeModel, "fecha"):
-                viajes_periodo = viajes_periodo.filter(
-                    fecha__gte=fecha_desde,
-                    fecha__lte=fecha_hasta,
-                )
-            elif hasattr(ViajeModel, "fecha_viaje"):
-                viajes_periodo = viajes_periodo.filter(
-                    fecha_viaje__gte=fecha_desde,
-                    fecha_viaje__lte=fecha_hasta,
-                )
-
-            # Filtro por vehículo (opcional)
-            if vehiculo_actual:
-                viajes_periodo = viajes_periodo.filter(vehiculo_id=vehiculo_actual)
-
-            total_viajes_periodo = viajes_periodo.count()
-
-            if total_viajes_periodo > 0:
-                # Destino más frecuente
-                destinos_qs = (
-                    viajes_periodo.exclude(destino__isnull=True)
-                    .exclude(destino__exact="")
-                    .values("destino")
-                    .annotate(cantidad=Count("id"))
-                    .order_by("-cantidad")
-                )
-                if destinos_qs:
-                    d0 = destinos_qs[0]
-                    top_destino = {
-                        "destino": d0["destino"],
-                        "cantidad": d0["cantidad"],
-                        "porcentaje": (d0["cantidad"] / total_viajes_periodo) * 100,
-                    }
-
-                # Choferes con más viajes
-                if hasattr(ViajeModel, "chofer_nombre"):
-                    choferes_qs = (
-                        viajes_periodo.exclude(chofer_nombre__isnull=True)
-                        .exclude(chofer_nombre__exact="")
-                        .values("chofer_nombre")
-                        .annotate(cantidad=Count("id"))
-                        .order_by("-cantidad")[:3]
-                    )
-                    for c in choferes_qs:
-                        top_choferes.append(
-                            {
-                                "nombre": c["chofer_nombre"],
-                                "cantidad": c["cantidad"],
-                                "porcentaje": (c["cantidad"] / total_viajes_periodo)
-                                * 100,
-                            }
-                        )
-                else:
-                    choferes_qs = (
-                        viajes_periodo.filter(chofer__isnull=False)
-                        .values(
-                            "chofer__dni",
-                            "chofer__apellido",
-                            "chofer__nombre",
-                        )
-                        .annotate(cantidad=Count("id"))
-                        .order_by("-cantidad")[:3]
-                    )
-                    for c in choferes_qs:
-                        nombre = f"{c['chofer__apellido']} {c['chofer__nombre']}".strip()
-                        top_choferes.append(
-                            {
-                                "nombre": nombre or c["chofer__dni"],
-                                "cantidad": c["cantidad"],
-                                "porcentaje": (c["cantidad"] / total_viajes_periodo)
-                                * 100,
-                            }
-                        )
-
-                # Beneficiarios más trasladados
-                beneficiarios_qs = (
-                    viajes_periodo.filter(beneficiarios__isnull=False)
-                    .values(
-                        "beneficiarios__dni",
-                        "beneficiarios__apellido",
-                        "beneficiarios__nombre",
-                    )
-                    # cantidad de viajes distintos donde aparece cada beneficiario
-                    .annotate(cantidad=Count("id", distinct=True))
-                    .order_by("-cantidad")[:3]
-                )
-                for b in beneficiarios_qs:
-                    nombre_benef = (
-                        f"{b['beneficiarios__apellido']} {b['beneficiarios__nombre']}"
-                    ).strip()
-                    top_beneficiarios.append(
-                        {
-                            "dni": b["beneficiarios__dni"],
-                            "nombre": nombre_benef or b["beneficiarios__dni"],
-                            "cantidad": b["cantidad"],
-                        }
-                    )
-
-        ctx.update(
-            {
-                "vehiculos": vehiculos,
-                "vehiculo_actual": vehiculo_actual,
-                "fecha_desde": fecha_desde,
-                "fecha_hasta": fecha_hasta,
-                "resumen_vehiculos": resumen_vehiculos,
-                "total_combustible": total_combustible,
-                "total_km": total_km,
-                "total_viajes": total_viajes,
-                "viajes_con_km": viajes_con_km_global,
-                "costo_promedio_km": costo_promedio_km,
-                "top_destino": top_destino,
-                "top_choferes": top_choferes,
-                "top_beneficiarios": top_beneficiarios,
-            }
-        )
-        ctx.update(_roles_ctx(user))
-        return ctx
-
-
-# ======= API: búsqueda rápida por DNI / autocomplete =======
-
+class BeneficiarioUploadView(OperadorFinanzasRequiredMixin, CreateView):
+    model = DocumentoBeneficiario
+    form_class = DocumentoBeneficiarioForm
+    template_name = "finanzas/persona_detail.html" # Reusamos el template o usamos uno genérico
+
+    def form_valid(self, form):
+        # 1. Buscamos la persona
+        beneficiario_id = self.kwargs['pk']
+        beneficiario = get_object_or_404(Beneficiario, pk=beneficiario_id)
+        
+        # 2. Guardamos el archivo vinculado
+        documento = form.save(commit=False)
+        documento.beneficiario = beneficiario
+        documento.subido_por = self.request.user
+        documento.save()
+        
+        messages.success(self.request, "Documento digitalizado y archivado correctamente.")
+        
+        # 3. Volvemos a la ficha de la persona
+        return redirect('finanzas:persona_detail', pk=beneficiario_id)
+
+    # Si algo falla (ej: archivo muy pesado), volvemos al detalle con error
+    def form_invalid(self, form):
+        beneficiario_id = self.kwargs['pk']
+        messages.error(self.request, "Error al subir el archivo. Verificá que no sea muy pesado o el formato incorrecto.")
+        return redirect('finanzas:persona_detail', pk=beneficiario_id)
+# =========================================================
+# 7) APIS AJAX (CRÍTICAS PARA EL FORMULARIO)
+# =========================================================
 
 @login_required
 @require_GET
 def persona_buscar_por_dni(request):
-    """
-    Devuelve datos básicos de persona por DNI (para autocompletar en el formulario).
-    Respuesta JSON:
-      {found: true/false, nombre, direccion, barrio}
-    Solo accesible si está logueado.
-    """
+    """API para autocompletar DNI en formulario."""
     dni = (request.GET.get("dni") or "").strip()
-    if not dni:
-        return JsonResponse({"found": False})
-
+    if not dni: return JsonResponse({"found": False})
+    
     try:
-        persona = Beneficiario.objects.get(dni=dni, activo=True)
+        p = Beneficiario.objects.get(dni=dni, activo=True)
+        return JsonResponse({
+            "found": True, 
+            "id": p.id, 
+            "nombre": f"{p.apellido}, {p.nombre}",
+            "text": f"{p.apellido}, {p.nombre} ({p.dni or 'S/D'})"
+        })
     except Beneficiario.DoesNotExist:
         return JsonResponse({"found": False})
-
-    return JsonResponse(
-        {
-            "found": True,
-            "nombre": f"{persona.apellido} {persona.nombre}".strip(),
-            "direccion": persona.direccion or "",
-            "barrio": persona.barrio or "",
-        }
-    )
-
 
 @login_required
 @require_GET
 def persona_autocomplete(request):
-    """
-    Autocomplete por apellido/nombre/dni para Beneficiario (censo de personas).
-    Devuelve hasta 20 resultados.
-    """
-    q = (request.GET.get("q") or "").strip()
-    results = []
-
-    if len(q) >= 2:
-        queryset = Beneficiario.objects.filter(activo=True)
-
-        # Permitimos buscar por partes (ej: "pérez juan")
-        for term in q.split():
-            queryset = queryset.filter(
-                Q(apellido__icontains=term)
-                | Q(nombre__icontains=term)
-                | Q(dni__icontains=term)
-            )
-
-        queryset = queryset.order_by("apellido", "nombre")[:20]
-
-        for b in queryset:
-            results.append(
-                {
-                    "id": b.id,
-                    "dni": b.dni or "",
-                    "apellido": b.apellido or "",
-                    "nombre": b.nombre or "",
-                    "direccion": getattr(b, "direccion", "") or "",
-                    "barrio": getattr(b, "barrio", "") or "",
-                }
-            )
-
-    return JsonResponse({"results": results})
-
+    """Select2 para personas."""
+    q = (request.GET.get("term") or request.GET.get("q") or "").strip()
+    if len(q) < 2: return JsonResponse({"results": []})
+    
+    qs = Beneficiario.objects.filter(activo=True).filter(
+        Q(apellido__icontains=q) | 
+        Q(nombre__icontains=q) | 
+        Q(dni__icontains=q)
+    )[:20]
+    
+    return JsonResponse({
+        "results": [
+            {"id": p.id, "text": f"{p.apellido}, {p.nombre} ({p.dni or 'S/D'})"} 
+            for p in qs
+        ]
+    })
 
 @login_required
 @require_GET
-def vehiculo_autocomplete(request):
+def categorias_por_tipo(request):
     """
-    Autocomplete de vehículos para el bloque de combustible / flota.
-    Busca por descripción o patente.
+    API JSON para el selector dinámico de categorías en Movimientos.
+    Devuelve flags para activar tabs de ayuda/combustible.
     """
-    q = (request.GET.get("q") or "").strip()
+    tipo_raw = (request.GET.get("tipo") or "").strip().upper()
+    if not tipo_raw: return JsonResponse({"results": []})
+
+    # Mapeo robusto de tipos
+    if "ING" in tipo_raw: modo = "INGRESO"
+    elif "GAS" in tipo_raw: modo = "GASTO"
+    elif "TRANS" in tipo_raw: modo = "TRANSFERENCIA"
+    else: return JsonResponse({"results": []}) # Tipo desconocido
+
+    # Filtrar query
+    qs = Categoria.objects.all() # Asumimos todas activas, si tenés campo 'activo', agregalo.
+    
+    cat_ing = getattr(Categoria, "TIPO_INGRESO", "INGRESO")
+    cat_gas = getattr(Categoria, "TIPO_GASTO", "GASTO")
+    cat_amb = getattr(Categoria, "TIPO_AMBOS", "AMBOS")
+
+    if modo == "INGRESO":
+        qs = qs.filter(tipo__in=[cat_ing, cat_amb])
+    elif modo == "GASTO":
+        qs = qs.filter(tipo__in=[cat_gas, cat_amb])
+    
+    # Ordenar y serializar
+    qs = qs.order_by("grupo", "nombre")
     results = []
-
-    if len(q) >= 2:
-        queryset = Vehiculo.objects.filter(activo=True)
-
-        for term in q.split():
-            queryset = queryset.filter(
-                Q(descripcion__icontains=term) | Q(patente__icontains=term)
-            )
-
-        queryset = queryset.order_by("descripcion", "patente")[:20]
-
-        for v in queryset:
-            results.append(
-                {
-                    "id": v.id,
-                    # Etiqueta amigable: patente + descripción (propiedad del modelo)
-                    "label": getattr(v, "etiqueta_busqueda", str(v)),
-                    "descripcion": getattr(v, "descripcion", "") or "",
-                    "patente": getattr(v, "patente", "") or "",
-                    # Por compatibilidad con JS viejo que pudiera leer 'interno'
-                    "interno": getattr(v, "interno", "")
-                    if hasattr(v, "interno")
-                    else "",
-                }
-            )
+    
+    for cat in qs:
+        # Obtener label de grupo si existe método
+        grupo = cat.get_grupo_display() if hasattr(cat, "get_grupo_display") else (getattr(cat, "grupo", "") or "General")
+        
+        results.append({
+            "id": cat.id,
+            "text": cat.nombre,
+            "grupo": grupo,
+            # Flags booleanos para el JS
+            "es_ayuda_social": getattr(cat, "es_ayuda_social", False),
+            "es_combustible": getattr(cat, "es_combustible", False),
+        })
 
     return JsonResponse({"results": results})
 
+@login_required
+@require_POST
+def proveedor_create_express(request):
+    """API para crear proveedores al vuelo desde el formulario de movimientos."""
+    try:
+        razon_social = request.POST.get('razon_social', '').strip()
+        cuit = request.POST.get('cuit', '').strip()
+        telefono = request.POST.get('telefono', '').strip()
 
-# =====================================================
-#   ÓRDENES DE TRABAJO (OT PRO)
-# =====================================================
+        if not razon_social:
+            return JsonResponse({'status': 'error', 'message': 'La Razón Social es obligatoria.'}, status=400)
 
+        # Verificar duplicados por CUIT si se ingresó uno
+        if cuit and Proveedor.objects.filter(cuit=cuit).exists():
+            return JsonResponse({'status': 'error', 'message': 'Ya existe un proveedor con ese CUIT.'}, status=400)
 
-class OrdenTrabajoListView(OrdenTrabajoAccessMixin, ListView):
-    model = OrdenTrabajo
-    template_name = "finanzas/orden_trabajo_list.html"
-    context_object_name = "ordenes_trabajo"
-    paginate_by = 25
-
-    def get_queryset(self):
-        qs = OrdenTrabajo.objects.select_related(
-            "area",
-            "vehiculo",
-            "solicitante",
-            "responsable",
-        )
-        estado = (self.request.GET.get("estado") or "TODAS").strip()
-        fecha_desde = _parse_date_or_none(self.request.GET.get("desde"))
-        fecha_hasta = _parse_date_or_none(self.request.GET.get("hasta"))
-        q = (self.request.GET.get("q") or "").strip()
-        area_id = (self.request.GET.get("area") or "").strip()
-
-        if estado and estado != "TODAS":
-            qs = qs.filter(estado=estado)
-
-        if area_id:
-            qs = qs.filter(area_id=area_id)
-
-        if fecha_desde:
-            qs = qs.filter(fecha_ot__gte=fecha_desde)
-        if fecha_hasta:
-            qs = qs.filter(fecha_ot__lte=fecha_hasta)
-
-        if q:
-            qs = qs.filter(
-                Q(numero__icontains=q)
-                | Q(descripcion__icontains=q)
-                | Q(trabajos_realizados__icontains=q)
-                | Q(solicitante__apellido__icontains=q)
-                | Q(solicitante__nombre__icontains=q)
-                | Q(solicitante_texto__icontains=q)
-            )
-
-        return qs.order_by("-fecha_ot", "-id")
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        ordenes = self.object_list
-
-        total_estimado = Decimal("0.00")
-        total_final = Decimal("0.00")
-        for ot in ordenes:
-            if ot.importe_estimado:
-                total_estimado += ot.importe_estimado
-            if ot.importe_final:
-                total_final += ot.importe_final
-
-        ctx.update(
-            {
-                "q": (self.request.GET.get("q") or "").strip(),
-                "estado_actual": (self.request.GET.get("estado") or "TODAS").strip(),
-                "area_actual": (self.request.GET.get("area") or "").strip(),
-                "total_estimado_listado": total_estimado,
-                "total_final_listado": total_final,
-                "areas": Area.objects.filter(activo=True).order_by("nombre"),
-            }
-        )
-        ctx.update(_roles_ctx(self.request.user))
-        return ctx
-
-
-class OrdenTrabajoCreateView(OrdenTrabajoEditMixin, CreateView):
-    model = OrdenTrabajo
-    form_class = OrdenTrabajoForm
-    template_name = "finanzas/orden_trabajo_form.html"
-
-    def get_initial(self):
-        initial = super().get_initial()
-        if "fecha_ot" not in initial:
-            initial["fecha_ot"] = timezone.now().date()
-        return initial
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        if self.request.POST:
-            ctx["materiales_formset"] = OrdenTrabajoMaterialFormSet(self.request.POST)
-            ctx["adjuntos_formset"] = AdjuntoOrdenTrabajoFormSet(
-                self.request.POST, self.request.FILES
-            )
-        else:
-            ctx["materiales_formset"] = OrdenTrabajoMaterialFormSet()
-            ctx["adjuntos_formset"] = AdjuntoOrdenTrabajoFormSet()
-        ctx.update(_roles_ctx(self.request.user))
-        return ctx
-
-    @transaction.atomic
-    def form_valid(self, form):
-        context = self.get_context_data()
-        materiales_fs = context["materiales_formset"]
-        adjuntos_fs = context["adjuntos_formset"]
-
-        if not materiales_fs.is_valid() or not adjuntos_fs.is_valid():
-            return self.form_invalid(form)
-
-        ot = form.save(commit=False)
-        user = self.request.user
-
-        if user.is_authenticated:
-            if hasattr(ot, "creado_por") and not ot.creado_por:
-                ot.creado_por = user
-            if hasattr(ot, "actualizado_por"):
-                ot.actualizado_por = user
-
-        ot.save()
-        form.save_m2m()
-
-        materiales_fs.instance = ot
-        materiales_fs.save()
-
-        adjuntos_fs.instance = ot
-        adjuntos_fs.save()
-
-        messages.success(self.request, "Orden de trabajo creada correctamente.")
-        return redirect("finanzas:orden_trabajo_detail", pk=ot.pk)
-
-
-class OrdenTrabajoUpdateView(OrdenTrabajoEditMixin, UpdateView):
-    model = OrdenTrabajo
-    form_class = OrdenTrabajoForm
-    template_name = "finanzas/orden_trabajo_form.html"
-    context_object_name = "orden_trabajo"
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        if self.request.POST:
-            ctx["materiales_formset"] = OrdenTrabajoMaterialFormSet(
-                self.request.POST, instance=self.object
-            )
-            ctx["adjuntos_formset"] = AdjuntoOrdenTrabajoFormSet(
-                self.request.POST, self.request.FILES, instance=self.object
-            )
-        else:
-            ctx["materiales_formset"] = OrdenTrabajoMaterialFormSet(
-                instance=self.object
-            )
-            ctx["adjuntos_formset"] = AdjuntoOrdenTrabajoFormSet(
-                instance=self.object
-            )
-        ctx.update(_roles_ctx(self.request.user))
-        return ctx
-
-    @transaction.atomic
-    def form_valid(self, form):
-        context = self.get_context_data()
-        materiales_fs = context["materiales_formset"]
-        adjuntos_fs = context["adjuntos_formset"]
-
-        if not materiales_fs.is_valid() or not adjuntos_fs.is_valid():
-            return self.form_invalid(form)
-
-        ot_original = self.get_object()
-        ot = form.save(commit=False)
-        user = self.request.user
-
-        if user.is_authenticated:
-            if hasattr(ot, "creado_por") and not ot.creado_por:
-                ot.creado_por = getattr(ot_original, "creado_por", user)
-            if hasattr(ot, "actualizado_por"):
-                ot.actualizado_por = user
-
-        ot.save()
-        form.save_m2m()
-
-        materiales_fs.instance = ot
-        materiales_fs.save()
-
-        adjuntos_fs.instance = ot
-        adjuntos_fs.save()
-
-        messages.success(self.request, "Orden de trabajo actualizada correctamente.")
-        return redirect("finanzas:orden_trabajo_detail", pk=ot.pk)
-
-
-class OrdenTrabajoDetailView(OrdenTrabajoAccessMixin, DetailView):
-    model = OrdenTrabajo
-    template_name = "finanzas/orden_trabajo_detail.html"
-    context_object_name = "orden_trabajo"
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        ot = self.object
-
-        materiales = ot.materiales.all().order_by("id")
-        adjuntos = ot.adjuntos.all().order_by("id")
-
-        total_materiales = Decimal("0.00")
-        for m in materiales:
-            if m.costo_total:
-                total_materiales += m.costo_total
-
-        user = self.request.user
-        puede_generar_movimiento = (
-            es_staff_finanzas(user)
-            and getattr(ot, "movimiento_ingreso", None) is None
-            and ot.categoria_ingreso is not None
+        proveedor = Proveedor.objects.create(
+            razon_social=razon_social,
+            cuit=cuit,
+            telefono=telefono,
+            creado_por=request.user
         )
 
-        ctx.update(
-            {
-                "materiales": materiales,
-                "adjuntos": adjuntos,
-                "total_materiales": total_materiales,
-                "puede_generar_movimiento": puede_generar_movimiento,
-            }
-        )
-        ctx.update(_roles_ctx(user))
-        return ctx
+        return JsonResponse({
+            'status': 'success',
+            'id': proveedor.id,
+            'text': f"{proveedor.razon_social} ({proveedor.cuit or 'S/C'})",
+            'razon_social': proveedor.razon_social,
+            'cuit': proveedor.cuit or ''
+        })
 
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-class OrdenTrabajoGenerarMovimientoIngresoView(StaffRequiredMixin, View):
-    """
-    Genera un Movimiento de INGRESO a partir de una Orden de Trabajo.
-    - Usa importe_final si existe, si no importe_estimado.
-    - Usa categoría_ingreso configurada en la OT.
-    - Vincula el movimiento a la OT (si el modelo tiene ese FK).
-    """
+# =========================================================
+# 8) REPORTES Y COMPROBANTES
+# =========================================================
 
-    @transaction.atomic
-    def post(self, request, pk):
-        ot = get_object_or_404(OrdenTrabajo, pk=pk)
+class ReciboIngresoPrintView(LoginRequiredMixin, View):
+    def get(self, request, pk):
+        mov = get_object_or_404(Movimiento, pk=pk)
+        
+        # 1. Validación de Tipo: Solo Ingresos
+        if mov.tipo != Movimiento.TIPO_INGRESO:
+            return HttpResponse("Este comprobante es válido solo para movimientos de Ingreso.", status=400)
 
-        if getattr(ot, "movimiento_ingreso", None) is not None:
-            messages.warning(
-                request,
-                "Esta orden de trabajo ya tiene un movimiento de ingreso vinculado.",
-            )
-            return redirect("finanzas:orden_trabajo_detail", pk=ot.pk)
+        # 2. Validación de Estado (SEGURIDAD): Solo Aprobados
+        if mov.estado != Movimiento.ESTADO_APROBADO:
+            return HttpResponse("No se puede emitir recibo de un movimiento en Borrador o Rechazado.", status=400)
 
-        if ot.categoria_ingreso is None:
-            messages.error(
-                request,
-                "La orden de trabajo no tiene configurada la categoría contable de ingreso. Completala antes de generar el movimiento.",
-            )
-            return redirect("finanzas:orden_trabajo_detail", pk=ot.pk)
+        # 3. Conversión a Letras (Num2Words)
+        try:
+            monto_letras = num2words(mov.monto, lang='es', to='currency', currency='ARS')
+            # Limpieza extra: "con 00/100 centavos" -> "con 00/100"
+            monto_letras = monto_letras.upper().replace("EUROS", "PESOS").replace("EURO", "PESO")
+        except:
+            monto_letras = f"${mov.monto} PESOS"
 
-        # Si el modelo define un estado 'FINALIZADA', lo usamos como requisito
-        estado_finalizada = getattr(OrdenTrabajo, "ESTADO_FINALIZADA", None)
-        if estado_finalizada and ot.estado != estado_finalizada:
-            messages.error(
-                request,
-                "Solo se puede generar el movimiento de ingreso cuando la OT está marcada como FINALIZADA.",
-            )
-            return redirect("finanzas:orden_trabajo_detail", pk=ot.pk)
-
-        monto = ot.importe_final or ot.importe_estimado or Decimal("0.00")
-        if monto <= 0:
-            messages.error(
-                request,
-                "El importe de la OT es cero o negativo. Cargá un importe estimado o final antes de generar el movimiento.",
-            )
-            return redirect("finanzas:orden_trabajo_detail", pk=ot.pk)
-
-        beneficiario = ot.solicitante
-        beneficiario_nombre = ""
-        beneficiario_dni = ""
-        if beneficiario:
-            beneficiario_nombre = (
-                f"{beneficiario.apellido} {beneficiario.nombre}".strip()
-            )
-            beneficiario_dni = beneficiario.dni or ""
-
-        descripcion = f"Trabajo {ot.numero or ot.id}"
-        if ot.descripcion:
-            descripcion += f" – {ot.descripcion[:80]}"
-
-        # Creamos el movimiento con lo básico y seguro
-        movimiento = Movimiento(
-            tipo=Movimiento.TIPO_INGRESO,
-            fecha_operacion=timezone.now().date(),
-            monto=monto,
-            categoria=ot.categoria_ingreso,
-            area=ot.area,
-            descripcion=descripcion,
-            observaciones=(
-                f"Movimiento generado automáticamente desde la Orden de trabajo "
-                f"{ot.numero or ot.id}."
-            ),
-            estado=Movimiento.ESTADO_APROBADO,
-        )
-
-        if hasattr(movimiento, "tipo_pago_persona"):
-            movimiento.tipo_pago_persona = getattr(
-                Movimiento,
-                "PAGO_PERSONA_NINGUNO",
-                movimiento.tipo_pago_persona,
-            )
-
-        # Beneficiario y datos asociados (si existen en el modelo)
-        if beneficiario and hasattr(movimiento, "beneficiario"):
-            movimiento.beneficiario = beneficiario
-            if hasattr(movimiento, "beneficiario_dni"):
-                movimiento.beneficiario_dni = beneficiario_dni
-            if hasattr(movimiento, "beneficiario_nombre"):
-                movimiento.beneficiario_nombre = beneficiario_nombre
-
-        # Vehículo y texto (si existen en el modelo)
-        if ot.vehiculo and hasattr(movimiento, "vehiculo"):
-            movimiento.vehiculo = ot.vehiculo
-            if hasattr(movimiento, "vehiculo_texto"):
-                movimiento.vehiculo_texto = str(ot.vehiculo)
-
-        if request.user.is_authenticated:
-            if hasattr(movimiento, "creado_por") and not movimiento.creado_por:
-                movimiento.creado_por = request.user
-            if hasattr(movimiento, "actualizado_por"):
-                movimiento.actualizado_por = request.user
-
-        # Si el modelo de Movimiento tiene FK a OrdenTrabajo, lo usamos
-        if hasattr(movimiento, "orden_trabajo"):
-            movimiento.orden_trabajo = ot
-
-        movimiento.save()
-
-        # Vincular desde la OT si tiene campo movimiento_ingreso
-        if hasattr(ot, "movimiento_ingreso"):
-            ot.movimiento_ingreso = movimiento
-            ot.save()
-
-        messages.success(
-            request,
-            "Movimiento de ingreso generado y aprobado correctamente a partir de la orden de trabajo.",
-        )
-        return redirect("finanzas:movimiento_detail", pk=movimiento.pk)
+        # 4. Contexto
+        context = {
+            'mov': mov,
+            'monto_letras': monto_letras,
+            'hoy': timezone.now(),
+            'municipio': 'COMUNA DE TACUARENDÍ',
+            'cuit_municipio': '30-67433889-5', # ¡Asegurate de poner el real!
+            'direccion': 'Calle 8 y 5- CP 3587',
+            'provincia': 'Santa Fe',
+            'logo_url': '/static/finanzas/img/logo-comuna.png',
+            'usuario': request.user, # Para que salga "Cajero: Juan"
+        }
+        
+        return render(request, 'finanzas/recibo_print.html', context)

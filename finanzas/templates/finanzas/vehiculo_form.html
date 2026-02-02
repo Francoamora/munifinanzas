@@ -1,147 +1,283 @@
 {% extends "finanzas/base.html" %}
+{% load static %}
 
 {% block title %}
-  {% if form.instance.pk %}
-    Editar vehículo – Flota
-  {% else %}
-    Nuevo vehículo – Flota
-  {% endif %}
+  {% if form.instance.pk %}Editar: {{ form.instance.patente }}{% else %}Alta de Vehículo{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Estilo PRO para la Patente */
+    .input-plate {
+        background-color: #1e293b;
+        color: white;
+        border: 4px solid #000;
+        border-radius: 8px;
+        padding: 10px;
+        font-family: 'Courier New', monospace;
+        font-weight: 800;
+        letter-spacing: 4px;
+        text-transform: uppercase;
+        font-size: 1.5rem;
+        text-align: center;
+        width: 100%;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+    }
+    .input-plate:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.3);
+    }
+
+    /* Labels elegantes */
+    .form-label-pro {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: #64748b;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.5rem;
+        display: block;
+    }
+
+    /* Inputs estilizados */
+    .form-control, .form-select {
+        border-radius: 8px;
+        padding: 0.6rem 1rem;
+        border-color: #e2e8f0;
+        font-weight: 500;
+        color: #334155;
+    }
+    .form-control:focus, .form-select:focus {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    /* Switch Card */
+    .status-card {
+        transition: all 0.3s ease;
+        border: 2px solid transparent;
+    }
+    .form-check-input:checked ~ .status-card-content .status-text {
+        color: #15803d;
+    }
+</style>
 {% endblock %}
 
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
-  <div>
-    <p class="text-muted small mb-1 d-flex flex-wrap align-items-center gap-2">
-      <span>Flota y vehículos</span>
-      <span>·</span>
-      {% if form.instance.pk %}
-        <span>Edición de vehículo</span>
-      {% else %}
-        <span>Alta de vehículo</span>
-      {% endif %}
-    </p>
-    <h1 class="h4 mb-1">
-      {% if form.instance.pk %}
-        Editar vehículo
-      {% else %}
-        Nuevo vehículo
-      {% endif %}
-    </h1>
-    <div class="small text-muted">
-      Cargá la patente, el área responsable y los datos de referencia para odómetro y horómetro.
-    </div>
-  </div>
+<div class="row justify-content-center">
+    <div class="col-12 col-xl-9">
 
-  <div class="d-flex flex-column align-items-end gap-2">
-    <a href="{% url 'finanzas:vehiculo_list' %}" class="btn btn-outline-secondary btn-sm">
-      Volver al listado
-    </a>
-    {% if form.instance.pk %}
-      <div class="small text-muted text-end">
-        {% with v=form.instance %}
-          {% if v.km_acumulados_viajes %}
-            Km registrados en viajes: <strong>{{ v.km_acumulados_viajes }} km</strong>
-          {% else %}
-            Sin viajes registrados aún para este vehículo.
-          {% endif %}
-        {% endwith %}
-      </div>
-    {% endif %}
-  </div>
+        <div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
+            <div>
+                <h1 class="h3 fw-bold text-dark mb-1">
+                    {% if form.instance.pk %}
+                        <i class="bi bi-pencil-square me-2 text-primary"></i>Editar Ficha Técnica
+                    {% else %}
+                        <i class="bi bi-truck-front-fill me-2 text-primary"></i>Alta de Unidad
+                    {% endif %}
+                </h1>
+                <p class="text-secondary mb-0 small">
+                    Complete los datos técnicos para el control de flota y mantenimiento.
+                </p>
+            </div>
+            <a href="{% url 'finanzas:vehiculo_list' %}" class="btn btn-white border shadow-sm fw-bold px-3 hover-lift">
+                <i class="bi bi-x-lg me-2"></i>Cancelar
+            </a>
+        </div>
+
+        <form method="post" class="needs-validation" novalidate>
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger border-0 shadow-sm mb-4 rounded-3 d-flex align-items-center gap-3">
+                    <div class="bg-danger bg-opacity-25 text-danger rounded-circle p-2">
+                        <i class="bi bi-exclamation-octagon-fill fs-4"></i>
+                    </div>
+                    <div>
+                        <div class="fw-bold">Error en el formulario</div>
+                        <div class="small">{{ form.non_field_errors }}</div>
+                    </div>
+                </div>
+            {% endif %}
+
+            <div class="row g-4">
+                
+                <div class="col-lg-8">
+                    <div class="card border-0 shadow-sm rounded-4 h-100">
+                        <div class="card-header bg-white py-3 px-4 border-bottom">
+                            <h6 class="mb-0 fw-bold text-dark small ls-1 text-uppercase">
+                                <i class="bi bi-card-heading me-2 text-primary opacity-75"></i>Identificación
+                            </h6>
+                        </div>
+                        <div class="card-body p-4">
+                            
+                            <div class="mb-4 text-center">
+                                <label class="form-label-pro text-center mb-2">Dominio / Patente</label>
+                                <div class="d-flex justify-content-center">
+                                    {{ form.patente }} 
+                                </div>
+                                <div class="form-text mt-2 small"><i class="bi bi-info-circle me-1"></i>Ingresar sin espacios ni guiones (Ej: AA123BB)</div>
+                                {% if form.patente.errors %}
+                                    <div class="text-danger small fw-bold mt-1">{{ form.patente.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label class="form-label-pro">Descripción / Nombre Interno</label>
+                                    {{ form.descripcion }}
+                                    {% if form.descripcion.errors %}<div class="text-danger small mt-1">{{ form.descripcion.errors.0 }}</div>{% endif %}
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label-pro">Marca</label>
+                                    {{ form.marca }}
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label-pro">Modelo</label>
+                                    {{ form.modelo }}
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label-pro">Tipo de Vehículo</label>
+                                    {{ form.tipo }}
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label-pro">Área Asignada</label>
+                                    {{ form.area }}
+                                </div>
+                            </div>
+
+                            <div class="mt-4 pt-3 border-top border-light">
+                                <label class="form-label-pro text-muted mb-3">Datos de Fábrica (Opcional)</label>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-light text-muted border-end-0"><small>VIN</small></span>
+                                            {{ form.chasis }}
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-light text-muted border-end-0"><small>MOT</small></span>
+                                            {{ form.motor }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-4">
+                    
+                    <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
+                        <div class="card-header bg-white py-3 px-4 border-bottom">
+                            <h6 class="mb-0 fw-bold text-dark small ls-1 text-uppercase">
+                                <i class="bi bi-power me-2 text-success opacity-75"></i>Estado
+                            </h6>
+                        </div>
+                        <div class="card-body p-4 bg-light bg-opacity-25">
+                            <div class="form-check form-switch p-0 m-0 d-flex align-items-center justify-content-between p-3 bg-white rounded-3 border shadow-sm">
+                                <label class="form-check-label fw-bold text-dark cursor-pointer" for="{{ form.activo.id_for_label }}">
+                                    Operativo
+                                    <span class="d-block small text-muted fw-normal mt-1">Disponible para viajes</span>
+                                </label>
+                                {{ form.activo }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm rounded-4 mb-4">
+                        <div class="card-header bg-white py-3 px-4 border-bottom">
+                            <h6 class="mb-0 fw-bold text-dark small ls-1 text-uppercase">
+                                <i class="bi bi-speedometer2 me-2 text-info opacity-75"></i>Contadores
+                            </h6>
+                        </div>
+                        <div class="card-body p-4">
+                            <div class="mb-3">
+                                <label class="form-label-pro">Kilometraje (Odómetro)</label>
+                                <div class="input-group input-group-lg">
+                                    {{ form.kilometraje_referencia }}
+                                    <span class="input-group-text bg-light text-muted fs-6">km</span>
+                                </div>
+                                <div class="form-text small">Valor inicial de referencia.</div>
+                            </div>
+                            
+                            <div class="mb-0">
+                                <label class="form-label-pro">Horómetro (Maquinaria)</label>
+                                <div class="input-group">
+                                    {{ form.horometro_referencia }}
+                                    <span class="input-group-text bg-light text-muted">Hs</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 shadow-sm rounded-4">
+                        <div class="card-body p-4">
+                            <label class="form-label-pro"><i class="bi bi-sticky me-1"></i>Notas / Observaciones</label>
+                            {{ form.observaciones }}
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-end gap-3 mt-4 pt-3 border-top">
+                <a href="{% url 'finanzas:vehiculo_list' %}" class="btn btn-white border shadow-sm px-4 fw-bold text-secondary">
+                    Cancelar
+                </a>
+                <button type="submit" class="btn btn-primary px-5 fw-bold shadow-sm hover-lift">
+                    <i class="bi bi-save me-2"></i>Guardar Vehículo
+                </button>
+            </div>
+
+        </form>
+    </div>
 </div>
 
-<form method="post" novalidate class="card shadow-sm">
-  {% csrf_token %}
-  <div class="card-body">
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // 1. Forzar estilo de patente en el input correspondiente
+        const patenteInput = document.getElementById("id_patente");
+        if (patenteInput) {
+            patenteInput.classList.add("input-plate");
+            patenteInput.addEventListener('input', function() {
+                this.value = this.value.toUpperCase().replace(/\s/g, '');
+            });
+        }
 
-    {% if form.non_field_errors %}
-      <div class="alert alert-danger py-2 small">
-        {{ form.non_field_errors }}
-      </div>
-    {% endif %}
+        // 2. Estilizar el Checkbox de Activo
+        const activoInput = document.getElementById("id_activo");
+        if (activoInput) {
+            activoInput.classList.add("form-check-input");
+            activoInput.style.width = "3em";
+            activoInput.style.height = "1.5em";
+            activoInput.style.cursor = "pointer";
+        }
 
-    <h2 class="h6 text-uppercase text-muted mb-2">Identificación</h2>
-    <div class="row g-3 mb-3">
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.patente.id_for_label }}">Patente / código</label>
-        {{ form.patente }}
-        {% for error in form.patente.errors %}
-          <div class="text-danger small">{{ error }}</div>
-        {% endfor %}
-        <div class="form-text small">
-          Ej: ABC123, vehículo sin patente, retroexcavadora, etc.
-        </div>
-      </div>
-      <div class="col-12 col-md-5">
-        <label class="form-label mb-1" for="{{ form.descripcion.id_for_label }}">Descripción</label>
-        {{ form.descripcion }}
-        {% for error in form.descripcion.errors %}
-          <div class="text-danger small">{{ error }}</div>
-        {% endfor %}
-        <div class="form-text small">
-          Breve descripción para reconocer el vehículo en listados y reportes.
-        </div>
-      </div>
-      <div class="col-12 col-md-3">
-        <label class="form-label mb-1" for="{{ form.area.id_for_label }}">Área responsable</label>
-        {{ form.area }}
-        {% for error in form.area.errors %}
-          <div class="text-danger small">{{ error }}</div>
-        {% endfor %}
-      </div>
-    </div>
-
-    <h2 class="h6 text-uppercase text-muted mb-2">Referencia de uso</h2>
-    <div class="row g-3 mb-3">
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.kilometraje_referencia.id_for_label }}">Km referencia</label>
-        {{ form.kilometraje_referencia }}
-        {% for error in form.kilometraje_referencia.errors %}
-          <div class="text-danger small">{{ error }}</div>
-        {% endfor %}
-        <div class="form-text small">
-          Último kilometraje conocido (alta o último servicio).
-        </div>
-      </div>
-      <div class="col-12 col-md-4">
-        <label class="form-label mb-1" for="{{ form.horometro_referencia.id_for_label }}">Horómetro referencia</label>
-        {{ form.horometro_referencia }}
-        {% for error in form.horometro_referencia.errors %}
-          <div class="text-danger small">{{ error }}</div>
-        {% endfor %}
-        <div class="form-text small">
-          Horas de uso acumuladas (para máquinas, si corresponde).
-        </div>
-      </div>
-      <div class="col-12 col-md-4 d-flex align-items-center">
-        <div class="form-check mt-3">
-          {{ form.activo }}
-          <label class="form-check-label ms-1" for="{{ form.activo.id_for_label }}">
-            Vehículo activo en la flota
-          </label>
-          {% for error in form.activo.errors %}
-            <div class="text-danger small">{{ error }}</div>
-          {% endfor %}
-        </div>
-      </div>
-    </div>
-
-  </div>
-
-  <div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <div class="small text-muted">
-      Los campos marcados con <span class="text-danger">*</span> en el formulario son obligatorios.
-    </div>
-    <div class="d-flex flex-wrap gap-2">
-      <a href="{% url 'finanzas:vehiculo_list' %}" class="btn btn-outline-secondary btn-sm">
-        Cancelar
-      </a>
-      <button type="submit" class="btn btn-primary btn-sm">
-        {% if form.instance.pk %}Guardar cambios{% else %}Guardar vehículo{% endif %}
-      </button>
-    </div>
-  </div>
-</form>
+        // 3. Estilizar automáticamente el resto de los inputs si no tienen clase
+        const inputs = document.querySelectorAll('input:not([type="checkbox"]):not([type="radio"]), select, textarea');
+        inputs.forEach(input => {
+            if (!input.classList.contains('input-plate')) {
+                input.classList.add('form-control');
+            }
+            if (input.tagName === 'SELECT') {
+                input.classList.replace('form-control', 'form-select');
+            }
+        });
+        
+        // 4. Placeholders inteligentes
+        if(document.getElementById("id_chasis")) document.getElementById("id_chasis").placeholder = "Opcional";
+        if(document.getElementById("id_motor")) document.getElementById("id_motor").placeholder = "Opcional";
+        if(document.getElementById("id_observaciones")) document.getElementById("id_observaciones").placeholder = "Detalles de mantenimiento, estado de cubiertas, etc.";
+    });
+</script>
 
 {% endblock %}

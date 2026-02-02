@@ -1,0 +1,37 @@
+{% extends "finanzas/base.html" %}
+
+{% block title %}Confirmar Eliminación{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6 col-lg-5">
+        <div class="card border-0 shadow-lg text-center p-4">
+            <div class="card-body">
+                <div class="mb-4 text-danger">
+                    <i class="bi bi-exclamation-circle-fill" style="font-size: 4rem;"></i>
+                </div>
+                
+                <h4 class="fw-bold mb-3">¿Estás seguro?</h4>
+                <p class="text-muted mb-4">
+                    Estás a punto de eliminar permanentemente: <br>
+                    <strong>"{{ object }}"</strong>.
+                </p>
+                
+                <div class="alert alert-warning border-0 small">
+                    <i class="bi bi-info-circle me-1"></i> Esta acción no se puede deshacer.
+                </div>
+
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-danger fw-bold py-2 shadow-sm">
+                            <i class="bi bi-trash3-fill me-2"></i>Sí, Eliminar
+                        </button>
+                        <a href="javascript:history.back()" class="btn btn-light text-muted">Cancelar</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

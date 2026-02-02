@@ -1,0 +1,40 @@
+{% if is_paginated %}
+<nav aria-label="Navegación de página" class="mt-4">
+  <ul class="pagination justify-content-center pagination-sm mb-0">
+    
+    {# Botón Anterior #}
+    {% if page_obj.has_previous %}
+      <li class="page-item">
+        <a class="page-link border-0 text-secondary bg-transparent" href="?page={{ page_obj.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="Anterior">
+          <i class="bi bi-chevron-left me-1"></i> Anterior
+        </a>
+      </li>
+    {% else %}
+      <li class="page-item disabled">
+        <span class="page-link border-0 bg-transparent text-muted opacity-50"><i class="bi bi-chevron-left me-1"></i> Anterior</span>
+      </li>
+    {% endif %}
+
+    {# Indicador de páginas #}
+    <li class="page-item disabled">
+      <span class="page-link border-0 bg-transparent text-dark fw-semibold mx-2">
+        Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}
+      </span>
+    </li>
+
+    {# Botón Siguiente #}
+    {% if page_obj.has_next %}
+      <li class="page-item">
+        <a class="page-link border-0 text-primary bg-transparent fw-bold" href="?page={{ page_obj.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" aria-label="Siguiente">
+          Siguiente <i class="bi bi-chevron-right ms-1"></i>
+        </a>
+      </li>
+    {% else %}
+      <li class="page-item disabled">
+        <span class="page-link border-0 bg-transparent text-muted opacity-50">Siguiente <i class="bi bi-chevron-right ms-1"></i></span>
+      </li>
+    {% endif %}
+    
+  </ul>
+</nav>
+{% endif %}

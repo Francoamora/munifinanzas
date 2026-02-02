@@ -1,0 +1,265 @@
+{% extends "finanzas/base.html" %}
+{% load humanize %}
+{% load static %}
+
+{% block title %}OT {{ orden.numero|default:"BORRADOR" }}{% endblock %}
+
+{% block content %}
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 print-hide animate-fade-in gap-3">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0 small">
+                <li class="breadcrumb-item"><a href="{% url 'finanzas:orden_trabajo_list' %}" class="text-decoration-none text-secondary fw-bold">Operativo</a></li>
+                <li class="breadcrumb-item active">Detalle OT</li>
+            </ol>
+        </nav>
+        <div class="d-flex align-items-center gap-2 mt-1">
+            <h1 class="h4 fw-bold text-dark mb-0">Orden #{{ orden.numero|default:"BORRADOR" }}</h1>
+            <span class="badge {% if orden.estado == 'FINALIZADA' %}bg-success-subtle text-success border border-success-subtle{% elif orden.estado == 'EN_PROCESO' %}bg-warning-subtle text-warning-emphasis border border-warning-subtle{% elif orden.estado == 'BORRADOR' %}bg-secondary-subtle text-secondary border border-secondary-subtle{% else %}bg-danger-subtle text-danger border border-danger-subtle{% endif %}">
+                {{ orden.get_estado_display|upper }}
+            </span>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button onclick="window.print()" class="btn btn-dark shadow-sm fw-bold hover-lift">
+            <i class="bi bi-printer-fill me-2"></i>Imprimir
+        </button>
+
+        {% if perms.finanzas.change_ordentrabajo %}
+            {% if orden.estado != 'ANULADA' and orden.estado != 'FINALIZADA' %}
+            <a href="{% url 'finanzas:orden_trabajo_update' orden.pk %}" class="btn btn-warning shadow-sm fw-bold border text-dark hover-lift">
+                <i class="bi bi-pencil-square me-2"></i>Editar
+            </a>
+            {% endif %}
+        {% endif %}
+    </div>
+</div>
+
+<div class="card border border-dark rounded-0 bg-white mx-auto shadow-lg" style="max-width: 210mm; min-height: 297mm;" id="printableArea">
+    
+    <div class="card-body p-5 position-relative">
+        
+        <div class="row border-bottom border-2 border-dark pb-3 mb-4 align-items-center">
+            <div class="col-2 text-center">
+                <img src="{% static 'finanzas/img/logo-comuna.png' %}" onerror="this.style.display='none'" alt="Logo" style="max-width: 80px; height: auto;">
+            </div>
+            <div class="col-6 border-end border-dark">
+                <h4 class="fw-bold text-dark mb-0 lh-1">COMUNA DE TACUARENDÍ</h4>
+                <div class="small text-muted mt-1">Santa Fe, Argentina</div>
+                <div class="badge bg-dark text-white rounded-0 text-uppercase ls-1 mt-1" style="font-size: 0.65rem;">Obras y Servicios Públicos</div>
+            </div>
+            <div class="col-4 text-end">
+                <div class="text-uppercase small fw-bold text-muted mb-1">ORDEN DE TRABAJO</div>
+                <div class="display-6 fw-bold text-dark font-monospace lh-1">{{ orden.numero|default:"BORRADOR" }}</div>
+                <div class="small mt-2 font-monospace">Fecha: <strong>{{ orden.fecha_ot|date:"d/m/Y" }}</strong></div>
+            </div>
+        </div>
+
+        <div class="row mb-4 g-0">
+            <div class="col-7">
+                <div class="border border-dark p-3 bg-light bg-opacity-25 h-100 position-relative">
+                    <span class="position-absolute top-0 start-0 bg-dark text-white px-2 py-0 small fw-bold text-uppercase" style="font-size: 0.65rem;">Detalle del Trabajo</span>
+                    <div class="mt-2">
+                        <div class="fs-5 fw-bold text-dark text-uppercase">{{ orden.titulo|default:"Tarea General" }}</div>
+                        
+                        <div class="mt-2">
+                            <small class="text-muted d-block fw-bold text-uppercase" style="font-size: 0.7rem;">Descripción:</small>
+                            <span class="text-dark fw-medium small">{{ orden.descripcion|truncatechars:150 }}</span>
+                        </div>
+                        
+                        {% if orden.ubicacion %}
+                        <div class="mt-2 pt-2 border-top border-dark border-opacity-10">
+                            <small class="text-muted"><i class="bi bi-geo-alt-fill me-1"></i>Ubicación:</small> 
+                            <span class="fw-bold text-dark small">{{ orden.ubicacion }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-5">
+                <div class="border border-dark border-start-0 p-3 h-100 position-relative">
+                    <span class="position-absolute top-0 start-0 bg-white border-bottom border-end border-dark px-2 py-0 small fw-bold text-uppercase text-muted" style="font-size: 0.65rem;">Clasificación</span>
+                    <div class="mt-1">
+                        <ul class="list-unstyled small mb-0">
+                            <li class="mb-2 d-flex justify-content-between align-items-center border-bottom border-dark border-opacity-10 pb-1">
+                                <span class="text-muted">Prioridad:</span>
+                                <span class="fw-bold text-end {% if orden.prioridad == 'URGENTE' %}text-danger{% else %}text-dark{% endif %}">
+                                    {{ orden.get_prioridad_display|upper }}
+                                </span>
+                            </li>
+                            <li class="mb-2 d-flex justify-content-between align-items-center border-bottom border-dark border-opacity-10 pb-1">
+                                <span class="text-muted">Tipo:</span>
+                                <span class="fw-bold text-dark text-end text-uppercase">
+                                    {{ orden.tipo_trabajo|default:"Mantenimiento" }}
+                                </span>
+                            </li>
+                            <li class="d-flex justify-content-between align-items-center pt-1">
+                                <span class="text-muted">Solicitó:</span>
+                                <span class="fw-bold text-dark text-end small text-truncate" style="max-width: 120px;">
+                                    {{ orden.solicitante|default:orden.solicitante_texto|default:"Interno" }}
+                                </span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <div class="border border-dark p-0">
+                <div class="bg-dark text-white px-3 py-1 fw-bold text-uppercase small">
+                    <i class="bi bi-tools me-2"></i>Recursos Asignados
+                </div>
+                <div class="p-3">
+                    <div class="row align-items-center">
+                        <div class="col-6 border-end border-dark border-opacity-25">
+                            <small class="text-uppercase text-muted fw-bold d-block mb-1" style="font-size: 0.65rem;">Responsable / Capataz</small>
+                            <span class="fs-6 fw-bold text-dark">
+                                {{ orden.responsable|default:orden.responsable_texto|default:"A Designar" }}
+                            </span>
+                        </div>
+                        <div class="col-6 ps-4">
+                            <small class="text-uppercase text-muted fw-bold d-block mb-1" style="font-size: 0.65rem;">Vehículo / Maquinaria</small>
+                            {% if orden.vehiculo %}
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="fs-6 font-monospace fw-bold">{{ orden.vehiculo.patente }}</span> 
+                                    <span class="text-muted small border-start ps-2 border-dark">{{ orden.vehiculo.descripcion }}</span>
+                                </div>
+                            {% else %}
+                                <span class="text-muted fst-italic small">No requiere movilidad</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <table class="table table-bordered border-dark mb-0 table-sm" style="font-size: 0.9rem;">
+                <thead class="bg-dark text-white text-center text-uppercase small">
+                    <tr>
+                        <th style="width: 50%;" class="py-2">Material / Insumo</th>
+                        <th style="width: 10%;">Cant.</th>
+                        <th style="width: 10%;">Unid.</th>
+                        <th style="width: 15%;">Costo Unit.</th>
+                        <th style="width: 15%;">Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody class="align-middle">
+                    {% for mat in orden.materiales.all %}
+                    <tr>
+                        <td class="ps-3 py-2 fw-medium text-dark">{{ mat.descripcion }}</td>
+                        <td class="text-center font-monospace">{{ mat.cantidad|floatformat:0 }}</td>
+                        <td class="text-center small text-muted">{{ mat.unidad|default:"-" }}</td>
+                        <td class="text-end pe-3 font-monospace text-secondary">
+                            {% if mat.costo_unitario > 0 %}${{ mat.costo_unitario|intcomma }}{% else %}-{% endif %}
+                        </td>
+                        <td class="text-end pe-3 font-monospace fw-bold bg-light">
+                            {% if mat.subtotal > 0 %}${{ mat.subtotal|intcomma }}{% else %}-{% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted fst-italic py-3 small">
+                            No se especificaron materiales para esta orden.
+                        </td>
+                    </tr>
+                    <tr style="height: 25px;"><td class="bg-light opacity-25"></td><td></td><td></td><td></td><td></td></tr>
+                    <tr style="height: 25px;"><td class="bg-light opacity-25"></td><td></td><td></td><td></td><td></td></tr>
+                    {% endfor %}
+                    
+                    {% if orden.materiales.count < 3 and orden.materiales.count > 0 %}
+                        <tr style="height: 25px;"><td class="bg-light opacity-25"></td><td></td><td></td><td></td><td></td></tr>
+                    {% endif %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="4" class="text-end fw-bold text-uppercase pe-3 bg-light border-top-2 border-dark align-middle">Costo Estimado</td>
+                        <td class="text-end fw-bold bg-light pe-3 fs-6 font-monospace border-top-2 border-dark text-dark">
+                            ${{ orden.costo_total_materiales|intcomma }}
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <div class="mb-5">
+            <div class="bg-light border border-dark px-3 py-1 fw-bold text-uppercase small d-flex justify-content-between">
+                <span>Informe Técnico / Resolución</span>
+                <i class="bi bi-pen-fill opacity-25"></i>
+            </div>
+            <div class="border border-dark border-top-0 p-3" style="min-height: 100px;">
+                {% if orden.trabajos_realizados %}
+                    <p class="mb-0 text-dark font-monospace small" style="white-space: pre-line;">{{ orden.trabajos_realizados }}</p>
+                {% else %}
+                    <div style="border-bottom: 1px dotted #ccc; height: 25px; margin-bottom: 25px;"></div>
+                    <div style="border-bottom: 1px dotted #ccc; height: 25px; margin-bottom: 25px;"></div>
+                    <div style="border-bottom: 1px dotted #ccc; height: 25px;"></div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="row mt-auto pt-5 align-items-end justify-content-center g-4">
+            <div class="col-4 text-center">
+                <div class="border-top border-dark mx-3 pt-2">
+                    <small class="d-block fw-bold text-uppercase" style="font-size: 0.7rem;">Responsable Ejecución</small>
+                    <small class="text-muted small">Firma</small>
+                </div>
+            </div>
+            <div class="col-4 text-center">
+                <div class="border-top border-dark mx-3 pt-2">
+                    <small class="d-block fw-bold text-uppercase" style="font-size: 0.7rem;">Autorizó (Obras)</small>
+                    <small class="text-muted small">Firma y Sello</small>
+                </div>
+            </div>
+            <div class="col-4 text-center">
+                <div class="border-top border-dark mx-3 pt-2">
+                    <small class="d-block fw-bold text-uppercase" style="font-size: 0.7rem;">Conforme</small>
+                    <small class="text-muted small">Firma y Aclaración</small>
+                </div>
+            </div>
+        </div>
+
+        {% if orden.estado == 'ANULADA' %}
+        <div class="position-absolute top-50 start-50 translate-middle text-danger opacity-25" 
+             style="transform: translate(-50%, -50%) rotate(-45deg); font-size: 8rem; font-weight: 900; z-index: 0; pointer-events: none; border: 10px solid currentColor; padding: 20px;">
+            ANULADA
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+
+<style>
+    /* Estilos Impresión PRO */
+    @media print {
+        @page { margin: 0; size: A4; }
+        body { 
+            background-color: white !important; 
+            -webkit-print-color-adjust: exact !important; 
+            print-color-adjust: exact !important; 
+        }
+        .print-hide { display: none !important; }
+        #printableArea { 
+            box-shadow: none !important; 
+            border: none !important; 
+            margin: 0 !important; 
+            width: 100% !important; 
+            max-width: 100% !important;
+        }
+        .card { border: none !important; }
+        .bg-dark { background-color: #212529 !important; color: white !important; }
+        .bg-light { background-color: #f8f9fa !important; }
+        .badge { border: 1px solid #000; color: #000; }
+        a { text-decoration: none !important; color: black !important; }
+    }
+    
+    .font-monospace { font-family: 'Consolas', 'Monaco', 'Courier New', monospace; letter-spacing: -0.5px; }
+    .ls-1 { letter-spacing: 1px; }
+    .hover-lift:hover { transform: translateY(-2px); transition: transform 0.2s; }
+</style>
+
+{% endblock %}
