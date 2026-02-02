@@ -20,7 +20,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 
 # === MIXINS PROPIOS ===
 from .mixins import (
-    roles_ctx, StaffRequiredMixin, OperadorFinanzasRequiredMixin,
+    roles_ctx, es_staff_finanzas, StaffRequiredMixin, OperadorFinanzasRequiredMixin,OperadorSocialRequiredMixin,
     MovimientosAccessMixin, DashboardAccessMixin, OrdenPagoAccessMixin,
     OrdenPagoEditMixin, PersonaCensoAccessMixin, PersonaCensoEditMixin,
     es_staff_finanzas
