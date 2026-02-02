@@ -953,12 +953,20 @@ class OrdenPagoGenerarMovimientoView(StaffRequiredMixin, View):
         return redirect("finanzas:movimiento_detail", pk=mov.pk)
 
 
-# =========================================================
+## =========================================================
 # 6) PERSONAS (SOCIAL)
 # =========================================================
 
-# Asegurate de tener esto importado arriba en tu archivo:
-# from .mixins import puede_ver_historial_economico, PersonaCensoAccessMixin, PersonaCensoEditMixin, OperadorFinanzasRequiredMixin
+# --- FIX: IMPORTACIONES LOCALES PARA EVITAR ERROR 500 ---
+# Esto asegura que las funciones existan en este bloque
+from django.db.models import Sum, Q
+from django.shortcuts import redirect
+from .mixins import (
+    puede_ver_historial_economico, 
+    PersonaCensoAccessMixin, 
+    PersonaCensoEditMixin,
+    roles_ctx
+)
 
 class PersonaListView(PersonaCensoAccessMixin, ListView):
     model = Beneficiario
@@ -999,11 +1007,12 @@ class PersonaListView(PersonaCensoAccessMixin, ListView):
             qs = qs.filter(percibe_beneficio=True)
             
         # ¿Paga Servicios?
+        # NOTA: Si esto falla, cambiar 'movimientos' por 'movimiento_set' según tu modelo
         servicios = self.request.GET.get("servicios")
         if servicios == "si":
             qs = qs.filter(
                 Q(paga_servicios=True) | 
-                Q(movimientos__tipo='INGRESO')
+                Q(movimiento_set__tipo='INGRESO') 
             ).distinct()
 
         return qs
@@ -1030,8 +1039,11 @@ class PersonaListView(PersonaCensoAccessMixin, ListView):
         ctx["highlight_id"] = self.request.GET.get("highlight")
 
         # --- PERMISOS DE VISIBILIDAD (DINERO) ---
-        # Usamos la lógica centralizada del mixin
+        # Ahora sí va a funcionar porque lo importamos arriba
         ctx["perms_ver_dinero"] = puede_ver_historial_economico(self.request.user)
+        
+        # Inyectamos roles para menú lateral
+        ctx.update(roles_ctx(self.request.user))
         
         return ctx
 
@@ -1039,6 +1051,11 @@ class PersonaCreateView(PersonaCensoEditMixin, CreateView):
     model = Beneficiario
     form_class = BeneficiarioForm
     template_name = "finanzas/persona_form.html"
+    
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx.update(roles_ctx(self.request.user))
+        return ctx
     
     def form_valid(self, form):
         self.object = form.save(commit=False)
@@ -1055,6 +1072,11 @@ class PersonaUpdateView(PersonaCensoEditMixin, UpdateView):
     form_class = BeneficiarioForm
     template_name = "finanzas/persona_form.html"
     
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx.update(roles_ctx(self.request.user))
+        return ctx
+
     def get_success_url(self):
         return reverse("finanzas:persona_detail", kwargs={"pk": self.object.pk})
 
@@ -1089,6 +1111,7 @@ class PersonaDetailView(PersonaCensoAccessMixin, DetailView):
             ctx['pagos_servicios'] = []
             ctx['total_pagado_historico'] = 0
         
+        ctx.update(roles_ctx(self.request.user))
         return ctx
 
 class BeneficiarioUploadView(PersonaCensoEditMixin, CreateView):
