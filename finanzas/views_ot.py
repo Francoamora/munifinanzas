@@ -7,9 +7,13 @@ from django.db import transaction
 
 from .models import OrdenTrabajo
 from .forms import OrdenTrabajoForm, OrdenTrabajoMaterialFormSet
-from .mixins import StaffRequiredMixin, roles_ctx
 
-class OrdenTrabajoListView(StaffRequiredMixin, ListView):
+# =========================================================
+# CAMBIO CLAVE: Usamos OperadorSocialRequiredMixin
+# =========================================================
+from .mixins import StaffRequiredMixin, roles_ctx, OperadorSocialRequiredMixin
+
+class OrdenTrabajoListView(OperadorSocialRequiredMixin, ListView):
     model = OrdenTrabajo
     template_name = "finanzas/ot_list.html"
     context_object_name = "ordenes"
@@ -41,7 +45,7 @@ class OrdenTrabajoListView(StaffRequiredMixin, ListView):
         ctx.update(roles_ctx(self.request.user))
         return ctx
 
-class OrdenTrabajoCreateView(StaffRequiredMixin, CreateView):
+class OrdenTrabajoCreateView(OperadorSocialRequiredMixin, CreateView):
     model = OrdenTrabajo
     form_class = OrdenTrabajoForm
     template_name = "finanzas/ot_form.html"
@@ -82,7 +86,7 @@ class OrdenTrabajoCreateView(StaffRequiredMixin, CreateView):
         messages.error(self.request, "Error al crear la OT. Por favor verifique los campos.")
         return self.render_to_response(self.get_context_data(form=form))
 
-class OrdenTrabajoUpdateView(StaffRequiredMixin, UpdateView):
+class OrdenTrabajoUpdateView(OperadorSocialRequiredMixin, UpdateView):
     model = OrdenTrabajo
     form_class = OrdenTrabajoForm
     template_name = "finanzas/ot_form.html"
@@ -127,7 +131,7 @@ class OrdenTrabajoUpdateView(StaffRequiredMixin, UpdateView):
         messages.error(self.request, "Error al actualizar la OT.")
         return self.render_to_response(self.get_context_data(form=form))
 
-class OrdenTrabajoDetailView(StaffRequiredMixin, DetailView):
+class OrdenTrabajoDetailView(OperadorSocialRequiredMixin, DetailView):
     model = OrdenTrabajo
     template_name = "finanzas/ot_detail.html"
     context_object_name = "orden"
@@ -137,7 +141,7 @@ class OrdenTrabajoDetailView(StaffRequiredMixin, DetailView):
         ctx.update(roles_ctx(self.request.user))
         return ctx
 
-class OrdenTrabajoGenerarMovimientoIngresoView(StaffRequiredMixin, View):
+class OrdenTrabajoGenerarMovimientoIngresoView(OperadorSocialRequiredMixin, View):
     def get(self, request, pk):
         # Placeholder para futura facturación de servicios a terceros
         messages.info(request, "Funcionalidad de facturación en desarrollo.")

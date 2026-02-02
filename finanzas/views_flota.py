@@ -12,13 +12,23 @@ from django.contrib.auth.decorators import login_required
 # Modelos y Forms
 from .models import Vehiculo, HojaRuta, Movimiento, Traslado
 from .forms import VehiculoForm, HojaRutaForm, HojaRutaCierreForm, TrasladoForm
-from .mixins import FlotaAccessMixin, FlotaEditMixin, SoloFinanzasMixin, roles_ctx
+
+# =========================================================
+# CAMBIO CLAVE: Importamos OperadorSocialRequiredMixin
+# =========================================================
+from .mixins import (
+    FlotaAccessMixin, 
+    FlotaEditMixin, 
+    SoloFinanzasMixin, 
+    roles_ctx, 
+    OperadorSocialRequiredMixin
+)
 
 # =========================================================
 # 1. VEHÍCULOS (PARQUE AUTOMOTOR)
 # =========================================================
 
-class VehiculoListView(FlotaAccessMixin, ListView):
+class VehiculoListView(OperadorSocialRequiredMixin, ListView):
     model = Vehiculo
     template_name = "finanzas/vehiculo_list.html"
     context_object_name = "vehiculos"
@@ -36,7 +46,7 @@ class VehiculoListView(FlotaAccessMixin, ListView):
         ctx.update(roles_ctx(self.request.user))
         return ctx
 
-class VehiculoCreateView(FlotaEditMixin, CreateView):
+class VehiculoCreateView(OperadorSocialRequiredMixin, CreateView):
     model = Vehiculo
     form_class = VehiculoForm
     template_name = "finanzas/vehiculo_form.html"
@@ -46,7 +56,7 @@ class VehiculoCreateView(FlotaEditMixin, CreateView):
         messages.success(self.request, "Vehículo registrado correctamente.")
         return super().form_valid(form)
 
-class VehiculoUpdateView(FlotaEditMixin, UpdateView):
+class VehiculoUpdateView(OperadorSocialRequiredMixin, UpdateView):
     model = Vehiculo
     form_class = VehiculoForm
     template_name = "finanzas/vehiculo_form.html"
@@ -56,7 +66,7 @@ class VehiculoUpdateView(FlotaEditMixin, UpdateView):
         messages.success(self.request, "Datos del vehículo actualizados.")
         return super().form_valid(form)
 
-class VehiculoDetailView(FlotaAccessMixin, DetailView):
+class VehiculoDetailView(OperadorSocialRequiredMixin, DetailView):
     model = Vehiculo
     template_name = "finanzas/vehiculo_detail.html"
     context_object_name = "vehiculo"
@@ -67,7 +77,8 @@ class VehiculoDetailView(FlotaAccessMixin, DetailView):
         # Historial reciente
         ctx["hojas_ruta"] = self.object.hojas_ruta.select_related("chofer").order_by("-fecha")[:10]
         
-        # Estadísticas Semestrales
+        # Estadísticas Semestrales (Solo si ve dinero mostramos montos, sino 0)
+        # Aquí usamos un truco simple: Si no es Finanzas, mandamos 0 en dinero.
         inicio_stats = timezone.now().date() - timezone.timedelta(days=180)
         cargas = self.object.cargas_combustible.filter(
             fecha_operacion__gte=inicio_stats,
@@ -79,8 +90,12 @@ class VehiculoDetailView(FlotaAccessMixin, DetailView):
             total_litros=Sum("litros")
         )
         
-        ctx["total_dinero_semestre"] = resumen["total_dinero"] or 0
+        # Validación extra de seguridad visual
+        es_finanzas = self.request.user.is_superuser or self.request.user.groups.filter(name='Finanzas').exists()
+        
+        ctx["total_dinero_semestre"] = (resumen["total_dinero"] or 0) if es_finanzas else 0
         ctx["total_litros_semestre"] = resumen["total_litros"] or 0
+        
         ctx.update(roles_ctx(self.request.user))
         return ctx
 
@@ -88,7 +103,7 @@ class VehiculoDetailView(FlotaAccessMixin, DetailView):
 # 2. HOJAS DE RUTA (LOGÍSTICA DIARIA)
 # =========================================================
 
-class HojaRutaListView(FlotaAccessMixin, ListView):
+class HojaRutaListView(OperadorSocialRequiredMixin, ListView):
     model = HojaRuta
     template_name = "finanzas/hoja_ruta_list.html"
     context_object_name = "hojas"
@@ -110,7 +125,7 @@ class HojaRutaListView(FlotaAccessMixin, ListView):
         ctx.update(roles_ctx(self.request.user))
         return ctx
 
-class HojaRutaCreateView(FlotaEditMixin, CreateView):
+class HojaRutaCreateView(OperadorSocialRequiredMixin, CreateView):
     """Iniciar un nuevo viaje."""
     model = HojaRuta
     form_class = HojaRutaForm
@@ -140,7 +155,7 @@ class HojaRutaCreateView(FlotaEditMixin, CreateView):
         messages.success(self.request, f"Hoja de ruta iniciada para {hoja.vehiculo.patente}.")
         return redirect("finanzas:hoja_ruta_detail", pk=hoja.pk)
 
-class HojaRutaDetailView(FlotaAccessMixin, DetailView):
+class HojaRutaDetailView(OperadorSocialRequiredMixin, DetailView):
     """Panel de gestión del viaje activo."""
     model = HojaRuta
     template_name = "finanzas/hoja_ruta_detail.html"
@@ -197,7 +212,7 @@ class HojaRutaDetailView(FlotaAccessMixin, DetailView):
         return self.get(request, *args, **kwargs)
 
 # =========================================================
-# 3. REPORTES (DASHBOARD)
+# 3. REPORTES (DASHBOARD) - SOLO FINANZAS (DINERO)
 # =========================================================
 
 class FlotaCombustibleResumenView(SoloFinanzasMixin, TemplateView):
