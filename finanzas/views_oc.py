@@ -14,12 +14,15 @@ from django.utils import timezone
 from .models import OrdenCompra, Proveedor, Vehiculo, SerieOC, Movimiento
 # Formularios
 from .forms import OrdenCompraForm, OrdenCompraLineaFormSet
-# Mixins
-from .mixins import StaffRequiredMixin, roles_ctx
+# Mixins (IMPORTANTE: Agregamos OperadorSocialRequiredMixin)
+from .mixins import StaffRequiredMixin, OperadorSocialRequiredMixin, roles_ctx
 
 # ==================== LISTADO Y DETALLE ====================
 
-class OCListView(StaffRequiredMixin, ListView):
+class OCListView(OperadorSocialRequiredMixin, ListView):
+    """
+    Permite ver listado a Social Admin y Finanzas.
+    """
     model = OrdenCompra
     template_name = "finanzas/oc_list.html"
     context_object_name = "ordenes"
@@ -27,7 +30,6 @@ class OCListView(StaffRequiredMixin, ListView):
     ordering = ["-id"]
 
     def get_queryset(self):
-        # Optimización: Traemos datos relacionados para evitar N+1 queries
         qs = super().get_queryset().select_related("proveedor", "area")
         q = self.request.GET.get("q")
         estado = self.request.GET.get("estado")
@@ -51,14 +53,16 @@ class OCListView(StaffRequiredMixin, ListView):
         ctx.update(roles_ctx(self.request.user))
         return ctx
 
-class OCDetailView(StaffRequiredMixin, DetailView):
+class OCDetailView(OperadorSocialRequiredMixin, DetailView):
+    """
+    Detalle visible para Social Admin (para imprimir) y Finanzas.
+    """
     model = OrdenCompra
     template_name = "finanzas/oc_detail.html"
     context_object_name = "orden"
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        # Cálculo automático del total para el template
         total = self.object.lineas.aggregate(suma=Sum('monto'))['suma'] or 0
         ctx['total_oc'] = total
         ctx.update(roles_ctx(self.request.user))
@@ -66,7 +70,10 @@ class OCDetailView(StaffRequiredMixin, DetailView):
 
 # ==================== CREACIÓN Y EDICIÓN (CORE) ====================
 
-class OCCreateView(StaffRequiredMixin, CreateView):
+class OCCreateView(OperadorSocialRequiredMixin, CreateView):
+    """
+    Permite crear OCs a Social Admin.
+    """
     model = OrdenCompra
     form_class = OrdenCompraForm
     template_name = "finanzas/oc_form.html"
@@ -105,7 +112,6 @@ class OCCreateView(StaffRequiredMixin, CreateView):
             serie.save()
             # ----------------------------------
 
-            # Sync de datos espejo del proveedor
             if self.object.proveedor:
                 self.object.proveedor_nombre = self.object.proveedor.nombre
                 self.object.proveedor_cuit = self.object.proveedor.cuit or ""
@@ -121,7 +127,10 @@ class OCCreateView(StaffRequiredMixin, CreateView):
         messages.error(self.request, "Error al crear la orden. Revise los campos.")
         return self.render_to_response(self.get_context_data(form=form))
 
-class OCUpdateView(StaffRequiredMixin, UpdateView):
+class OCUpdateView(OperadorSocialRequiredMixin, UpdateView):
+    """
+    Permite editar OCs (solo borrador) a Social Admin.
+    """
     model = OrdenCompra
     form_class = OrdenCompraForm
     template_name = "finanzas/oc_form.html"
@@ -159,13 +168,20 @@ class OCUpdateView(StaffRequiredMixin, UpdateView):
 
 # ==================== ACCIONES Y ESTADOS ====================
 
-class OCCambiarEstadoView(StaffRequiredMixin, View):
+class OCCambiarEstadoView(OperadorSocialRequiredMixin, View):
+    """
+    Permite a Social Admin pasar de Borrador -> Autorizada (o anular).
+    """
     def post(self, request, pk, accion):
         oc = get_object_or_404(OrdenCompra, pk=pk)
         
         if accion == "autorizar" and oc.estado == OrdenCompra.ESTADO_BORRADOR:
             oc.estado = OrdenCompra.ESTADO_AUTORIZADA
         elif accion == "cerrar" and oc.estado == OrdenCompra.ESTADO_AUTORIZADA:
+            # SOLO Finanzas puede cerrar manualmente si no se paga por sistema
+            if not request.user.groups.filter(name='Finanzas').exists() and not request.user.is_superuser:
+                 messages.error(request, "Solo Finanzas puede cerrar órdenes manualmente.")
+                 return redirect("finanzas:oc_detail", pk=pk)
             oc.estado = OrdenCompra.ESTADO_CERRADA
         elif accion == "anular":
             oc.estado = OrdenCompra.ESTADO_ANULADA
@@ -180,7 +196,10 @@ class OCCambiarEstadoView(StaffRequiredMixin, View):
         return redirect("finanzas:oc_detail", pk=pk)
 
 class OCGenerarMovimientoView(StaffRequiredMixin, View):
-    """Genera un pago DIRECTO desde la OC (Caja chica / Pago inmediato)."""
+    """
+    ⚠️ SEGURIDAD: Solo STAFF FINANZAS puede ejecutar el pago.
+    Genera un Movimiento (Gasto) y cierra la OC.
+    """
     @transaction.atomic
     def post(self, request, pk):
         oc = get_object_or_404(OrdenCompra, pk=pk)
@@ -189,7 +208,7 @@ class OCGenerarMovimientoView(StaffRequiredMixin, View):
             messages.error(request, "Solo se pueden pagar OCs AUTORIZADAS.")
             return redirect("finanzas:oc_detail", pk=pk)
 
-        total = oc.total_monto # Usamos la property del modelo
+        total = oc.total_monto 
         if total <= 0:
             messages.error(request, "La OC tiene monto cero.")
             return redirect("finanzas:oc_detail", pk=pk)
@@ -201,6 +220,7 @@ class OCGenerarMovimientoView(StaffRequiredMixin, View):
              messages.error(request, "La OC no tiene ítems/categoría para imputar.")
              return redirect("finanzas:oc_detail", pk=pk)
 
+        # Crear Movimiento de Caja (Salida de dinero)
         Movimiento.objects.create(
             tipo=Movimiento.TIPO_GASTO,
             fecha_operacion=timezone.now().date(),
@@ -211,7 +231,6 @@ class OCGenerarMovimientoView(StaffRequiredMixin, View):
             proveedor_nombre=oc.proveedor_nombre,
             proveedor_cuit=oc.proveedor_cuit,
             descripcion=f"Pago OC #{oc.numero} - {oc.observaciones[:50]}",
-            # Acá podríamos vincular una OT si existiera un campo en Movimiento
             estado=Movimiento.ESTADO_APROBADO,
             creado_por=request.user
         )
@@ -219,7 +238,7 @@ class OCGenerarMovimientoView(StaffRequiredMixin, View):
         oc.estado = OrdenCompra.ESTADO_CERRADA
         oc.save()
         
-        messages.success(request, f"Pago de ${total} registrado. OC #{oc.numero} cerrada.")
+        messages.success(request, f"Pago de ${total} registrado en caja. OC #{oc.numero} cerrada.")
         return redirect("finanzas:oc_detail", pk=pk)
 
 # ==================== APIS PARA SELECT2 ====================
@@ -238,7 +257,6 @@ def proveedor_por_cuit(request):
 @login_required
 def proveedor_suggest(request):
     q = request.GET.get("term", "").strip() or request.GET.get("q", "").strip()
-    
     qs = Proveedor.objects.filter(activo=True)
     if q:
         qs = qs.filter(Q(nombre__icontains=q) | Q(cuit__icontains=q))
@@ -249,7 +267,6 @@ def proveedor_suggest(request):
         "nombre": p.nombre,
         "cuit": p.cuit or ""
     } for p in qs[:20]]
-    
     return JsonResponse({"results": data})
 
 @require_GET
@@ -263,14 +280,9 @@ def vehiculo_por_patente(request):
     data = [{"id": v.id, "text": f"{v.patente} - {v.descripcion}"} for v in qs[:10]]
     return JsonResponse({"results": data})
 
-# === NUEVA API PARA ORDEN DE PAGO ===
 @require_GET
 @login_required
 def ocs_pendientes_por_proveedor(request):
-    """
-    Devuelve las OCs en estado AUTORIZADA de un proveedor.
-    Usado por el formulario de Orden de Pago para vincular facturas.
-    """
     pid = request.GET.get("proveedor_id")
     if not pid:
         return JsonResponse({"results": []})
@@ -282,7 +294,6 @@ def ocs_pendientes_por_proveedor(request):
 
     data = []
     for oc in qs:
-        # Calculamos el total usando la property del modelo
         total = oc.total_monto 
         data.append({
             "id": oc.id,
