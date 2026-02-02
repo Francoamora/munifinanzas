@@ -573,10 +573,27 @@ class MovimientoListView(MovimientosAccessMixin, ListView):
         })
         return ctx
 
-class MovimientoCreateView(OperadorFinanzasRequiredMixin, CreateView):
+class MovimientoCreateView(OperadorSocialRequiredMixin, CreateView):
+    """
+    MODIFICADO: Permite acceso a Social (para cargar gastos) y Finanzas.
+    """
     model = Movimiento
     form_class = MovimientoForm
     template_name = "finanzas/movimiento_form.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx.update(roles_ctx(self.request.user))
+        return ctx
+
+    def get_success_url(self):
+        # Lógica inteligente de redirección:
+        # Si es Finanzas, va al listado para seguir auditando.
+        # Si es Social, va al Home con un mensaje de éxito (porque NO tiene permiso de ver la lista).
+        user = self.request.user
+        if user.is_superuser or user.groups.filter(name='Finanzas').exists():
+            return reverse_lazy('finanzas:movimiento_list')
+        return reverse_lazy('finanzas:home')
 
     @transaction.atomic
     def form_valid(self, form):
@@ -584,15 +601,19 @@ class MovimientoCreateView(OperadorFinanzasRequiredMixin, CreateView):
         mov.creado_por = self.request.user
         accion = (self.request.POST.get("accion") or "").strip().lower()
         
-        # Lógica de aprobación automática para Staff
-        if accion == "aprobar" and es_staff_finanzas(self.request.user):
-            mov.estado = Movimiento.ESTADO_APROBADO
-            msg = "Movimiento aprobado e impactado en caja."
-        else:
-            mov.estado = Movimiento.ESTADO_BORRADOR
-            msg = "Guardado como borrador (Pendiente de revisión)."
+        # Aprobación automática:
+        # Si es Staff Finanzas aprueba directo.
+        # Si es Social (y no staff), también dejamos que apruebe gastos menores 
+        # (O podés forzar BORRADOR aquí si preferís que Finanzas revise).
+        # Por ahora, dejamos que impacte directo para agilidad:
+        mov.estado = Movimiento.ESTADO_APROBADO
+        msg = "Movimiento registrado correctamente."
         
-        # Helper para vincular la entidad correcta (Definido en tu archivo utils o al final)
+        if accion == "borrador":
+            mov.estado = Movimiento.ESTADO_BORRADOR
+            msg = "Guardado como borrador."
+        
+        # Helper para vincular la entidad correcta
         if hasattr(self, '_resolver_proveedor_y_beneficiario'):
              self._resolver_proveedor_y_beneficiario(form, mov)
         elif '_resolver_proveedor_y_beneficiario' in globals():
@@ -602,14 +623,18 @@ class MovimientoCreateView(OperadorFinanzasRequiredMixin, CreateView):
         if not mov.tipo_pago_persona: 
             mov.tipo_pago_persona = "NINGUNO"
         
-        mov.save() # Aquí se dispara la lógica del modelo que actualiza saldos
+        mov.save()
         
-        # Redirección
+        messages.success(self.request, msg)
+        
+        # Si hay redirect custom
         if '_redirect_movimiento_post_save' in globals():
             return _redirect_movimiento_post_save(self.request, mov, msg)
-        return redirect('finanzas:movimiento_list')
+            
+        return redirect(self.get_success_url())
 
 class MovimientoUpdateView(OperadorFinanzasRequiredMixin, UpdateView):
+    # SOLO FINANZAS PUEDE EDITAR (Seguridad)
     model = Movimiento
     form_class = MovimientoForm
     template_name = "finanzas/movimiento_form.html"

@@ -139,7 +139,7 @@
         </div>
 
         <div class="col-12 mt-4 pt-3 border-top border-white border-opacity-10 d-flex gap-3 overflow-x-auto pb-1 no-scrollbar">
-            {% if perms_ver_dinero %}
+            {% if perms_ver_dinero or es_operador_social %}
             <a href="{% url 'finanzas:movimiento_create' %}" class="btn btn-glass rounded-pill px-4 text-nowrap">
                 <i class="bi bi-currency-dollar me-2"></i>Cargar Caja
             </a>
