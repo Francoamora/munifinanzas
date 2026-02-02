@@ -12,7 +12,8 @@
         </h1>
         <p class="text-muted mb-0 small">Gestión de mantenimiento, reparaciones y servicios.</p>
     </div>
-    {% if rol_staff_finanzas or rol_operador_finanzas %}
+    
+    {% if rol_staff_finanzas or rol_operador_finanzas or es_operador_social or perms.finanzas.add_ordentrabajo %}
     <a href="{% url 'finanzas:orden_trabajo_create' %}" class="btn btn-warning shadow-sm text-dark fw-bold">
         <i class="bi bi-plus-lg me-1"></i> Nueva OT
     </a>
