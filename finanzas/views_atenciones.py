@@ -7,9 +7,12 @@ from django.db.models import Q
 from django.contrib import messages
 
 from .models import Atencion, Beneficiario, Area
-# Asumo que el formulario está en forms.py como el resto del sistema. 
-# Si creaste un archivo 'forms_atenciones.py', cambiá esta línea.
-from .forms import AtencionForm 
+
+# Intentamos importar desde forms_atenciones, si no existe, usamos forms general
+try:
+    from .forms_atenciones import AtencionForm
+except ImportError:
+    from .forms import AtencionForm
 
 # =========================================================
 # IMPORTAMOS EL MIXIN CORRECTO (El que deja pasar a Social Admin)
@@ -94,10 +97,8 @@ class AtencionCreateView(OperadorSocialRequiredMixin, CreateView):
         ctx.update(roles_ctx(self.request.user))
         return ctx
 
-    def get_form_kwargs(self):
-        kwargs = super().get_form_kwargs()
-        kwargs["request"] = self.request
-        return kwargs
+    # --- ELIMINADO get_form_kwargs PORQUE ROMPÍA EL FORM ---
+    # Si tu form no espera 'request', enviarlo causa TypeError.
 
     def get_success_url(self):
         # 1) Si viene next=...
@@ -107,11 +108,10 @@ class AtencionCreateView(OperadorSocialRequiredMixin, CreateView):
 
         # 2) Si está vinculada a persona, ir al historial de esa persona
         if getattr(self.object, "persona_id", None):
-            # Asumiendo que tenés una URL para listar atenciones de una persona específica
-            # Si no existe, podés cambiarlo a 'finanzas:persona_detail'
             try:
                 return reverse("finanzas:atencion_beneficiario_list", args=[self.object.persona_id])
             except:
+                # Fallback si no existe esa URL
                 return reverse("finanzas:persona_detail", args=[self.object.persona_id])
 
         # 3) Fallback: Listado general
@@ -138,10 +138,7 @@ class AtencionUpdateView(OperadorSocialRequiredMixin, UpdateView):
         ctx.update(roles_ctx(self.request.user))
         return ctx
 
-    def get_form_kwargs(self):
-        kwargs = super().get_form_kwargs()
-        kwargs["request"] = self.request
-        return kwargs
+    # --- ELIMINADO get_form_kwargs PORQUE ROMPÍA EL FORM ---
 
     def get_success_url(self):
         nxt = (self.request.POST.get("next") or self.request.GET.get("next") or "").strip()
