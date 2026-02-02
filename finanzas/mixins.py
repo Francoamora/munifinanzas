@@ -8,11 +8,9 @@ from django.urls import reverse_lazy
 # =========================================================
 
 def _tiene_grupo(user, grupos):
-    """Helper interno para verificar grupos."""
-    # Validación de seguridad: si user es None o no es un objeto válido
+    """Helper interno para verificar grupos por nombre exacto."""
     if not user: 
         return False
-    # Validación de autenticación (AnonymousUser)
     if not getattr(user, "is_authenticated", False):
         return False
         
@@ -21,31 +19,52 @@ def _tiene_grupo(user, grupos):
         
     return user.groups.filter(name__in=grupos).exists()
 
-# --- FUNCIONES DE ROL (Compatibles) ---
+# --- FUNCIONES DE ROL (Actualizadas con tus Grupos Nuevos) ---
 
 def es_admin_sistema(user):
+    # Incluye Superusers y Admins viejos
     return _tiene_grupo(user, ["ADMIN_SISTEMA", "ADMIN"])
 
 def es_staff_finanzas(user):
-    return _tiene_grupo(user, ["STAFF_FINANZAS", "TESORERIA", "SECRETARIA"])
+    # Agregamos "Finanzas" aquí para que tengan poder total
+    return _tiene_grupo(user, ["Finanzas", "STAFF_FINANZAS", "TESORERIA", "SECRETARIA"])
 
 def es_operador_finanzas(user):
-    return _tiene_grupo(user, ["OPERADOR_FINANZAS", "CAJA", "STAFF_FINANZAS", "ADMIN_SISTEMA"])
+    # Agregamos "Finanzas" aquí también
+    return _tiene_grupo(user, ["Finanzas", "OPERADOR_FINANZAS", "CAJA", "STAFF_FINANZAS", "ADMIN_SISTEMA"])
 
 def es_operador_social(user):
-    return _tiene_grupo(user, ["OPERADOR_SOCIAL", "SOCIAL", "MESA_ENTRADA", "STAFF_FINANZAS", "ADMIN_SISTEMA"])
+    # AQUÍ ESTÁ LA CLAVE: Agregamos "Social" y "Social Administración"
+    # Esto soluciona el Error 403 al crear atenciones
+    grupos_permitidos = [
+        "Social", 
+        "Social Administración", 
+        "OPERADOR_SOCIAL", 
+        "MESA_ENTRADA", 
+        "STAFF_FINANZAS", 
+        "ADMIN_SISTEMA"
+    ]
+    return _tiene_grupo(user, grupos_permitidos)
 
 def es_consulta_politica(user):
     return _tiene_grupo(user, ["CONSULTA_POLITICA", "STAFF_FINANZAS", "ADMIN_SISTEMA"])
 
-def es_finanzas(user):
-    return es_admin_sistema(user) or es_staff_finanzas(user) or es_operador_finanzas(user) or es_consulta_politica(user)
-
-# --- FUNCIONES NUEVAS (Privacidad) ---
+# --- FUNCIONES DE PRIVACIDAD (DINERO) ---
 
 def puede_ver_historial_economico(user):
-    """Regla de privacidad: Solo Admin y Staff ven montos ($)"""
-    return es_admin_sistema(user) or es_staff_finanzas(user)
+    """
+    Regla de privacidad CRÍTICA: 
+    Solo ven montos ($) el grupo 'Finanzas' o los Superusuarios.
+    'Social' y 'Social Administración' devuelven False aquí.
+    """
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    
+    # Solo estos grupos ven plata. Social NO está aquí.
+    grupos_dinero = ["Finanzas", "STAFF_FINANZAS", "TESORERIA", "ADMIN_SISTEMA"]
+    return user.groups.filter(name__in=grupos_dinero).exists()
 
 # =========================================================
 # 2. MIXINS DE PROTECCIÓN DE VISTAS
@@ -57,6 +76,7 @@ class BaseRolMixin(AccessMixin):
     def handle_no_permission(self):
         if self.request.user.is_authenticated:
             messages.error(self.request, self.permission_denied_message)
+            # Redirigir al home evita bucles de redirección
             return redirect("finanzas:home")
         return super().handle_no_permission()
 
@@ -76,6 +96,7 @@ class OperadorFinanzasRequiredMixin(BaseRolMixin):
 
 class OperadorSocialRequiredMixin(BaseRolMixin):
     def dispatch(self, request, *args, **kwargs):
+        # Esto ahora permite pasar a "Social Administración"
         if not es_operador_social(request.user):
             return self.handle_no_permission()
         return super().dispatch(request, *args, **kwargs)
@@ -93,11 +114,14 @@ class DashboardAccessMixin(BaseRolMixin):
 
 class PersonaCensoAccessMixin(BaseRolMixin):
     def dispatch(self, request, *args, **kwargs):
+        # Permite entrar tanto a Social como a Finanzas
         if not (es_operador_social(request.user) or es_operador_finanzas(request.user)):
             return self.handle_no_permission()
         return super().dispatch(request, *args, **kwargs)
 
-class PersonaCensoEditMixin(OperadorSocialRequiredMixin): pass 
+class PersonaCensoEditMixin(OperadorSocialRequiredMixin): 
+    """Permite editar/crear personas y atenciones."""
+    pass 
 
 class FlotaAccessMixin(BaseRolMixin):
     def dispatch(self, request, *args, **kwargs):
@@ -111,35 +135,28 @@ class OrdenTrabajoAccessMixin(OperadorFinanzasRequiredMixin): pass
 class OrdenTrabajoEditMixin(OperadorFinanzasRequiredMixin): pass
 
 # =========================================================
-# 3. CONTEXT PROCESSOR (Blindado)
+# 3. CONTEXT PROCESSOR (Inyección en Templates)
 # =========================================================
 
 def roles_ctx(context_input):
     """
-    Inyecta variables en templates. 
-    Es inteligente: detecta si recibe un 'request' o un 'user' directo.
+    Inyecta variables en todos los templates HTML.
     """
     user = None
-    
-    # Detección automática del tipo de input
     if hasattr(context_input, 'user'):
-        # Es un objeto Request
         user = context_input.user
     else:
-        # Asumimos que es un objeto User (o AnonymousUser)
         user = context_input
 
-    # Diccionario seguro de permisos
     return {
-        # Lógica Nueva (Ocultar dinero)
+        # Variable maestra para ocultar/mostrar dinero en el HTML
         'perms_ver_dinero': puede_ver_historial_economico(user),
         
-        # Compatibilidad Legacy
+        # Roles booleanos para lógica condicional en menús
         'es_admin_sistema': es_admin_sistema(user),
         'es_staff_finanzas': es_staff_finanzas(user),
         'es_operador_finanzas': es_operador_finanzas(user),
-        'es_operador_social': es_operador_social(user),
-        'es_consulta_politica': es_consulta_politica(user),
+        'es_operador_social': es_operador_social(user), # True para Social y Social Admin
         
         # Alias viejos
         'rol_staff_finanzas': es_staff_finanzas(user),

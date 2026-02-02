@@ -932,6 +932,9 @@ class OrdenPagoGenerarMovimientoView(StaffRequiredMixin, View):
 # 6) PERSONAS (SOCIAL)
 # =========================================================
 
+# Asegurate de tener esto importado arriba en tu archivo:
+# from .mixins import puede_ver_historial_economico, PersonaCensoAccessMixin, PersonaCensoEditMixin, OperadorFinanzasRequiredMixin
+
 class PersonaListView(PersonaCensoAccessMixin, ListView):
     model = Beneficiario
     template_name = "finanzas/persona_list.html"
@@ -970,45 +973,40 @@ class PersonaListView(PersonaCensoAccessMixin, ListView):
         if beneficio == "si":
             qs = qs.filter(percibe_beneficio=True)
             
-        # ¿Paga Servicios? (LÓGICA MEJORADA)
-        # Busca si tiene la marca manual O si tiene movimientos de INGRESO en su historial
+        # ¿Paga Servicios?
         servicios = self.request.GET.get("servicios")
         if servicios == "si":
             qs = qs.filter(
                 Q(paga_servicios=True) | 
                 Q(movimientos__tipo='INGRESO')
-            ).distinct() # Evita duplicados si pagó varias veces
+            ).distinct()
 
         return qs
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         
-        # --- KPI CARDS (CONTADORES PARA EL DASHBOARD) ---
-        
-        # Base de usuarios activos para cálculos precisos
+        # --- KPI CARDS ---
         activos_qs = Beneficiario.objects.filter(activo=True)
         
         ctx["count_total"] = Beneficiario.objects.count()
         ctx["count_activos"] = activos_qs.count()
         ctx["count_inactivos"] = Beneficiario.objects.filter(activo=False).count()
-        
-        # ✅ CORRECCIÓN: Contar empleados reales (Activos y con vínculo laboral)
         ctx["count_empleados"] = activos_qs.exclude(tipo_vinculo="NINGUNO").count()
-        
-        # Otros contadores
         ctx["count_beneficios"] = activos_qs.filter(percibe_beneficio=True).count()
         ctx["count_pagadores"] = activos_qs.filter(paga_servicios=True).count()
         
-        # Mantenemos el estado de los filtros en la UI para la paginación
+        # Estado de filtros
         ctx["estado_actual"] = self.request.GET.get("estado", "activos")
         ctx["q_actual"] = self.request.GET.get("q", "")
         ctx["f_vinculo"] = self.request.GET.get("vinculo", "")
         ctx["f_beneficio"] = self.request.GET.get("beneficio", "")
         ctx["f_servicios"] = self.request.GET.get("servicios", "")
-        
-        # Highlight: Si venimos de crear/editar, resaltamos esa fila
         ctx["highlight_id"] = self.request.GET.get("highlight")
+
+        # --- PERMISOS DE VISIBILIDAD (DINERO) ---
+        # Usamos la lógica centralizada del mixin
+        ctx["perms_ver_dinero"] = puede_ver_historial_economico(self.request.user)
         
         return ctx
 
@@ -1024,8 +1022,6 @@ class PersonaCreateView(PersonaCensoEditMixin, CreateView):
         form.save_m2m()
         
         messages.success(self.request, f"Persona '{self.object}' registrada correctamente.")
-        
-        # Redirigir a la lista resaltando el nuevo registro (UX Pro)
         base_url = reverse("finanzas:persona_list")
         return redirect(f"{base_url}?q={self.object.dni}&highlight={self.object.id}")
 
@@ -1035,7 +1031,6 @@ class PersonaUpdateView(PersonaCensoEditMixin, UpdateView):
     template_name = "finanzas/persona_form.html"
     
     def get_success_url(self):
-        # Al editar, volvemos al detalle para ver los cambios
         return reverse("finanzas:persona_detail", kwargs={"pk": self.object.pk})
 
     def form_valid(self, form):
@@ -1050,50 +1045,48 @@ class PersonaDetailView(PersonaCensoAccessMixin, DetailView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         
-        # --- HISTORIAL DE PAGOS DE SERVICIOS (INGRESO) ---
-        # Traemos todos los movimientos de tipo INGRESO asociados a esta persona
-        # Ordenados del más reciente al más antiguo
-        pagos = Movimiento.objects.filter(
-            beneficiario=self.object,
-            tipo='INGRESO'
-        ).order_by('-fecha_operacion')
+        # 1. Chequeo de permisos usando tu función de mixins.py
+        ver_dinero = puede_ver_historial_economico(self.request.user)
+        ctx['perms_ver_dinero'] = ver_dinero
         
-        ctx['pagos_servicios'] = pagos
-        
-        # Calculamos el total histórico pagado por la persona para mostrar en la tarjeta
-        total_pagado = pagos.aggregate(total=Sum('monto'))['total'] or 0
-        ctx['total_pagado_historico'] = total_pagado
-        
-        # Flag de permisos para ver dinero (usado en el template)
-        ctx['perms_ver_dinero'] = self.request.user.is_staff
+        # 2. Carga Condicional de Datos Sensibles
+        if ver_dinero:
+            # Solo si tiene permiso, consultamos la base de datos de pagos
+            pagos = Movimiento.objects.filter(
+                beneficiario=self.object,
+                tipo='INGRESO'
+            ).order_by('-fecha_operacion')
+            
+            ctx['pagos_servicios'] = pagos
+            ctx['total_pagado_historico'] = pagos.aggregate(total=Sum('monto'))['total'] or 0
+        else:
+            # Si no tiene permiso (ej: Operador Social), mandamos vacío para seguridad
+            ctx['pagos_servicios'] = []
+            ctx['total_pagado_historico'] = 0
         
         return ctx
 
-class BeneficiarioUploadView(OperadorFinanzasRequiredMixin, CreateView):
+class BeneficiarioUploadView(PersonaCensoEditMixin, CreateView):
+    # CAMBIO IMPORTANTE: Usamos PersonaCensoEditMixin para que Social pueda subir DNI
     model = DocumentoBeneficiario
     form_class = DocumentoBeneficiarioForm
-    template_name = "finanzas/persona_detail.html" # Reusamos el template o usamos uno genérico
+    template_name = "finanzas/persona_detail.html"
 
     def form_valid(self, form):
-        # 1. Buscamos la persona
         beneficiario_id = self.kwargs['pk']
         beneficiario = get_object_or_404(Beneficiario, pk=beneficiario_id)
         
-        # 2. Guardamos el archivo vinculado
         documento = form.save(commit=False)
         documento.beneficiario = beneficiario
         documento.subido_por = self.request.user
         documento.save()
         
         messages.success(self.request, "Documento digitalizado y archivado correctamente.")
-        
-        # 3. Volvemos a la ficha de la persona
         return redirect('finanzas:persona_detail', pk=beneficiario_id)
 
-    # Si algo falla (ej: archivo muy pesado), volvemos al detalle con error
     def form_invalid(self, form):
         beneficiario_id = self.kwargs['pk']
-        messages.error(self.request, "Error al subir el archivo. Verificá que no sea muy pesado o el formato incorrecto.")
+        messages.error(self.request, "Error al subir. Verificá el archivo.")
         return redirect('finanzas:persona_detail', pk=beneficiario_id)
 # =========================================================
 # 7) APIS AJAX (CRÍTICAS PARA EL FORMULARIO)
