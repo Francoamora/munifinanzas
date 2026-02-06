@@ -25,18 +25,20 @@
         font-family: 'Inter', sans-serif;
         background-color: #020617; /* Slate 950 */
         margin: 0;
-        height: 100vh;
+        min-height: 100vh; /* Cambiado height por min-height */
         display: flex;
         align-items: center;
         justify-content: center;
         color: #fff;
-        overflow: hidden;
+        overflow-y: auto; /* Permitir scroll si es necesario (FIX TILDE) */
+        overflow-x: hidden;
         position: relative;
+        padding: 20px; /* Espacio para que no se pegue al borde en móviles */
       }
 
       /* FONDO ANIMADO "AURORA" */
       .aurora-bg {
-        position: absolute;
+        position: fixed; /* Fixed para que no se mueva al scrollear */
         top: 0; left: 0; width: 100%; height: 100%;
         z-index: -1;
         background: 
@@ -57,7 +59,6 @@
       .login-wrapper {
         width: 100%;
         max-width: 400px;
-        padding: 20px;
         position: relative;
         z-index: 10;
       }
@@ -74,7 +75,6 @@
         overflow: hidden;
       }
 
-      /* Brillo superior decorativo */
       .login-card::before {
         content: '';
         position: absolute;
@@ -171,15 +171,29 @@
         color: #fca5a5;
         font-size: 0.9rem;
         border-radius: 12px;
+        padding: 0.75rem;
+        animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
       }
 
-      /* TEXTO GRADIENTE (Nuevo) */
+      @keyframes shake {
+        10%, 90% { transform: translate3d(-1px, 0, 0); }
+        20%, 80% { transform: translate3d(2px, 0, 0); }
+        30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+        40%, 60% { transform: translate3d(4px, 0, 0); }
+      }
+
       .text-gradient-pro {
         background: linear-gradient(to right, #60a5fa, #c084fc);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         font-weight: 800;
         letter-spacing: 0.5px;
+      }
+      
+      .animate-in { animation: fadeInUp 0.6s ease-out forwards; }
+      @keyframes fadeInUp { 
+          from { opacity: 0; transform: translateY(10px); } 
+          to { opacity: 1; transform: translateY(0); } 
       }
     </style>
   </head>
@@ -199,13 +213,13 @@
                 <p class="brand-subtitle">Plataforma de Gestión Integral</p>
             </div>
 
-            <form method="post" novalidate>
+            <form method="post">
                 {% csrf_token %}
                 
                 {% if form.errors %}
                     <div class="alert alert-custom d-flex align-items-center mb-4" role="alert">
                         <i class="bi bi-exclamation-octagon-fill me-2 fs-5"></i>
-                        <div>Usuario o contraseña incorrectos</div>
+                        <div>Credenciales incorrectas</div>
                     </div>
                 {% endif %}
 
@@ -224,9 +238,6 @@
                         {{ form.password }}
                     </div>
                 </div>
-
-                <div class="text-end mb-4">
-                    </div>
 
                 <button type="submit" class="btn btn-login">
                     INGRESAR AL SISTEMA
@@ -254,8 +265,11 @@
           if(userField) {
               userField.classList.add('form-control');
               userField.placeholder = "Ingrese su usuario";
-              userField.autocomplete = "off";
-              userField.focus();
+              // Quitamos autocomplete="off" para evitar conflictos
+              // Solo hacemos focus si no hay error previo para no molestar
+              if (!document.querySelector('.alert-custom')) {
+                  userField.focus();
+              }
           }
           if(passField) {
               passField.classList.add('form-control');
@@ -263,11 +277,6 @@
           }
       });
     </script>
-
-    <style>
-        .animate-in { opacity: 0; transform: translateY(10px); animation: fadeInUp 0.8s ease-out forwards; }
-        @keyframes fadeInUp { to { opacity: 1; transform: translateY(0); } }
-    </style>
 
   </body>
 </html>
