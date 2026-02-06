@@ -12,15 +12,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # =========================================================
 
 # Generamos una clave segura aleatoria si no existe una en variables de entorno.
-# NOTA: En PythonAnywhere, esto asegura que cada reinicio sea seguro, 
-# pero idealmente deberías fijar una clave definitiva más adelante.
+# NOTA: En PythonAnywhere, esto asegura que cada reinicio sea seguro.
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-z#&8y@^_CHANGE_THIS_IN_PRODUCTION_^*($#')
 
-# ⚠️ IMPORTANTE: En producción esto debe ser False
-# Si ves la página "Server Error (500)" sin detalles, es porque esto está funcionando bien.
+# ⚠️ IMPORTANTE: En producción esto debe ser False.
 DEBUG = False
 
+# ✅ FIX: Agregamos el dominio real para evitar el error "Bad Request (400)"
 ALLOWED_HOSTS = [
+    "comunatacuarendi.pythonanywhere.com",
+    "www.comunatacuarendi.pythonanywhere.com",
     "francomora23.pythonanywhere.com",
     "www.francomora23.pythonanywhere.com",
     "localhost",
