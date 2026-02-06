@@ -65,6 +65,7 @@ urlpatterns = [
     path("personas/<int:pk>/editar/", views.PersonaUpdateView.as_view(), name="persona_update"),
     # ✅ RUTA NUEVA PARA SUBIR ARCHIVOS
     path('personas/<int:pk>/documentos/nuevo/', views.BeneficiarioUploadView.as_view(), name='persona_documento_create'),
+    path('persona/<int:pk>/upload-sensible/', views.DocumentoSensibleUploadView.as_view(), name='persona_doc_sensible_create'),
 
     # =========================
     # APIS GLOBALES (AJAX)

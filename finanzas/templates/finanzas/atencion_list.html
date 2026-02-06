@@ -4,25 +4,28 @@
 {% block title %}Atenciones{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4 animate-fade-in">
   <div>
-    <h1 class="h3 fw-bold text-dark mb-1">Atenciones</h1>
-    <div class="text-muted small">Listado general (con filtros).</div>
+    <h1 class="h3 fw-bold text-dark mb-1">Mesa de Entrada</h1>
+    <div class="text-muted small">Listado de atenciones y solicitudes vecinales.</div>
   </div>
-  <a href="{% url 'finanzas:atencion_create' %}" class="btn btn-primary shadow-sm">
+  <a href="{% url 'finanzas:atencion_create' %}" class="btn btn-primary shadow-sm fw-bold rounded-pill px-4 hover-lift">
     <i class="bi bi-plus-lg me-1"></i> Nueva Atención
   </a>
 </div>
 
 <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
-  <div class="card-body p-3 p-md-4">
+  <div class="card-body p-3 p-md-4 bg-light bg-opacity-25">
     <form class="row g-2 align-items-end" method="get">
       <div class="col-12 col-md-5">
-        <label class="form-label small text-muted mb-1">Buscar</label>
-        <input type="text" class="form-control" name="q" value="{{ q }}" placeholder="Apellido, nombre, DNI, descripción…">
+        <label class="form-label small text-muted mb-1 fw-bold">BUSCAR</label>
+        <div class="input-group">
+            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
+            <input type="text" class="form-control border-start-0" name="q" value="{{ q }}" placeholder="Apellido, nombre, DNI...">
+        </div>
       </div>
-      <div class="col-12 col-md-4">
-        <label class="form-label small text-muted mb-1">Área</label>
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-muted mb-1 fw-bold">ÁREA</label>
         <select class="form-select" name="area">
           <option value="">Todas</option>
           {% for a in filtros_areas %}
@@ -30,8 +33,8 @@
           {% endfor %}
         </select>
       </div>
-      <div class="col-12 col-md-3">
-        <label class="form-label small text-muted mb-1">Estado</label>
+      <div class="col-12 col-md-2">
+        <label class="form-label small text-muted mb-1 fw-bold">ESTADO</label>
         <select class="form-select" name="estado">
           <option value="">Todos</option>
           {% for val,label in estado_choices %}
@@ -39,24 +42,23 @@
           {% endfor %}
         </select>
       </div>
-      <div class="col-12 d-flex gap-2 justify-content-end mt-2">
-        <a class="btn btn-light" href="{% url 'finanzas:atencion_list' %}">Limpiar</a>
-        <button class="btn btn-dark" type="submit">Filtrar</button>
+      <div class="col-12 col-md-2 d-flex gap-2">
+        <button class="btn btn-dark w-100 fw-bold" type="submit">Filtrar</button>
+        <a class="btn btn-light border" href="{% url 'finanzas:atencion_list' %}" title="Limpiar"><i class="bi bi-x-lg"></i></a>
       </div>
     </form>
   </div>
 </div>
 
-<div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+<div class="card border-0 shadow-sm rounded-4 overflow-hidden animate-fade-in">
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
-      <thead class="bg-light small text-uppercase text-muted">
+      <thead class="bg-light small text-uppercase text-secondary fw-bold">
         <tr>
-          <th class="ps-4">Fecha</th>
+          <th class="ps-4 py-3">Fecha</th>
           <th>Persona</th>
-          <th>Área</th>
-          <th>Motivo</th>
-          <th>Estado</th>
+          <th>Motivo / Área</th>
+          <th>Resumen</th> <th>Estado</th>
           <th class="text-end pe-4">Acción</th>
         </tr>
       </thead>
@@ -64,49 +66,79 @@
         {% for a in atenciones %}
         <tr>
           <td class="ps-4">
-            <div class="fw-bold text-dark">{{ a.fecha_atencion|date:"d/m/Y" }}</div>
-            <div class="small text-muted">#{{ a.id }}</div>
+            <div class="fw-bold text-dark">{{ a.fecha_atencion|date:"d/m" }}</div>
+            <div class="small text-muted">{{ a.fecha_atencion|date:"Y" }}</div>
           </td>
+          
           <td>
             {% if a.persona %}
-              <a class="text-decoration-none fw-semibold" href="{% url 'finanzas:persona_detail' a.persona.pk %}">
-                {{ a.persona.apellido }}, {{ a.persona.nombre }}
-              </a>
-              <div class="small text-muted">{{ a.persona.dni }}</div>
+              <div class="d-flex align-items-center">
+                  <div class="bg-primary-subtle text-primary rounded-circle d-flex align-items-center justify-content-center me-2 fw-bold" style="width: 32px; height: 32px; font-size: 0.8rem;">
+                      {{ a.persona.nombre|slice:":1" }}{{ a.persona.apellido|slice:":1" }}
+                  </div>
+                  <div>
+                      <a class="text-decoration-none fw-bold text-dark stretched-link-not" href="{% url 'finanzas:persona_detail' a.persona.pk %}">
+                        {{ a.persona.apellido }}, {{ a.persona.nombre }}
+                      </a>
+                      <div class="small text-muted" style="font-size: 0.75rem;">{{ a.persona.dni|default:"S/D" }}</div>
+                  </div>
+              </div>
             {% else %}
               <div class="fw-semibold text-dark">{{ a.persona_nombre|default:"(Sin nombre)" }}</div>
               <div class="small text-muted">{{ a.persona_dni }}</div>
             {% endif %}
           </td>
+          
           <td>
-            <span class="text-dark">{{ a.area|default:"-" }}</span>
-          </td>
-          <td>
-            <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle mb-1">
               {{ a.get_motivo_principal_display }}
             </span>
+            <div class="small text-secondary fw-medium">{{ a.area|default:"-" }}</div>
           </td>
+
+          <td style="max-width: 250px;">
+             <div class="text-muted small text-truncate">{{ a.descripcion|default:"Sin descripción" }}</div>
+          </td>
+          
           <td>
             {% if a.estado == "ABIERTA" %}
-              <span class="badge bg-success-subtle text-success border border-success-subtle">ABIERTA</span>
+              <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">ABIERTA</span>
             {% elif a.estado == "EN_SEGUIMIENTO" %}
-              <span class="badge bg-warning-subtle text-warning border border-warning-subtle">SEGUIMIENTO</span>
+              <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill">SEGUIMIENTO</span>
             {% else %}
-              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">CERRADA</span>
+              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill">CERRADA</span>
             {% endif %}
           </td>
+          
           <td class="text-end pe-4">
-            <a href="{% url 'finanzas:atencion_update' a.pk %}?next={{ request.get_full_path|urlencode }}"
-               class="btn btn-sm btn-outline-secondary">
-              Editar <i class="bi bi-chevron-right ms-1"></i>
-            </a>
+            <div class="d-flex justify-content-end gap-2">
+                <button type="button" 
+                        class="btn btn-sm btn-white border shadow-sm hover-lift btn-quick-view"
+                        data-bs-toggle="modal" 
+                        data-bs-target="#quickViewModal"
+                        data-fecha="{{ a.fecha_atencion|date:'d/m/Y' }}"
+                        data-persona="{% if a.persona %}{{ a.persona.apellido }}, {{ a.persona.nombre }}{% else %}{{ a.persona_nombre }}{% endif %}"
+                        data-motivo="{{ a.get_motivo_principal_display }}"
+                        data-area="{{ a.area|default:'General' }}"
+                        data-estado="{{ a.get_estado_display }}"
+                        data-descripcion="{{ a.descripcion|default:'Sin detalles.'|escapejs }}"
+                        data-observaciones="{{ a.observaciones|default:'No hay observaciones.'|escapejs }}"
+                        title="Ver detalle rápido">
+                    <i class="bi bi-eye-fill text-primary"></i>
+                </button>
+
+                <a href="{% url 'finanzas:atencion_update' a.pk %}?next={{ request.get_full_path|urlencode }}"
+                   class="btn btn-sm btn-white border shadow-sm hover-lift text-secondary" title="Editar / Gestionar">
+                  <i class="bi bi-pencil-square"></i>
+                </a>
+            </div>
           </td>
         </tr>
         {% empty %}
         <tr>
           <td colspan="6" class="text-center py-5">
-            <div class="text-muted opacity-50 mb-3"><i class="bi bi-inboxes fs-1"></i></div>
-            <p class="mb-0 text-muted">No hay atenciones registradas con esos filtros.</p>
+            <div class="text-muted opacity-25 mb-3"><i class="bi bi-inboxes fs-1"></i></div>
+            <p class="mb-0 text-muted fw-bold">No hay atenciones registradas con esos filtros.</p>
           </td>
         </tr>
         {% endfor %}
@@ -118,4 +150,84 @@
     {% include "finanzas/components/pagination.html" %}
   </div>
 </div>
+
+<div class="modal fade" id="quickViewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg rounded-4">
+      <div class="modal-header border-bottom-0 pb-0">
+        <div>
+            <h5 class="modal-title fw-bold text-dark" id="modalPersona">Apellido, Nombre</h5>
+            <span class="badge bg-light text-dark border mt-1" id="modalFecha">01/01/2026</span>
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle mt-1" id="modalMotivo">Motivo</span>
+        </div>
+        <button type="button" class="btn-close mb-auto" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body pt-4">
+        
+        <div class="mb-4">
+            <h6 class="text-uppercase text-muted small fw-bold mb-2 ls-1">Descripción del Pedido</h6>
+            <div class="p-3 bg-light rounded-3 border border-light-subtle">
+                <p class="mb-0 text-dark" id="modalDescripcion" style="white-space: pre-line;">...</p>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <h6 class="text-uppercase text-muted small fw-bold mb-2 ls-1">Observaciones Internas</h6>
+            <p class="small text-secondary fst-italic mb-0" id="modalObservaciones">...</p>
+        </div>
+
+        <hr class="border-light-subtle">
+        
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <small class="text-muted d-block" style="font-size: 0.7rem;">ESTADO ACTUAL</small>
+                <span class="fw-bold text-dark" id="modalEstado">ABIERTA</span>
+            </div>
+            <div>
+                <small class="text-muted d-block" style="font-size: 0.7rem;">ÁREA RESPONSABLE</small>
+                <span class="fw-bold text-dark" id="modalArea">General</span>
+            </div>
+        </div>
+
+      </div>
+      <div class="modal-footer border-top-0 pt-0">
+        <button type="button" class="btn btn-light w-100 rounded-pill fw-bold" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // Lógica para pasar datos del botón al Modal
+        const quickViewModal = document.getElementById('quickViewModal');
+        if (quickViewModal) {
+            quickViewModal.addEventListener('show.bs.modal', event => {
+                // Botón que disparó el modal
+                const button = event.relatedTarget;
+                
+                // Extraer info de los atributos data-*
+                const persona = button.getAttribute('data-persona');
+                const fecha = button.getAttribute('data-fecha');
+                const motivo = button.getAttribute('data-motivo');
+                const area = button.getAttribute('data-area');
+                const estado = button.getAttribute('data-estado');
+                const descripcion = button.getAttribute('data-descripcion');
+                const observaciones = button.getAttribute('data-observaciones');
+
+                // Actualizar el contenido del modal
+                quickViewModal.querySelector('#modalPersona').textContent = persona;
+                quickViewModal.querySelector('#modalFecha').textContent = fecha;
+                quickViewModal.querySelector('#modalMotivo').textContent = motivo;
+                quickViewModal.querySelector('#modalArea').textContent = area;
+                quickViewModal.querySelector('#modalEstado').textContent = estado;
+                quickViewModal.querySelector('#modalDescripcion').textContent = descripcion;
+                quickViewModal.querySelector('#modalObservaciones').textContent = observaciones;
+            });
+        }
+    });
+</script>
 {% endblock %}

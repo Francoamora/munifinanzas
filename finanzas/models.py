@@ -442,7 +442,6 @@ class OrdenCompra(models.Model):
         (ESTADO_ANULADA, "Anulada"),
     ]
 
-    # Opciones para el select de Rubros (Sincronizado con Forms y Template)
     RUBRO_CHOICES = [
         ("AS", "Ayudas Sociales"),
         ("CB", "Combustible"),
@@ -454,16 +453,17 @@ class OrdenCompra(models.Model):
     ]
 
     serie = models.ForeignKey('SerieOC', on_delete=models.SET_NULL, null=True, blank=True)
+    
+    # IMPORTANTE: El número puede ser generado (OC-001) o manual (00054)
     numero = models.CharField(max_length=30, blank=True)
+    
     fecha_oc = models.DateField()
     estado = models.CharField(max_length=15, choices=ESTADO_CHOICES, default=ESTADO_BORRADOR)
-    
-    # Ahora usa choices para mostrar el texto lindo en el template
     rubro_principal = models.CharField(max_length=2, choices=RUBRO_CHOICES, default="OT", blank=True)
     
     proveedor = models.ForeignKey('Proveedor', on_delete=models.SET_NULL, null=True, blank=True)
-    proveedor_nombre = models.CharField(max_length=200, blank=True) # Snapshot
-    proveedor_cuit = models.CharField(max_length=20, blank=True)    # Snapshot
+    proveedor_nombre = models.CharField(max_length=200, blank=True) 
+    proveedor_cuit = models.CharField(max_length=20, blank=True)    
     
     area = models.ForeignKey('Area', on_delete=models.SET_NULL, null=True, blank=True)
     observaciones = models.TextField(blank=True)
@@ -481,7 +481,6 @@ class OrdenCompra(models.Model):
 
     @property
     def total_monto(self):
-        """Calcula el total de la OC sumando sus líneas."""
         return self.lineas.aggregate(total=Sum('monto'))['total'] or 0
 
 
@@ -491,7 +490,6 @@ class OrdenCompraLinea(models.Model):
     area = models.ForeignKey('Area', on_delete=models.SET_NULL, null=True, blank=True)
     descripcion = models.CharField(max_length=255)
     monto = models.DecimalField(max_digits=14, decimal_places=2)
-    # Opcional: Beneficiario si la compra es para alguien específico (Social)
     beneficiario = models.ForeignKey('Beneficiario', on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self):
@@ -500,7 +498,7 @@ class OrdenCompraLinea(models.Model):
 
 class FacturaOC(models.Model):
     orden = models.ForeignKey(OrdenCompra, on_delete=models.CASCADE, related_name="facturas")
-    tipo = models.CharField(max_length=10, blank=True) # A, B, C
+    tipo = models.CharField(max_length=10, blank=True) 
     numero = models.CharField(max_length=50, blank=True)
     fecha = models.DateField(null=True, blank=True)
     monto = models.DecimalField(max_digits=14, decimal_places=2)
@@ -951,3 +949,38 @@ class DocumentoBeneficiario(models.Model):
         # Helper para saber si mostrar preview o icono
         nombre = self.archivo.name.lower()
         return nombre.endswith('.jpg') or nombre.endswith('.png') or nombre.endswith('.jpeg')
+
+# =========================================================
+# 7. GÉNERO Y NIÑEZ (DATOS SENSIBLES)
+# =========================================================
+
+class DocumentoSensible(models.Model):
+    """
+    Archivos restringidos estrictamente al equipo de Género y Niñez.
+    """
+    TIPO_CHOICES = [
+        ('INFORME_PSI', 'Informe Psicológico'),
+        ('DENUNCIA', 'Denuncia / Judicial'),
+        ('MEDIDA', 'Medida de Protección'),
+        ('SEGUIMIENTO', 'Ficha de Seguimiento'),
+        ('OTRO', 'Otro Reservado'),
+    ]
+
+    beneficiario = models.ForeignKey(Beneficiario, on_delete=models.CASCADE, related_name="documentos_sensibles")
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
+    archivo = models.FileField(upload_to='legajos_reservados/%Y/%m/') # Carpeta separada en el disco
+    descripcion = models.CharField(max_length=255, blank=True)
+    
+    subido_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    fecha_subida = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Documento Sensible"
+        verbose_name_plural = "Legajo Reservado"
+        # Permiso específico que solo daremos al grupo GENEROYNIÑEZ
+        permissions = [
+            ("access_legajo_sensible", "Puede acceder al legajo reservado"),
+        ]
+
+    def __str__(self):
+        return f"RESERVADO: {self.get_tipo_display()} ({self.beneficiario})"

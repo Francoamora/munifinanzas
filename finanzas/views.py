@@ -2,6 +2,9 @@ import json
 from decimal import Decimal
 from datetime import datetime, timedelta
 from datetime import date
+from .models import DocumentoSensible
+from .forms import DocumentoSensibleForm
+from .mixins import GeneroRequiredMixin
 
 # Django Imports
 from django.contrib import messages
@@ -953,18 +956,19 @@ class OrdenPagoGenerarMovimientoView(StaffRequiredMixin, View):
         return redirect("finanzas:movimiento_detail", pk=mov.pk)
 
 
-## =========================================================
-# 6) PERSONAS (SOCIAL)
+# =========================================================
+# 6) PERSONAS (SOCIAL Y GÉNERO)
 # =========================================================
 
-# --- FIX: IMPORTACIONES LOCALES PARA EVITAR ERROR 500 ---
-# Esto asegura que las funciones existan en este bloque
 from django.db.models import Sum, Q
-from django.shortcuts import redirect
+from django.shortcuts import redirect, get_object_or_404
+from .models import Beneficiario, DocumentoBeneficiario, Movimiento, DocumentoSensible
+from .forms import BeneficiarioForm, DocumentoBeneficiarioForm, DocumentoSensibleForm
 from .mixins import (
     puede_ver_historial_economico, 
     PersonaCensoAccessMixin, 
     PersonaCensoEditMixin,
+    GeneroRequiredMixin,
     roles_ctx
 )
 
@@ -975,10 +979,7 @@ class PersonaListView(PersonaCensoAccessMixin, ListView):
     paginate_by = 25
 
     def get_queryset(self):
-        # Ordenamos alfabéticamente por defecto
         qs = Beneficiario.objects.all().order_by("apellido", "nombre")
-        
-        # 1. Búsqueda por Texto (Nombre, Apellido, DNI)
         q = (self.request.GET.get("q") or "").strip()
         if q:
             qs = qs.filter(
@@ -987,27 +988,21 @@ class PersonaListView(PersonaCensoAccessMixin, ListView):
                 Q(dni__icontains=q)
             )
 
-        # 2. Filtro de Estado (Activo / Inactivo / Todos)
         estado = self.request.GET.get("estado", "activos")
         if estado == "activos":
             qs = qs.filter(activo=True)
         elif estado == "inactivos":
             qs = qs.filter(activo=False)
         
-        # 3. Filtros Avanzados (INTELIGENTES)
-        
-        # ¿Trabaja en la Comuna?
+        # Filtros Avanzados
         vinculo = self.request.GET.get("vinculo")
         if vinculo == "si":
             qs = qs.exclude(tipo_vinculo="NINGUNO")
         
-        # ¿Tiene Beneficio Social?
         beneficio = self.request.GET.get("beneficio")
         if beneficio == "si":
             qs = qs.filter(percibe_beneficio=True)
             
-        # ¿Paga Servicios?
-        # NOTA: Si esto falla, cambiar 'movimientos' por 'movimiento_set' según tu modelo
         servicios = self.request.GET.get("servicios")
         if servicios == "si":
             qs = qs.filter(
@@ -1020,9 +1015,8 @@ class PersonaListView(PersonaCensoAccessMixin, ListView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         
-        # --- KPI CARDS ---
+        # KPI CARDS
         activos_qs = Beneficiario.objects.filter(activo=True)
-        
         ctx["count_total"] = Beneficiario.objects.count()
         ctx["count_activos"] = activos_qs.count()
         ctx["count_inactivos"] = Beneficiario.objects.filter(activo=False).count()
@@ -1030,7 +1024,7 @@ class PersonaListView(PersonaCensoAccessMixin, ListView):
         ctx["count_beneficios"] = activos_qs.filter(percibe_beneficio=True).count()
         ctx["count_pagadores"] = activos_qs.filter(paga_servicios=True).count()
         
-        # Estado de filtros
+        # Estado filtros
         ctx["estado_actual"] = self.request.GET.get("estado", "activos")
         ctx["q_actual"] = self.request.GET.get("q", "")
         ctx["f_vinculo"] = self.request.GET.get("vinculo", "")
@@ -1038,13 +1032,8 @@ class PersonaListView(PersonaCensoAccessMixin, ListView):
         ctx["f_servicios"] = self.request.GET.get("servicios", "")
         ctx["highlight_id"] = self.request.GET.get("highlight")
 
-        # --- PERMISOS DE VISIBILIDAD (DINERO) ---
-        # Ahora sí va a funcionar porque lo importamos arriba
         ctx["perms_ver_dinero"] = puede_ver_historial_economico(self.request.user)
-        
-        # Inyectamos roles para menú lateral
         ctx.update(roles_ctx(self.request.user))
-        
         return ctx
 
 class PersonaCreateView(PersonaCensoEditMixin, CreateView):
@@ -1062,7 +1051,6 @@ class PersonaCreateView(PersonaCensoEditMixin, CreateView):
         self.object.activo = True
         self.object.save()
         form.save_m2m()
-        
         messages.success(self.request, f"Persona '{self.object}' registrada correctamente.")
         base_url = reverse("finanzas:persona_list")
         return redirect(f"{base_url}?q={self.object.dni}&highlight={self.object.id}")
@@ -1092,22 +1080,17 @@ class PersonaDetailView(PersonaCensoAccessMixin, DetailView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         
-        # 1. Chequeo de permisos usando tu función de mixins.py
         ver_dinero = puede_ver_historial_economico(self.request.user)
         ctx['perms_ver_dinero'] = ver_dinero
         
-        # 2. Carga Condicional de Datos Sensibles
         if ver_dinero:
-            # Solo si tiene permiso, consultamos la base de datos de pagos
             pagos = Movimiento.objects.filter(
                 beneficiario=self.object,
                 tipo='INGRESO'
             ).order_by('-fecha_operacion')
-            
             ctx['pagos_servicios'] = pagos
             ctx['total_pagado_historico'] = pagos.aggregate(total=Sum('monto'))['total'] or 0
         else:
-            # Si no tiene permiso (ej: Operador Social), mandamos vacío para seguridad
             ctx['pagos_servicios'] = []
             ctx['total_pagado_historico'] = 0
         
@@ -1115,7 +1098,6 @@ class PersonaDetailView(PersonaCensoAccessMixin, DetailView):
         return ctx
 
 class BeneficiarioUploadView(PersonaCensoEditMixin, CreateView):
-    # CAMBIO IMPORTANTE: Usamos PersonaCensoEditMixin para que Social pueda subir DNI
     model = DocumentoBeneficiario
     form_class = DocumentoBeneficiarioForm
     template_name = "finanzas/persona_detail.html"
@@ -1135,6 +1117,29 @@ class BeneficiarioUploadView(PersonaCensoEditMixin, CreateView):
     def form_invalid(self, form):
         beneficiario_id = self.kwargs['pk']
         messages.error(self.request, "Error al subir. Verificá el archivo.")
+        return redirect('finanzas:persona_detail', pk=beneficiario_id)
+
+# NUEVO: SUBIDA DE ARCHIVOS RESERVADOS (GENERO Y NIÑEZ)
+class DocumentoSensibleUploadView(GeneroRequiredMixin, CreateView):
+    model = DocumentoSensible
+    form_class = DocumentoSensibleForm
+    template_name = "finanzas/persona_detail.html"
+
+    def form_valid(self, form):
+        beneficiario_id = self.kwargs['pk']
+        beneficiario = get_object_or_404(Beneficiario, pk=beneficiario_id)
+        
+        doc = form.save(commit=False)
+        doc.beneficiario = beneficiario
+        doc.subido_por = self.request.user
+        doc.save()
+        
+        messages.success(self.request, "Documento RESERVADO archivado bajo llave.")
+        return redirect('finanzas:persona_detail', pk=beneficiario_id)
+
+    def form_invalid(self, form):
+        beneficiario_id = self.kwargs['pk']
+        messages.error(self.request, "Error al subir documento reservado.")
         return redirect('finanzas:persona_detail', pk=beneficiario_id)
 # =========================================================
 # 7) APIS AJAX (CRÍTICAS PARA EL FORMULARIO)

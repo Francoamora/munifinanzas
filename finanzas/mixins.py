@@ -1,4 +1,4 @@
-from django.contrib.auth.mixins import AccessMixin
+from django.contrib.auth.mixins import AccessMixin, UserPassesTestMixin
 from django.shortcuts import redirect
 from django.contrib import messages
 from django.urls import reverse_lazy
@@ -19,7 +19,7 @@ def _tiene_grupo(user, grupos):
         
     return user.groups.filter(name__in=grupos).exists()
 
-# --- FUNCIONES DE ROL (Actualizadas con tus Grupos Nuevos) ---
+# --- FUNCIONES DE ROL (Actualizadas) ---
 
 def es_admin_sistema(user):
     # Incluye Superusers y Admins viejos
@@ -34,11 +34,12 @@ def es_operador_finanzas(user):
     return _tiene_grupo(user, ["Finanzas", "OPERADOR_FINANZAS", "CAJA", "STAFF_FINANZAS", "ADMIN_SISTEMA"])
 
 def es_operador_social(user):
-    # AQUÍ ESTÁ LA CLAVE: Agregamos "Social" y "Social Administración"
-    # Esto soluciona el Error 403 al crear atenciones
+    # AQUÍ ESTÁ LA CLAVE: Agregamos "Social", "Social Administración" y "GENEROYNIÑEZ"
+    # Esto permite que Género acceda a la ficha básica de la persona
     grupos_permitidos = [
         "Social", 
         "Social Administración", 
+        "GENEROYNIÑEZ",
         "OPERADOR_SOCIAL", 
         "MESA_ENTRADA", 
         "STAFF_FINANZAS", 
@@ -46,7 +47,12 @@ def es_operador_social(user):
     ]
     return _tiene_grupo(user, grupos_permitidos)
 
+def es_equipo_genero(user):
+    # NUEVO: Función específica para detectar al equipo sensible
+    return _tiene_grupo(user, ["GENEROYNIÑEZ", "ADMIN_SISTEMA"])
+
 def es_consulta_politica(user):
+    # RESTAURADO: Necesario para que no falle la Agenda
     return _tiene_grupo(user, ["CONSULTA_POLITICA", "STAFF_FINANZAS", "ADMIN_SISTEMA"])
 
 # --- FUNCIONES DE PRIVACIDAD (DINERO) ---
@@ -55,14 +61,13 @@ def puede_ver_historial_economico(user):
     """
     Regla de privacidad CRÍTICA: 
     Solo ven montos ($) el grupo 'Finanzas' o los Superusuarios.
-    'Social' y 'Social Administración' devuelven False aquí.
     """
     if not user or not user.is_authenticated:
         return False
     if user.is_superuser:
         return True
     
-    # Solo estos grupos ven plata. Social NO está aquí.
+    # Solo estos grupos ven plata. Social y Género NO están aquí.
     grupos_dinero = ["Finanzas", "STAFF_FINANZAS", "TESORERIA", "ADMIN_SISTEMA"]
     return user.groups.filter(name__in=grupos_dinero).exists()
 
@@ -96,8 +101,17 @@ class OperadorFinanzasRequiredMixin(BaseRolMixin):
 
 class OperadorSocialRequiredMixin(BaseRolMixin):
     def dispatch(self, request, *args, **kwargs):
-        # Esto ahora permite pasar a "Social Administración"
+        # Esto ahora permite pasar a "Social Administración" y "Género"
         if not es_operador_social(request.user):
+            return self.handle_no_permission()
+        return super().dispatch(request, *args, **kwargs)
+
+class GeneroRequiredMixin(BaseRolMixin):
+    """
+    NUEVO: Solo permite acceso al equipo de Género y Niñez para subir archivos.
+    """
+    def dispatch(self, request, *args, **kwargs):
+        if not es_equipo_genero(request.user):
             return self.handle_no_permission()
         return super().dispatch(request, *args, **kwargs)
 
@@ -114,7 +128,7 @@ class DashboardAccessMixin(BaseRolMixin):
 
 class PersonaCensoAccessMixin(BaseRolMixin):
     def dispatch(self, request, *args, **kwargs):
-        # Permite entrar tanto a Social como a Finanzas
+        # Permite entrar a Social, Género y Finanzas
         if not (es_operador_social(request.user) or es_operador_finanzas(request.user)):
             return self.handle_no_permission()
         return super().dispatch(request, *args, **kwargs)
@@ -156,7 +170,10 @@ def roles_ctx(context_input):
         'es_admin_sistema': es_admin_sistema(user),
         'es_staff_finanzas': es_staff_finanzas(user),
         'es_operador_finanzas': es_operador_finanzas(user),
-        'es_operador_social': es_operador_social(user), # True para Social y Social Admin
+        'es_operador_social': es_operador_social(user), # True para Social, Social Admin y Género
+        
+        # NUEVO: Para mostrar la pestaña roja
+        'es_equipo_genero': es_equipo_genero(user),
         
         # Alias viejos
         'rol_staff_finanzas': es_staff_finanzas(user),

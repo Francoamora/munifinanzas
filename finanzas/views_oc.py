@@ -10,19 +10,13 @@ from django.http import JsonResponse
 from django.db import transaction
 from django.utils import timezone
 
-# Modelos
 from .models import OrdenCompra, Proveedor, Vehiculo, SerieOC, Movimiento
-# Formularios
 from .forms import OrdenCompraForm, OrdenCompraLineaFormSet
-# Mixins (IMPORTANTE: Agregamos OperadorSocialRequiredMixin)
 from .mixins import StaffRequiredMixin, OperadorSocialRequiredMixin, roles_ctx
 
 # ==================== LISTADO Y DETALLE ====================
 
 class OCListView(OperadorSocialRequiredMixin, ListView):
-    """
-    Permite ver listado a Social Admin y Finanzas.
-    """
     model = OrdenCompra
     template_name = "finanzas/oc_list.html"
     context_object_name = "ordenes"
@@ -54,9 +48,6 @@ class OCListView(OperadorSocialRequiredMixin, ListView):
         return ctx
 
 class OCDetailView(OperadorSocialRequiredMixin, DetailView):
-    """
-    Detalle visible para Social Admin (para imprimir) y Finanzas.
-    """
     model = OrdenCompra
     template_name = "finanzas/oc_detail.html"
     context_object_name = "orden"
@@ -71,9 +62,6 @@ class OCDetailView(OperadorSocialRequiredMixin, DetailView):
 # ==================== CREACIÓN Y EDICIÓN (CORE) ====================
 
 class OCCreateView(OperadorSocialRequiredMixin, CreateView):
-    """
-    Permite crear OCs a Social Admin.
-    """
     model = OrdenCompra
     form_class = OrdenCompraForm
     template_name = "finanzas/oc_form.html"
@@ -96,21 +84,28 @@ class OCCreateView(OperadorSocialRequiredMixin, CreateView):
             self.object = form.save(commit=False)
             self.object.creado_por = self.request.user
             self.object.estado = OrdenCompra.ESTADO_BORRADOR
-
-            # --- LÓGICA DE AUTO-NUMERACIÓN ---
-            serie, created = SerieOC.objects.get_or_create(
-                nombre="General", 
-                defaults={'prefijo': 'OC', 'siguiente_numero': 1, 'activo': True}
-            )
             
-            prefijo = serie.prefijo or "OC"
-            numero_str = str(serie.siguiente_numero).zfill(6)
-            self.object.numero = f"{prefijo}-{numero_str}"
-            self.object.serie = serie
+            tipo_num = form.cleaned_data.get('tipo_numeracion')
 
-            serie.siguiente_numero += 1
-            serie.save()
-            # ----------------------------------
+            if tipo_num == 'MANUAL':
+                # Usamos el número que escribió el usuario
+                # (Ya se validó en forms.py que no esté vacío)
+                self.object.numero = form.cleaned_data['numero']
+                # Opcional: Agregar prefijo si querés estandarizar, ej: "MAN-0052"
+                # self.object.numero = f"MAN-{form.cleaned_data['numero']}"
+            else:
+                # --- LÓGICA AUTOMÁTICA ---
+                serie, created = SerieOC.objects.get_or_create(
+                    nombre="General", 
+                    defaults={'prefijo': 'OC', 'siguiente_numero': 1, 'activo': True}
+                )
+                prefijo = serie.prefijo or "OC"
+                numero_str = str(serie.siguiente_numero).zfill(6)
+                self.object.numero = f"{prefijo}-{numero_str}"
+                self.object.serie = serie
+                serie.siguiente_numero += 1
+                serie.save()
+                # -------------------------
 
             if self.object.proveedor:
                 self.object.proveedor_nombre = self.object.proveedor.nombre
@@ -124,13 +119,10 @@ class OCCreateView(OperadorSocialRequiredMixin, CreateView):
             messages.success(self.request, f"Orden de Compra #{self.object.numero} creada exitosamente.")
             return redirect("finanzas:oc_detail", pk=self.object.pk)
         
-        messages.error(self.request, "Error al crear la orden. Revise los campos.")
+        messages.error(self.request, "Error al crear la orden. Revise los campos marcados en rojo.")
         return self.render_to_response(self.get_context_data(form=form))
 
 class OCUpdateView(OperadorSocialRequiredMixin, UpdateView):
-    """
-    Permite editar OCs (solo borrador) a Social Admin.
-    """
     model = OrdenCompra
     form_class = OrdenCompraForm
     template_name = "finanzas/oc_form.html"
@@ -158,6 +150,7 @@ class OCUpdateView(OperadorSocialRequiredMixin, UpdateView):
         lineas = ctx["lineas"]
         
         if form.is_valid() and lineas.is_valid():
+            # En edición NO regeneramos número, mantenemos el que tiene
             self.object = form.save()
             lineas.save()
             messages.success(self.request, "Orden de Compra actualizada correctamente.")
@@ -169,16 +162,12 @@ class OCUpdateView(OperadorSocialRequiredMixin, UpdateView):
 # ==================== ACCIONES Y ESTADOS ====================
 
 class OCCambiarEstadoView(OperadorSocialRequiredMixin, View):
-    """
-    Permite a Social Admin pasar de Borrador -> Autorizada (o anular).
-    """
     def post(self, request, pk, accion):
         oc = get_object_or_404(OrdenCompra, pk=pk)
         
         if accion == "autorizar" and oc.estado == OrdenCompra.ESTADO_BORRADOR:
             oc.estado = OrdenCompra.ESTADO_AUTORIZADA
         elif accion == "cerrar" and oc.estado == OrdenCompra.ESTADO_AUTORIZADA:
-            # SOLO Finanzas puede cerrar manualmente si no se paga por sistema
             if not request.user.groups.filter(name='Finanzas').exists() and not request.user.is_superuser:
                  messages.error(request, "Solo Finanzas puede cerrar órdenes manualmente.")
                  return redirect("finanzas:oc_detail", pk=pk)
@@ -196,10 +185,6 @@ class OCCambiarEstadoView(OperadorSocialRequiredMixin, View):
         return redirect("finanzas:oc_detail", pk=pk)
 
 class OCGenerarMovimientoView(StaffRequiredMixin, View):
-    """
-    ⚠️ SEGURIDAD: Solo STAFF FINANZAS puede ejecutar el pago.
-    Genera un Movimiento (Gasto) y cierra la OC.
-    """
     @transaction.atomic
     def post(self, request, pk):
         oc = get_object_or_404(OrdenCompra, pk=pk)
@@ -220,7 +205,6 @@ class OCGenerarMovimientoView(StaffRequiredMixin, View):
              messages.error(request, "La OC no tiene ítems/categoría para imputar.")
              return redirect("finanzas:oc_detail", pk=pk)
 
-        # Crear Movimiento de Caja (Salida de dinero)
         Movimiento.objects.create(
             tipo=Movimiento.TIPO_GASTO,
             fecha_operacion=timezone.now().date(),

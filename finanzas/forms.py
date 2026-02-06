@@ -15,7 +15,7 @@ from .models import (
     Atencion, OrdenPago, OrdenPagoLinea, OrdenCompra, OrdenCompraLinea,
     FacturaOC, Vehiculo, HojaRuta, Traslado,
     OrdenTrabajo, OrdenTrabajoMaterial, AdjuntoOrdenTrabajo,
-    Proveedor, DocumentoBeneficiario
+    Proveedor, DocumentoBeneficiario, DocumentoSensible
 )
 
 # =========================================================
@@ -609,6 +609,19 @@ class OrdenCompraForm(EstiloFormMixin, forms.ModelForm):
         ("OT", "OT - Otros"),
     ]
 
+    # NUEVO: Selector de Modo de Numeración
+    TIPO_NUMERO_CHOICES = [
+        ('AUTO', 'Automático (Sistema)'),
+        ('MANUAL', 'Manual (Talonario)'),
+    ]
+    tipo_numeracion = forms.ChoiceField(
+        choices=TIPO_NUMERO_CHOICES,
+        widget=forms.RadioSelect(attrs={"class": "btn-check"}),
+        initial='AUTO',
+        required=False,
+        label="Modo de Numeración"
+    )
+
     fecha_oc = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}), initial=lambda: timezone.now().date())
     
     proveedor = forms.ModelChoiceField(
@@ -628,20 +641,26 @@ class OrdenCompraForm(EstiloFormMixin, forms.ModelForm):
         widgets = {
             "proveedor_nombre": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly"}),
             "proveedor_cuit": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly"}),
-            "numero": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly", "placeholder": "Automático al guardar"}),
+            # El readonly se maneja ahora con JS según el switch
+            "numero": forms.TextInput(attrs={"class": "bg-light", "placeholder": "Automático al guardar"}),
             "observaciones": forms.Textarea(attrs={"rows": 3}),
         }
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields['numero'].required = False
-
     def clean(self):
         cleaned = super().clean()
+        tipo = cleaned.get("tipo_numeracion")
+        numero = cleaned.get("numero")
+        
+        # Validación lógica
+        if tipo == 'MANUAL' and not numero:
+            self.add_error('numero', 'Si elige numeración Manual, debe ingresar el N° de Comprobante.')
+        
+        # Guardar snapshots
         p = cleaned.get("proveedor")
         if p:
             cleaned["proveedor_nombre"] = p.nombre
             cleaned["proveedor_cuit"] = p.cuit or ""
+            
         return cleaned
 
 OrdenCompraLineaFormSet = inlineformset_factory(
@@ -649,7 +668,13 @@ OrdenCompraLineaFormSet = inlineformset_factory(
     fields=["categoria", "area", "descripcion", "monto"],
     extra=0,
     can_delete=True,
-    formfield_callback=_money_formfield_callback
+    # Usamos widgets custom para evitar las flechas feas del input number
+    widgets={
+        "monto": forms.NumberInput(attrs={"class": "form-control text-end no-arrow", "step": "0.01", "placeholder": "0.00"}),
+        "descripcion": forms.TextInput(attrs={"class": "form-control", "placeholder": "Detalle del ítem..."}),
+        "categoria": forms.Select(attrs={"class": "form-select"}),
+        "area": forms.Select(attrs={"class": "form-select"}),
+    }
 )
 
 
@@ -1025,4 +1050,14 @@ class DocumentoBeneficiarioForm(EstiloFormMixin, forms.ModelForm):
             'tipo': forms.Select(attrs={'class': 'form-select'}),
             'archivo': forms.FileInput(attrs={'class': 'form-control'}),
             'descripcion': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: DNI frente y dorso, CUD 2026...'}),
+        }
+
+
+# Agregá esto junto a tus otros forms
+class DocumentoSensibleForm(EstiloFormMixin, forms.ModelForm):
+    class Meta:
+        model = DocumentoSensible
+        fields = ['tipo', 'archivo', 'descripcion']
+        widgets = {
+            'descripcion': forms.TextInput(attrs={'placeholder': 'Referencia interna (Opcional)'}),
         }

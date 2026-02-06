@@ -6,11 +6,43 @@
     {% if orden.pk %}Editar OC #{{ orden.numero }}{% else %}Nueva Orden de Compra{% endif %}
 {% endblock %}
 
+{% block extra_css %}
+<style>
+    /* 1. Estética: Más espacio en la tabla */
+    .table-relaxed td, .table-relaxed th {
+        padding-top: 0.8rem !important;
+        padding-bottom: 0.8rem !important;
+        vertical-align: middle;
+    }
+    
+    /* 2. Limpieza: Eliminar flechas de los inputs numéricos */
+    .no-arrow::-webkit-outer-spin-button,
+    .no-arrow::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    .no-arrow {
+        -moz-appearance: textfield;
+    }
+
+    /* 3. Inputs modernos */
+    .form-control, .form-select { border-color: #cbd5e1; }
+    .form-control:focus, .form-select:focus { border-color: #0d6efd; box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15); }
+    
+    /* 4. Switch Manual/Auto */
+    .btn-check:checked + .btn-outline-primary {
+        background-color: #0d6efd;
+        color: white;
+        border-color: #0d6efd;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="row justify-content-center animate-fade-in" style="padding-bottom: 120px;">
     
-    <div class="col-12 col-xl-9">
+    <div class="col-12 col-xl-10">
 
         <form method="post" novalidate id="ocForm" data-url-proveedores="{% url 'finanzas:oc_proveedores_suggest' %}">
             {% csrf_token %}
@@ -56,33 +88,38 @@
             {% endif %}
 
             <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
-                <div class="card-header bg-white py-3 border-bottom">
+                <div class="card-header bg-white py-3 px-4 border-bottom d-flex justify-content-between align-items-center">
                     <h6 class="mb-0 fw-bold text-dark text-uppercase small ls-1">
-                        <i class="bi bi-shop me-2 text-primary"></i>Datos del Proveedor
+                        <i class="bi bi-sliders me-2 text-primary"></i>Configuración de la Orden
                     </h6>
                 </div>
-                <div class="card-body p-4 bg-light bg-opacity-50">
+                <div class="card-body p-4 bg-light bg-opacity-25">
                     <div class="row g-4">
-                        <div class="col-12">
-                            <label class="form-label small fw-bold text-dark text-uppercase">Buscar Proveedor *</label>
-                            <div class="input-group shadow-sm">
-                                <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-primary"></i></span>
-                                <select name="{{ form.proveedor.name }}" id="id_proveedor" class="form-select" required>
-                                    {% if form.instance.proveedor %}
-                                        <option value="{{ form.instance.proveedor.id }}" selected>
-                                            {{ form.instance.proveedor.nombre }} ({{ form.instance.proveedor.cuit }})
-                                        </option>
-                                    {% endif %}
-                                </select>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold text-dark mb-2">MODO DE NUMERACIÓN</label>
+                            <div class="d-flex gap-2">
+                                {% for radio in form.tipo_numeracion %}
+                                    {{ radio.tag }}
+                                    <label class="btn btn-outline-primary btn-sm fw-bold rounded-pill px-3" for="{{ radio.id_for_label }}">
+                                        {% if radio.data.value == 'AUTO' %}<i class="bi bi-magic me-1"></i>{% else %}<i class="bi bi-pen me-1"></i>{% endif %}
+                                        {{ radio.choice_label }}
+                                    </label>
+                                {% endfor %}
                             </div>
                         </div>
-                        <div class="col-md-8">
-                            <label class="form-label small fw-bold text-secondary">RAZÓN SOCIAL (CONFIRMACIÓN)</label>
-                            {{ form.proveedor_nombre }} 
-                        </div>
+
                         <div class="col-md-4">
-                            <label class="form-label small fw-bold text-secondary">CUIT (CONFIRMACIÓN)</label>
-                            {{ form.proveedor_cuit }}
+                            <label class="form-label small fw-bold text-dark">N° COMPROBANTE</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-hash"></i></span>
+                                {{ form.numero }}
+                            </div>
+                            <div id="numHelp" class="form-text small mt-1 text-primary fw-bold"></div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold text-dark">FECHA EMISIÓN</label>
+                            {{ form.fecha_oc }}
                         </div>
                     </div>
                 </div>
@@ -90,25 +127,29 @@
 
             <div class="card border-0 shadow-sm rounded-4 mb-4">
                 <div class="card-body p-4">
-                    <div class="row g-3">
-                        <div class="col-md-3">
-                            <label class="form-label small fw-bold text-dark">N° COMPROBANTE</label>
-                            <div class="input-group">
-                                <span class="input-group-text bg-light text-muted border-end-0">#</span>
-                                {{ form.numero }}
+                    <div class="row g-4">
+                        <div class="col-12 col-lg-6">
+                            <label class="form-label small fw-bold text-dark">BUSCAR PROVEEDOR *</label>
+                            <select name="{{ form.proveedor.name }}" id="id_proveedor" class="form-select" required>
+                                {% if form.instance.proveedor %}
+                                    <option value="{{ form.instance.proveedor.id }}" selected>
+                                        {{ form.instance.proveedor.nombre }} ({{ form.instance.proveedor.cuit }})
+                                    </option>
+                                {% endif %}
+                            </select>
+                            
+                            <div class="d-none">
+                                {{ form.proveedor_nombre }}
+                                {{ form.proveedor_cuit }}
                             </div>
-                            <div class="form-text small" style="font-size: 0.7rem;">Se generará automáticamente al guardar.</div>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label small fw-bold text-dark">FECHA EMISIÓN</label>
-                            {{ form.fecha_oc }}
-                        </div>
-                        <div class="col-md-3">
+
+                        <div class="col-md-6 col-lg-3">
                             <label class="form-label small fw-bold text-dark">RUBRO PRINCIPAL</label>
                             {{ form.rubro_principal }}
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label small fw-bold text-dark">ÁREA</label>
+                        <div class="col-md-6 col-lg-3">
+                            <label class="form-label small fw-bold text-dark">ÁREA SOLICITANTE</label>
                             {{ form.area }}
                         </div>
                     </div>
@@ -125,14 +166,14 @@
                 </div>
                 
                 <div class="table-responsive">
-                    <table class="table table-hover mb-0 align-middle" id="tablaItems">
+                    <table class="table table-hover mb-0 align-middle table-relaxed" id="tablaItems">
                         <thead class="bg-light text-secondary small text-uppercase fw-bold">
                             <tr>
-                                <th class="ps-4 py-3" style="width: 25%;">Categoría</th>
-                                <th class="py-3" style="width: 15%;">Área Item</th>
-                                <th class="py-3" style="width: 35%;">Descripción</th>
-                                <th class="py-3 text-end pe-4" style="width: 20%;">Monto ($)</th>
-                                <th class="py-3 text-center" style="width: 5%;"></th>
+                                <th class="ps-4" style="width: 25%;">Categoría</th>
+                                <th style="width: 15%;">Área Item</th>
+                                <th style="width: 35%;">Descripción</th>
+                                <th class="text-end pe-4" style="width: 20%;">Monto ($)</th>
+                                <th class="text-center" style="width: 5%;"></th>
                             </tr>
                         </thead>
                         <tbody id="lineas-container">
@@ -153,7 +194,7 @@
                                     <td class="text-center">
                                         {% if lineas.can_delete %}
                                             <div class="d-none">{{ form.DELETE }}</div> 
-                                            <button type="button" class="btn btn-sm btn-outline-danger border-0 btn-delete-row">
+                                            <button type="button" class="btn btn-sm btn-outline-danger border-0 btn-delete-row shadow-none">
                                                 <i class="bi bi-trash"></i>
                                             </button>
                                         {% endif %}
@@ -180,97 +221,71 @@
 
         </form>
     </div>
-
-    <div class="col-12 col-xl-3 d-none d-xl-block">
-        <div class="sticky-top" style="top: 100px;">
-            <div class="card border-0 shadow-sm rounded-4 bg-primary text-white overflow-hidden mb-3">
-                <div class="card-header bg-transparent border-0 pt-4 pb-0">
-                    <h6 class="fw-bold text-uppercase ls-1 mb-0"><i class="bi bi-info-circle me-2"></i>Códigos de Rubro</h6>
-                </div>
-                <div class="card-body">
-                    <p class="small opacity-75 mb-3">Utilizá estos códigos para clasificar el gasto principal de la OC.</p>
-                    <ul class="list-unstyled small mb-0 d-flex flex-column gap-2">
-                        <li class="d-flex align-items-start gap-2">
-                            <span class="badge bg-white text-primary fw-bold">AS</span>
-                            <span class="opacity-90 lh-sm">Ayudas Sociales <br><span class="opacity-50" style="font-size:0.7em">Directas, emergencias</span></span>
-                        </li>
-                        <li class="d-flex align-items-start gap-2">
-                            <span class="badge bg-white text-primary fw-bold">CB</span>
-                            <span class="opacity-90 lh-sm">Combustible <br><span class="opacity-50" style="font-size:0.7em">Vehículos y máquinas</span></span>
-                        </li>
-                        <li class="d-flex align-items-start gap-2">
-                            <span class="badge bg-white text-primary fw-bold">OB</span>
-                            <span class="opacity-90 lh-sm">Obras y Materiales <br><span class="opacity-50" style="font-size:0.7em">Corralón, construcción</span></span>
-                        </li>
-                        <li class="d-flex align-items-start gap-2">
-                            <span class="badge bg-white text-primary fw-bold">SV</span>
-                            <span class="opacity-90 lh-sm">Servicios <br><span class="opacity-50" style="font-size:0.7em">Terceros, alquileres</span></span>
-                        </li>
-                        <li class="d-flex align-items-start gap-2">
-                            <span class="badge bg-white text-primary fw-bold">PE</span>
-                            <span class="opacity-90 lh-sm">Personal <br><span class="opacity-50" style="font-size:0.7em">Jornales, changas</span></span>
-                        </li>
-                        <li class="d-flex align-items-start gap-2">
-                            <span class="badge bg-white text-primary fw-bold">HI</span>
-                            <span class="opacity-90 lh-sm">Herramientas <br><span class="opacity-50" style="font-size:0.7em">Insumos generales</span></span>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </div>
-
 </div>
 
-<table style="display:none">
-    <tbody id="empty-row">
-        <tr class="linea-row bg-white animate-fade-in">
-            {% with lineas.empty_form as form %}
-                {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
-                <td class="ps-4">{{ form.categoria }}</td>
-                <td>{{ form.area }}</td>
-                <td>{{ form.descripcion }}</td>
-                <td class="pe-4">
-                    <div class="input-group input-group-sm">
-                        <span class="input-group-text bg-light border-end-0 text-muted">$</span>
-                        {{ form.monto }}
-                    </div>
-                </td>
-                <td class="text-center">
-                    <div class="d-none">{{ form.DELETE }}</div>
-                    <button type="button" class="btn btn-sm btn-outline-danger border-0 btn-delete-row">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                </td>
-            {% endwith %}
-        </tr>
-    </tbody>
-</table>
+<script type="text/template" id="empty-row-template">
+    <tr class="linea-row bg-white animate-fade-in">
+        {% with lineas.empty_form as form %}
+            {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+            <td class="ps-4">{{ form.categoria }}</td>
+            <td>{{ form.area }}</td>
+            <td>{{ form.descripcion }}</td>
+            <td class="pe-4">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-light border-end-0 text-muted">$</span>
+                    {{ form.monto }}
+                </div>
+            </td>
+            <td class="text-center">
+                <div class="d-none">{{ form.DELETE }}</div>
+                <button type="button" class="btn btn-sm btn-outline-danger border-0 btn-delete-row shadow-none">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        {% endwith %}
+    </tr>
+</script>
 
 {% endblock %}
 
 {% block extra_js %}
-<style>
-    /* Estilos PRO */
-    .form-control, .form-select { border: 1px solid #cbd5e1; padding: 0.6rem 0.8rem; border-radius: 8px; font-size: 0.9rem; }
-    .form-control:focus, .form-select:focus { border-color: #0d6efd; box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15); }
-    input[readonly].bg-light { background-color: #f1f5f9 !important; color: #475569; font-weight: 600; border-color: #e2e8f0; }
-    .hover-lift:hover { transform: translateY(-2px); transition: 0.2s; }
-</style>
-
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     
-    // 1. SELECT2 PROVEEDOR
+    // 1. SWITCH AUTO/MANUAL
+    const radios = document.querySelectorAll('input[name="tipo_numeracion"]');
+    const inputNumero = document.getElementById('id_numero');
+    const helpText = document.getElementById('numHelp');
+
+    function updateNumeracionState() {
+        let checkedRadio = document.querySelector('input[name="tipo_numeracion"]:checked');
+        let selected = checkedRadio ? checkedRadio.value : 'AUTO'; // Default a AUTO si no hay nada
+        
+        if (selected === 'AUTO') {
+            inputNumero.setAttribute('readonly', true);
+            inputNumero.classList.add('bg-light');
+            inputNumero.value = ''; 
+            inputNumero.placeholder = "Se generará automáticamente";
+            helpText.innerText = "El sistema asignará el siguiente número disponible.";
+        } else {
+            inputNumero.removeAttribute('readonly');
+            inputNumero.classList.remove('bg-light');
+            inputNumero.placeholder = "Ej: 000504";
+            if(document.activeElement !== inputNumero) inputNumero.focus();
+            helpText.innerText = "Ingrese el número del talonario físico.";
+        }
+    }
+    // Event Listeners
+    radios.forEach(radio => radio.addEventListener('change', updateNumeracionState));
+    // Init
+    if(radios.length > 0) updateNumeracionState();
+
+
+    // 2. PROVEEDOR SELECT2
     const $proveedor = $('#id_proveedor');
     const urlProveedores = $('#ocForm').data('url-proveedores');
     const $totalDisplay = $('#totalDisplay');
     
-    // Formset
-    const $container = $('#lineas-container');
-    const $totalForms = $('#id_lineas-TOTAL_FORMS');
-    const $emptyRow = $('#empty-row').html();
-
     $proveedor.select2({
         theme: 'bootstrap-5',
         width: '100%',
@@ -287,7 +302,6 @@ document.addEventListener("DOMContentLoaded", function() {
         minimumInputLength: 1
     });
 
-    // 2. AUTOCOMPLETADO
     $proveedor.on('select2:select', function (e) {
         var data = e.params.data;
         var nombre = data.text.split('(')[0].trim();
@@ -298,7 +312,6 @@ document.addEventListener("DOMContentLoaded", function() {
             var match = data.text.match(/\(([^)]+)\)/);
             if(match) cuit = match[1];
         }
-
         $('#id_proveedor_nombre').val(nombre);
         $('#id_proveedor_cuit').val(cuit);
     });
@@ -308,16 +321,26 @@ document.addEventListener("DOMContentLoaded", function() {
         $('#id_proveedor_cuit').val('');
     });
 
-    // 3. FORMSET DINÁMICO
+
+    // 3. FORMSET DINÁMICO (Con corrección de Template)
+    const $container = $('#lineas-container');
+    const $totalForms = $('#id_lineas-TOTAL_FORMS');
+
     $('#add-row').click(function() {
         var formIdx = parseInt($totalForms.val());
-        var newRow = $emptyRow.replace(/__prefix__/g, formIdx);
-        $container.append(newRow);
+        
+        // CORRECCIÓN: Leemos el HTML virgen desde el <script>, no del DOM renderizado
+        var templateSource = document.getElementById('empty-row-template').innerHTML;
+        var newRowHtml = templateSource.replace(/__prefix__/g, formIdx);
+        var $newRow = $(newRowHtml);
+        
+        // Agregamos la fila limpia
+        $container.append($newRow);
+        
+        // Inicializamos Select2 SOLO en los nuevos selects
+        $newRow.find('select').select2({ theme: 'bootstrap-5', width: '100%' });
+        
         $totalForms.val(formIdx + 1);
-        
-        // Init Select2 en nuevos selects
-        $container.find('tr:last select').select2({ theme: 'bootstrap-5', width: '100%' });
-        
         bindEvents();
     });
 
@@ -327,6 +350,7 @@ document.addEventListener("DOMContentLoaded", function() {
         $row.hide();
         calcularTotal();
     });
+
 
     // 4. CÁLCULOS
     function calcularTotal() {
@@ -350,6 +374,7 @@ document.addEventListener("DOMContentLoaded", function() {
     // INIT
     bindEvents();
     calcularTotal();
+    // Inicializar select2 en las filas ya existentes (si es edición)
     $('#lineas-container select').select2({ theme: 'bootstrap-5', width: '100%' });
 });
 </script>
