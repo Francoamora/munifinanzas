@@ -58,7 +58,8 @@
           <th class="ps-4 py-3">Fecha</th>
           <th>Persona</th>
           <th>Motivo / Área</th>
-          <th>Resumen</th> <th>Estado</th>
+          <th>Resumen</th> 
+          <th>Estado</th>
           <th class="text-end pe-4">Acción</th>
         </tr>
       </thead>
@@ -121,8 +122,8 @@
                         data-motivo="{{ a.get_motivo_principal_display }}"
                         data-area="{{ a.area|default:'General' }}"
                         data-estado="{{ a.get_estado_display }}"
-                        data-descripcion="{{ a.descripcion|default:'Sin detalles.'|escapejs }}"
-                        data-observaciones="{{ a.observaciones|default:'No hay observaciones.'|escapejs }}"
+                        data-descripcion="{{ a.descripcion|default:'Sin detalles.' }}"
+                        data-observaciones="{{ a.observaciones|default:'No hay observaciones.' }}"
                         title="Ver detalle rápido">
                     <i class="bi bi-eye-fill text-primary"></i>
                 </button>
@@ -167,13 +168,13 @@
         <div class="mb-4">
             <h6 class="text-uppercase text-muted small fw-bold mb-2 ls-1">Descripción del Pedido</h6>
             <div class="p-3 bg-light rounded-3 border border-light-subtle">
-                <p class="mb-0 text-dark" id="modalDescripcion" style="white-space: pre-line;">...</p>
+                <p class="mb-0 text-dark" id="modalDescripcion" style="white-space: pre-wrap;">...</p>
             </div>
         </div>
 
         <div class="mb-3">
             <h6 class="text-uppercase text-muted small fw-bold mb-2 ls-1">Observaciones Internas</h6>
-            <p class="small text-secondary fst-italic mb-0" id="modalObservaciones">...</p>
+            <p class="small text-secondary fst-italic mb-0" id="modalObservaciones" style="white-space: pre-wrap;">...</p>
         </div>
 
         <hr class="border-light-subtle">
@@ -202,14 +203,13 @@
 {% block extra_js %}
 <script>
     document.addEventListener("DOMContentLoaded", function() {
-        // Lógica para pasar datos del botón al Modal
         const quickViewModal = document.getElementById('quickViewModal');
         if (quickViewModal) {
             quickViewModal.addEventListener('show.bs.modal', event => {
-                // Botón que disparó el modal
                 const button = event.relatedTarget;
                 
-                // Extraer info de los atributos data-*
+                // Extraer info de los atributos data
+                // .getAttribute devuelve el texto puro, sin los códigos unicode raros
                 const persona = button.getAttribute('data-persona');
                 const fecha = button.getAttribute('data-fecha');
                 const motivo = button.getAttribute('data-motivo');
@@ -224,6 +224,9 @@
                 quickViewModal.querySelector('#modalMotivo').textContent = motivo;
                 quickViewModal.querySelector('#modalArea').textContent = area;
                 quickViewModal.querySelector('#modalEstado').textContent = estado;
+                
+                // Usamos textContent para evitar inyección HTML, 
+                // pero el CSS 'white-space: pre-wrap' se encarga de los saltos de línea
                 quickViewModal.querySelector('#modalDescripcion').textContent = descripcion;
                 quickViewModal.querySelector('#modalObservaciones').textContent = observaciones;
             });
