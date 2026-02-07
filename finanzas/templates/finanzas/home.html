@@ -136,21 +136,23 @@
 
         <div class="col-lg-7">
             <div class="d-flex flex-wrap gap-3 justify-content-lg-end">
+                
                 <div class="mini-stat-box text-center text-lg-start">
-                    <div class="mini-stat-label">Atenciones Hoy</div>
-                    <div class="mini-stat-value">{{ atenciones_hoy|default:"0" }}</div>
+                    <div class="mini-stat-label">Atenciones</div>
+                    <div class="mini-stat-value">{{ atenciones_stat|default:"0" }}</div>
                     <a href="{% url 'finanzas:atencion_list' %}" class="stretched-link"></a>
                 </div>
+
                 <div class="mini-stat-box text-center text-lg-start">
-                    <div class="mini-stat-label">Flota Hoy</div>
-                    <div class="mini-stat-value">{{ viajes_hoy|default:"0" }}</div>
+                    <div class="mini-stat-label">Flota</div>
+                    <div class="mini-stat-value">{{ viajes_stat|default:"0" }}</div>
                     <a href="{% url 'finanzas:hoja_ruta_list' %}" class="stretched-link"></a>
                 </div>
                 
                 {% if perms_ver_dinero %}
                 <div class="mini-stat-box text-center text-lg-start">
-                    <div class="mini-stat-label">Compras Hoy</div>
-                    <div class="mini-stat-value">{{ ocs_hoy|default:"0" }}</div>
+                    <div class="mini-stat-label">Compras</div>
+                    <div class="mini-stat-value">{{ ocs_stat|default:"0" }}</div>
                     <a href="{% url 'finanzas:oc_list' %}" class="stretched-link"></a>
                 </div>
                 {% endif %}

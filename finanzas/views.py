@@ -184,7 +184,7 @@ def proveedor_create_express(request):
 # 2) DASHBOARD (HOME)
 # =========================================================
 from django.utils import timezone
-from datetime import date, timedelta # <--- IMPORTANTE: TIMEDELTA
+from datetime import date, timedelta
 from django.db.models import Sum, Q
 from django.views.generic import TemplateView
 from .models import HojaRuta, Atencion, OrdenCompra, Movimiento, OrdenPago
@@ -195,18 +195,15 @@ class HomeView(DashboardAccessMixin, TemplateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         
-        # --- 1. CEREBRO DEL DASHBOARD (CALENDARIO INTELIGENTE) ---
-        # Usamos localdate() para respetar la Zona Horaria de Argentina
+        # --- 1. CEREBRO DEL DASHBOARD ---
         hoy = timezone.localdate()
         
-        # Fechas base
         inicio_mes_actual = hoy.replace(day=1)
         inicio_gestion = date(2025, 12, 10) 
 
-        # Detectar filtro
-        filtro = self.request.GET.get('ver', 'mes') # 'mes' es el default
+        filtro = self.request.GET.get('ver', 'mes')
         
-        # LÓGICA DE FILTROS
+        # LÓGICA DE FECHAS (FILTROS)
         if filtro == 'hoy':
             fecha_inicio = hoy
             fecha_fin = hoy
@@ -214,12 +211,11 @@ class HomeView(DashboardAccessMixin, TemplateView):
 
         elif filtro == 'ayer':
             fecha_inicio = hoy - timedelta(days=1)
-            fecha_fin = fecha_inicio # Empieza y termina ayer
+            fecha_fin = fecha_inicio
             titulo_periodo = "Día de Ayer"
 
         elif filtro == 'semana':
-            # Desde el lunes de la semana actual
-            fecha_inicio = hoy - timedelta(days=hoy.weekday())
+            fecha_inicio = hoy - timedelta(days=hoy.weekday()) # Lunes de esta semana
             fecha_fin = hoy
             titulo_periodo = "Esta Semana"
 
@@ -234,37 +230,48 @@ class HomeView(DashboardAccessMixin, TemplateView):
             titulo_periodo = "Mes en Curso"
 
         # =================================================
-        # 2. PULSO OPERATIVO (SIEMPRE ES LA FOTO DE "HOY")
+        # 2. PULSO OPERATIVO (AHORA OBEDECE AL FILTRO)
         # =================================================
-        # Estos contadores pequeños del header siempre muestran el "ahora",
-        # independientemente del filtro financiero, para no confundir.
+        # Antes estaba fijo en 'hoy', ahora usa el rango seleccionado.
+        
+        # Atenciones
         try:
-            ctx['viajes_hoy'] = HojaRuta.objects.filter(fecha=hoy).count()
+            ctx['atenciones_stat'] = Atencion.objects.filter(
+                fecha_atencion__gte=fecha_inicio, 
+                fecha_atencion__lte=fecha_fin
+            ).count()
         except:
-            ctx['viajes_hoy'] = 0
+            ctx['atenciones_stat'] = 0
 
+        # Flota / Viajes
         try:
-            ctx['atenciones_hoy'] = Atencion.objects.filter(fecha_atencion=hoy).count()
+            ctx['viajes_stat'] = HojaRuta.objects.filter(
+                fecha__gte=fecha_inicio, 
+                fecha__lte=fecha_fin
+            ).count()
         except:
-            ctx['atenciones_hoy'] = 0
+            ctx['viajes_stat'] = 0
 
+        # Compras (OCs)
         try:
-            ctx['ocs_hoy'] = OrdenCompra.objects.filter(fecha_oc=hoy).count()
+            ctx['ocs_stat'] = OrdenCompra.objects.filter(
+                fecha_oc__gte=fecha_inicio, 
+                fecha_oc__lte=fecha_fin
+            ).count()
         except:
-            ctx['ocs_hoy'] = 0
+            ctx['ocs_stat'] = 0
+
 
         # =================================================
-        # 3. DATOS FINANCIEROS (SENSIBLES AL FILTRO)
+        # 3. DATOS FINANCIEROS
         # =================================================
         
-        # Usamos gte (mayor o igual) y lte (menor o igual)
         movs_periodo = Movimiento.objects.filter(
             estado=Movimiento.ESTADO_APROBADO,
             fecha_operacion__gte=fecha_inicio,
             fecha_operacion__lte=fecha_fin, 
         )
         
-        # Cálculo de Balance
         balance = movs_periodo.aggregate(
             ingresos=Sum("monto", filter=Q(tipo__iexact="INGRESO")),
             gastos=Sum("monto", filter=Q(tipo__iexact="GASTO")),
@@ -272,7 +279,7 @@ class HomeView(DashboardAccessMixin, TemplateView):
         ingresos = balance["ingresos"] or 0
         gastos = balance["gastos"] or 0
         
-        # KPIs Específicos
+        # KPIs Financieros
         ctx['ayudas_mes_cant'] = movs_periodo.filter(
             tipo__iexact="GASTO", categoria__es_ayuda_social=True
         ).count()
@@ -285,13 +292,7 @@ class HomeView(DashboardAccessMixin, TemplateView):
             tipo__iexact="GASTO", categoria__es_combustible=True
         ).aggregate(t=Sum('monto'))['t'] or 0
         
-        # Viajes en el periodo filtrado (Ayer, Semana, etc)
-        ctx['viajes_mes'] = HojaRuta.objects.filter(
-            fecha__gte=fecha_inicio, 
-            fecha__lte=fecha_fin
-        ).count()
-
-        # Últimos Movimientos (Siempre muestra los últimos reales cargados)
+        # Últimos Movimientos
         ultimos = Movimiento.objects.filter(
             estado=Movimiento.ESTADO_APROBADO
         ).select_related(
