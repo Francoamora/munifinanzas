@@ -183,6 +183,11 @@ def proveedor_create_express(request):
 # =========================================================
 # 2) DASHBOARD (HOME)
 # =========================================================
+from django.utils import timezone
+from datetime import date, timedelta # <--- IMPORTANTE: TIMEDELTA
+from django.db.models import Sum, Q
+from django.views.generic import TemplateView
+from .models import HojaRuta, Atencion, OrdenCompra, Movimiento, OrdenPago
 
 class HomeView(DashboardAccessMixin, TemplateView):
     template_name = "finanzas/home.html"
@@ -190,39 +195,73 @@ class HomeView(DashboardAccessMixin, TemplateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         
-        # --- 1. CONFIGURACIÓN DEL TIEMPO (CEREBRO DEL DASHBOARD) ---
-        hoy = timezone.now().date()
-        inicio_mes_actual = hoy.replace(day=1)
+        # --- 1. CEREBRO DEL DASHBOARD (CALENDARIO INTELIGENTE) ---
+        # Usamos localdate() para respetar la Zona Horaria de Argentina
+        hoy = timezone.localdate()
         
-        # FECHA CLAVE: INICIO DE GESTIÓN
+        # Fechas base
+        inicio_mes_actual = hoy.replace(day=1)
         inicio_gestion = date(2025, 12, 10) 
 
-        # Detectar qué quiere ver el usuario
-        filtro = self.request.GET.get('ver', 'mes') # 'mes' (default) o 'gestion'
+        # Detectar filtro
+        filtro = self.request.GET.get('ver', 'mes') # 'mes' es el default
         
-        if filtro == 'gestion':
+        # LÓGICA DE FILTROS
+        if filtro == 'hoy':
+            fecha_inicio = hoy
+            fecha_fin = hoy
+            titulo_periodo = "Día de Hoy"
+
+        elif filtro == 'ayer':
+            fecha_inicio = hoy - timedelta(days=1)
+            fecha_fin = fecha_inicio # Empieza y termina ayer
+            titulo_periodo = "Día de Ayer"
+
+        elif filtro == 'semana':
+            # Desde el lunes de la semana actual
+            fecha_inicio = hoy - timedelta(days=hoy.weekday())
+            fecha_fin = hoy
+            titulo_periodo = "Esta Semana"
+
+        elif filtro == 'gestion':
             fecha_inicio = inicio_gestion
+            fecha_fin = hoy
             titulo_periodo = "Gestión (Desde 10/12/2025)"
-        else:
+
+        else: # Default: 'mes'
             fecha_inicio = inicio_mes_actual
+            fecha_fin = hoy
             titulo_periodo = "Mes en Curso"
 
         # =================================================
-        # 2. PULSO OPERATIVO (SIEMPRE ES "HOY")
+        # 2. PULSO OPERATIVO (SIEMPRE ES LA FOTO DE "HOY")
         # =================================================
-        ctx['viajes_hoy'] = HojaRuta.objects.filter(fecha=hoy).count()
-        ctx['atenciones_hoy'] = Atencion.objects.filter(fecha_atencion=hoy).count() if Atencion else 0
-        ctx['ocs_hoy'] = OrdenCompra.objects.filter(fecha_oc=hoy).count()
+        # Estos contadores pequeños del header siempre muestran el "ahora",
+        # independientemente del filtro financiero, para no confundir.
+        try:
+            ctx['viajes_hoy'] = HojaRuta.objects.filter(fecha=hoy).count()
+        except:
+            ctx['viajes_hoy'] = 0
+
+        try:
+            ctx['atenciones_hoy'] = Atencion.objects.filter(fecha_atencion=hoy).count()
+        except:
+            ctx['atenciones_hoy'] = 0
+
+        try:
+            ctx['ocs_hoy'] = OrdenCompra.objects.filter(fecha_oc=hoy).count()
+        except:
+            ctx['ocs_hoy'] = 0
 
         # =================================================
         # 3. DATOS FINANCIEROS (SENSIBLES AL FILTRO)
         # =================================================
         
-        # Base de Movimientos Aprobados en el rango seleccionado
+        # Usamos gte (mayor o igual) y lte (menor o igual)
         movs_periodo = Movimiento.objects.filter(
             estado=Movimiento.ESTADO_APROBADO,
             fecha_operacion__gte=fecha_inicio,
-            fecha_operacion__lte=hoy,
+            fecha_operacion__lte=fecha_fin, 
         )
         
         # Cálculo de Balance
@@ -233,7 +272,7 @@ class HomeView(DashboardAccessMixin, TemplateView):
         ingresos = balance["ingresos"] or 0
         gastos = balance["gastos"] or 0
         
-        # KPIs Específicos (Ayudas y Combustible) en el rango seleccionado
+        # KPIs Específicos
         ctx['ayudas_mes_cant'] = movs_periodo.filter(
             tipo__iexact="GASTO", categoria__es_ayuda_social=True
         ).count()
@@ -246,22 +285,24 @@ class HomeView(DashboardAccessMixin, TemplateView):
             tipo__iexact="GASTO", categoria__es_combustible=True
         ).aggregate(t=Sum('monto'))['t'] or 0
         
-        # Viajes en el periodo
-        ctx['viajes_mes'] = HojaRuta.objects.filter(fecha__gte=fecha_inicio, fecha__lte=hoy).count()
+        # Viajes en el periodo filtrado (Ayer, Semana, etc)
+        ctx['viajes_mes'] = HojaRuta.objects.filter(
+            fecha__gte=fecha_inicio, 
+            fecha__lte=fecha_fin
+        ).count()
 
-        # Últimos Movimientos (Siempre mostramos los últimos reales, sin importar el filtro)
-        # CORREGIDO: Usamos relaciones reales (beneficiario, proveedor) en lugar de 'persona'
+        # Últimos Movimientos (Siempre muestra los últimos reales cargados)
         ultimos = Movimiento.objects.filter(
             estado=Movimiento.ESTADO_APROBADO
         ).select_related(
-            "categoria", "cuenta_destino", "cuenta_origen", "beneficiario", "proveedor"
+            "categoria", "beneficiario", "proveedor"
         ).order_by("-fecha_operacion", "-id")[:7]
 
         # Contexto final
         ctx.update({
             "hoy": hoy,
             "titulo_periodo": titulo_periodo,
-            "filtro_activo": filtro, # Para pintar el botón activo
+            "filtro_activo": filtro,
             "saldo_mes": ingresos - gastos,
             "total_ingresos_mes": ingresos,
             "total_gastos_mes": gastos,
@@ -269,7 +310,9 @@ class HomeView(DashboardAccessMixin, TemplateView):
             "ultimos_movimientos": ultimos,
         })
         
-        if 'roles_ctx' in globals(): ctx.update(roles_ctx(self.request.user))
+        if 'roles_ctx' in globals(): 
+            ctx.update(roles_ctx(self.request.user))
+            
         return ctx
 
 # Alias para compatibilidad

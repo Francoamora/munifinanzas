@@ -36,6 +36,7 @@
         padding: 1rem 1.5rem;
         min-width: 150px;
         transition: transform 0.2s, background 0.2s;
+        position: relative; /* Para stretched-link */
     }
     .mini-stat-box:hover { transform: translateY(-3px); background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.3); }
     .mini-stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; opacity: 0.8; font-weight: 700; color: #cbd5e1; }
@@ -101,13 +102,28 @@
     <div class="row align-items-center gy-4 position-relative z-1">
         
         <div class="col-lg-5">
-            <div class="d-inline-flex bg-black bg-opacity-25 rounded-pill p-1 mb-3 border border-white border-opacity-10 backdrop-blur">
-                <a href="?ver=mes" class="btn btn-sm rounded-pill px-3 fw-bold transition-all {% if filtro_activo != 'gestion' %}bg-white text-dark shadow-sm{% else %}text-white opacity-75 hover-opacity-100{% endif %}">
-                    Mes Actual
-                </a>
-                <a href="?ver=gestion" class="btn btn-sm rounded-pill px-3 fw-bold transition-all {% if filtro_activo == 'gestion' %}bg-white text-dark shadow-sm{% else %}text-white opacity-75 hover-opacity-100{% endif %}">
-                    Gestión (Desde 10/12)
-                </a>
+            
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <div class="d-inline-flex bg-black bg-opacity-25 rounded-pill p-1 border border-white border-opacity-10 backdrop-blur">
+                    <a href="?ver=hoy" class="btn btn-sm rounded-pill px-3 fw-bold transition-all {% if filtro_activo == 'hoy' %}bg-white text-dark shadow-sm{% else %}text-white opacity-75 hover-opacity-100{% endif %}" title="Ver Hoy">
+                        Hoy
+                    </a>
+                    <a href="?ver=ayer" class="btn btn-sm rounded-pill px-3 fw-bold transition-all {% if filtro_activo == 'ayer' %}bg-white text-dark shadow-sm{% else %}text-white opacity-75 hover-opacity-100{% endif %}" title="Ver Ayer">
+                        Ayer
+                    </a>
+                    <a href="?ver=semana" class="btn btn-sm rounded-pill px-3 fw-bold transition-all {% if filtro_activo == 'semana' %}bg-white text-dark shadow-sm{% else %}text-white opacity-75 hover-opacity-100{% endif %}" title="Ver Semana">
+                        Semana
+                    </a>
+                </div>
+
+                <div class="d-inline-flex bg-black bg-opacity-25 rounded-pill p-1 border border-white border-opacity-10 backdrop-blur">
+                    <a href="?ver=mes" class="btn btn-sm rounded-pill px-3 fw-bold transition-all {% if filtro_activo == 'mes' %}bg-white text-dark shadow-sm{% else %}text-white opacity-75 hover-opacity-100{% endif %}">
+                        Mes
+                    </a>
+                    <a href="?ver=gestion" class="btn btn-sm rounded-pill px-3 fw-bold transition-all {% if filtro_activo == 'gestion' %}bg-white text-dark shadow-sm{% else %}text-white opacity-75 hover-opacity-100{% endif %}">
+                        Gestión
+                    </a>
+                </div>
             </div>
             
             <h1 class="fw-bold mb-1 display-6 text-white">
@@ -123,16 +139,19 @@
                 <div class="mini-stat-box text-center text-lg-start">
                     <div class="mini-stat-label">Atenciones Hoy</div>
                     <div class="mini-stat-value">{{ atenciones_hoy|default:"0" }}</div>
+                    <a href="{% url 'finanzas:atencion_list' %}" class="stretched-link"></a>
                 </div>
                 <div class="mini-stat-box text-center text-lg-start">
                     <div class="mini-stat-label">Flota Hoy</div>
                     <div class="mini-stat-value">{{ viajes_hoy|default:"0" }}</div>
+                    <a href="{% url 'finanzas:hoja_ruta_list' %}" class="stretched-link"></a>
                 </div>
                 
                 {% if perms_ver_dinero %}
                 <div class="mini-stat-box text-center text-lg-start">
                     <div class="mini-stat-label">Compras Hoy</div>
                     <div class="mini-stat-value">{{ ocs_hoy|default:"0" }}</div>
+                    <a href="{% url 'finanzas:oc_list' %}" class="stretched-link"></a>
                 </div>
                 {% endif %}
             </div>
@@ -349,11 +368,10 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     counters.forEach(counter => {
-        // Obtenemos el valor crudo formateado para JS (sin comas de miles)
         let raw = counter.getAttribute('data-target'); 
         if(!raw) return;
         
-        let target = parseFloat(raw.replace(',', '.')); // Aseguramos formato punto decimal
+        let target = parseFloat(raw.replace(',', '.'));
         if(isNaN(target)) target = 0;
         
         let start = 0;
@@ -363,7 +381,6 @@ document.addEventListener("DOMContentLoaded", function() {
         function update(currentTime) {
             const elapsed = currentTime - startTime;
             const progress = Math.min(elapsed / duration, 1);
-            // Easing function (cubic out)
             const ease = 1 - Math.pow(1 - progress, 3);
             
             const current = start + (target - start) * ease;
@@ -375,10 +392,9 @@ document.addEventListener("DOMContentLoaded", function() {
         requestAnimationFrame(update);
     });
 
-    // 2. GRÁFICO + CÁLCULO DE RATIO (SOLO SI EXISTE EL CANVAS)
+    // 2. GRÁFICO (SOLO SI EXISTE EL CANVAS)
     const ctx = document.getElementById('balanceChart');
     if (ctx) {
-        // Usamos stringformat:"f" para obtener el número limpio tipo 1234.56
         const ing = {{ total_ingresos_mes|stringformat:"f" }};
         const gas = {{ total_gastos_mes|stringformat:"f" }};
 
@@ -388,7 +404,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 labels: ['Ingresos', 'Gastos'],
                 datasets: [{
                     data: [ing, gas],
-                    backgroundColor: ['#10b981', '#ef4444'], // Verde Emerald, Rojo
+                    backgroundColor: ['#10b981', '#ef4444'],
                     borderWidth: 0, hoverOffset: 5
                 }]
             },
@@ -398,11 +414,11 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
 
-        // CÁLCULO DE LA BARRA DE EFICIENCIA
+        // BARRA DE RATIO
         if (ing > 0) {
             let ratio = (gas / ing) * 100;
             let displayRatio = ratio.toFixed(1);
-            if (ratio > 100) ratio = 100; // Tope visual de la barra
+            if (ratio > 100) ratio = 100;
             
             const bar = document.getElementById('ratio-bar');
             const txt = document.getElementById('ratio-text');
@@ -410,8 +426,6 @@ document.addEventListener("DOMContentLoaded", function() {
             if (bar && txt) {
                 bar.style.width = ratio + "%";
                 txt.innerText = displayRatio + "%";
-
-                // Cambiar color según salud financiera
                 if (ratio > 100) {
                     bar.classList.remove('bg-primary'); bar.classList.add('bg-danger');
                 } else if (ratio > 80) {
