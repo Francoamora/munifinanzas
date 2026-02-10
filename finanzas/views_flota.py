@@ -2,7 +2,8 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.views.generic import ListView, CreateView, UpdateView, DetailView, TemplateView
 from django.urls import reverse_lazy
 from django.contrib import messages
-from django.db.models import Sum, F, Q, Count, Avg
+from django.db.models import Sum, F, Q, Count, Avg, FloatField
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.http import JsonResponse
 from django.db import transaction
@@ -10,12 +11,10 @@ from django.views.decorators.http import require_GET
 from django.contrib.auth.decorators import login_required
 
 # Modelos y Forms
-from .models import Vehiculo, HojaRuta, Movimiento, Traslado
+from .models import Vehiculo, HojaRuta, Movimiento, Traslado, OrdenCompraLinea, OrdenCompra
 from .forms import VehiculoForm, HojaRutaForm, HojaRutaCierreForm, TrasladoForm
 
-# =========================================================
-# CAMBIO CLAVE: Importamos OperadorSocialRequiredMixin
-# =========================================================
+# Mixins de Acceso
 from .mixins import (
     FlotaAccessMixin, 
     FlotaEditMixin, 
@@ -78,23 +77,30 @@ class VehiculoDetailView(OperadorSocialRequiredMixin, DetailView):
         ctx["hojas_ruta"] = self.object.hojas_ruta.select_related("chofer").order_by("-fecha")[:10]
         
         # Estadísticas Semestrales (Solo si ve dinero mostramos montos, sino 0)
-        # Aquí usamos un truco simple: Si no es Finanzas, mandamos 0 en dinero.
         inicio_stats = timezone.now().date() - timezone.timedelta(days=180)
-        cargas = self.object.cargas_combustible.filter(
+        
+        # 1. Cargas por Caja (Movimientos)
+        cargas_caja = self.object.cargas_combustible.filter(
             fecha_operacion__gte=inicio_stats,
             estado=Movimiento.ESTADO_APROBADO
+        ).aggregate(
+            total=Sum("monto"),
+            litros=Sum("litros")
         )
         
-        resumen = cargas.aggregate(
-            total_dinero=Sum("monto"),
-            total_litros=Sum("litros")
-        )
+        # 2. Cargas por Orden de Compra (OCs)
+        # Asumimos que OrdenCompraLinea tiene un campo 'vehiculo' (si no lo tiene, avisame)
+        # Si no tenés 'vehiculo' en la línea de OC, este cálculo no se puede hacer por vehículo individual
+        # (Por ahora dejamos solo Movimientos en el detalle individual si no está el campo)
+        
+        monto_caja = cargas_caja["total"] or 0
+        litros_caja = cargas_caja["litros"] or 0
         
         # Validación extra de seguridad visual
         es_finanzas = self.request.user.is_superuser or self.request.user.groups.filter(name='Finanzas').exists()
         
-        ctx["total_dinero_semestre"] = (resumen["total_dinero"] or 0) if es_finanzas else 0
-        ctx["total_litros_semestre"] = resumen["total_litros"] or 0
+        ctx["total_dinero_semestre"] = monto_caja if es_finanzas else 0
+        ctx["total_litros_semestre"] = litros_caja
         
         ctx.update(roles_ctx(self.request.user))
         return ctx
@@ -126,7 +132,6 @@ class HojaRutaListView(OperadorSocialRequiredMixin, ListView):
         return ctx
 
 class HojaRutaCreateView(OperadorSocialRequiredMixin, CreateView):
-    """Iniciar un nuevo viaje."""
     model = HojaRuta
     form_class = HojaRutaForm
     template_name = "finanzas/hoja_ruta_form.html"
@@ -137,17 +142,14 @@ class HojaRutaCreateView(OperadorSocialRequiredMixin, CreateView):
         hoja.creado_por = self.request.user
         hoja.estado = HojaRuta.ESTADO_ABIERTA
         
-        # Validación de Integridad del Odómetro
         km_actual = hoja.vehiculo.kilometraje_referencia or 0
         if hoja.odometro_inicio < km_actual:
-            # Si el usuario pone menos KM, devolvemos error
             form.add_error(
                 'odometro_inicio', 
                 f"El odómetro ({hoja.odometro_inicio}) no puede ser menor al registrado ({km_actual})."
             )
             return self.form_invalid(form)
         
-        # Guardar nombre chofer como respaldo texto
         if hoja.chofer:
             hoja.chofer_nombre = f"{hoja.chofer.apellido}, {hoja.chofer.nombre}"
             
@@ -156,7 +158,6 @@ class HojaRutaCreateView(OperadorSocialRequiredMixin, CreateView):
         return redirect("finanzas:hoja_ruta_detail", pk=hoja.pk)
 
 class HojaRutaDetailView(OperadorSocialRequiredMixin, DetailView):
-    """Panel de gestión del viaje activo."""
     model = HojaRuta
     template_name = "finanzas/hoja_ruta_detail.html"
     context_object_name = "hoja"
@@ -173,7 +174,6 @@ class HojaRutaDetailView(OperadorSocialRequiredMixin, DetailView):
     def post(self, request, *args, **kwargs):
         self.object = self.get_object()
         
-        # A) Agregar Traslado
         if "agregar_traslado" in request.POST:
             form = TrasladoForm(request.POST)
             if form.is_valid():
@@ -186,12 +186,10 @@ class HojaRutaDetailView(OperadorSocialRequiredMixin, DetailView):
             else:
                 messages.error(request, "Error en los datos del traslado.")
         
-        # B) Cerrar Hoja de Ruta
         elif "cerrar_hoja" in request.POST:
             form = HojaRutaCierreForm(request.POST, instance=self.object)
             if form.is_valid():
                 hoja = form.save(commit=False)
-                
                 if hoja.odometro_fin < hoja.odometro_inicio:
                     messages.error(request, "El KM final no puede ser menor al inicial.")
                     return redirect("finanzas:hoja_ruta_detail", pk=self.object.pk)
@@ -199,7 +197,6 @@ class HojaRutaDetailView(OperadorSocialRequiredMixin, DetailView):
                 hoja.estado = HojaRuta.ESTADO_CERRADA
                 hoja.save()
                 
-                # Actualizar vehículo
                 vehiculo = hoja.vehiculo
                 vehiculo.kilometraje_referencia = hoja.odometro_fin
                 vehiculo.save()
@@ -212,7 +209,7 @@ class HojaRutaDetailView(OperadorSocialRequiredMixin, DetailView):
         return self.get(request, *args, **kwargs)
 
 # =========================================================
-# 3. REPORTES (DASHBOARD) - SOLO FINANZAS (DINERO)
+# 3. REPORTES (DASHBOARD) - SOLO FINANZAS (DINERO REAL)
 # =========================================================
 
 class FlotaCombustibleResumenView(SoloFinanzasMixin, TemplateView):
@@ -223,7 +220,10 @@ class FlotaCombustibleResumenView(SoloFinanzasMixin, TemplateView):
         hoy = timezone.now().date()
         inicio_mes = hoy.replace(day=1)
         
-        reporte = Movimiento.objects.filter(
+        # --- LÓGICA HÍBRIDA (CAJA + OCs) ---
+        
+        # 1. Gasto por Movimientos de Caja (Pago directo)
+        movs_caja = Movimiento.objects.filter(
             tipo=Movimiento.TIPO_GASTO,
             estado=Movimiento.ESTADO_APROBADO,
             categoria__es_combustible=True,
@@ -232,17 +232,45 @@ class FlotaCombustibleResumenView(SoloFinanzasMixin, TemplateView):
         ).values('vehiculo__patente', 'vehiculo__descripcion').annotate(
             total_dinero=Sum('monto'),
             total_litros=Sum('litros'),
-            promedio_precio=Avg('precio_unitario'),
             cantidad_cargas=Count('id')
-        ).order_by('-total_dinero')
+        )
 
-        total_dinero = sum(r['total_dinero'] for r in reporte)
-        total_litros = sum((r['total_litros'] or 0) for r in reporte)
+        # 2. Gasto por Órdenes de Compra (Crédito)
+        # Importante: Solo si tenés un campo 'vehiculo' en OrdenCompra o OrdenCompraLinea.
+        # Si no lo tenés, las OCs se suman al total general pero no se pueden asignar a un vehículo específico.
+        # Asumo que NO lo tenés por ahora, así que sumamos al total general.
+        
+        gasto_ocs_total = OrdenCompraLinea.objects.filter(
+            orden__fecha_oc__gte=inicio_mes,
+            orden__rubro_principal='CB', # Rubro Combustible
+            orden__estado__in=[OrdenCompra.ESTADO_AUTORIZADA, OrdenCompra.ESTADO_CERRADA]
+        ).aggregate(t=Sum('monto'))['t'] or 0
+
+        # Procesamos los datos por vehículo (Solo Caja por ahora)
+        datos_por_vehiculo = []
+        total_dinero_caja = 0
+        total_litros_caja = 0
+
+        for m in movs_caja:
+            datos_por_vehiculo.append({
+                'patente': m['vehiculo__patente'],
+                'descripcion': m['vehiculo__descripcion'],
+                'total_dinero': m['total_dinero'] or 0,
+                'total_litros': m['total_litros'] or 0,
+                'cantidad_cargas': m['cantidad_cargas'],
+                'origen': 'Caja Chica'
+            })
+            total_dinero_caja += (m['total_dinero'] or 0)
+            total_litros_caja += (m['total_litros'] or 0)
+
+        # Totales Generales (Caja + OCs)
+        total_dinero_real = total_dinero_caja + gasto_ocs_total
 
         ctx.update({
-            'reporte_vehiculos': reporte,
-            'total_dinero_mes': total_dinero,
-            'total_litros_mes': total_litros,
+            'reporte_vehiculos': datos_por_vehiculo, # Detalle por auto (solo caja)
+            'total_dinero_mes': total_dinero_real,   # Total Real (Caja + OCs)
+            'total_litros_mes': total_litros_caja,   # Litros (solo caja, OCs no suelen tener litros detallados)
+            'gasto_ocs_general': gasto_ocs_total,    # Dato extra para mostrar cuánto es fiado
             'desde_fecha': inicio_mes,
             'hasta_fecha': hoy
         })
@@ -268,10 +296,7 @@ def vehiculo_autocomplete(request):
 @require_GET
 @login_required
 def api_vehiculo_detalle(request, pk):
-    """
-    API CRÍTICA: Devuelve el kilometraje actual del vehículo
-    para pre-llenar el formulario de Hoja de Ruta.
-    """
+    """API para obtener KM actual."""
     vehiculo = get_object_or_404(Vehiculo, pk=pk)
     return JsonResponse({
         "id": vehiculo.id,

@@ -1,86 +1,112 @@
 {% extends "finanzas/base.html" %}
 {% load humanize %}
 {% load static %}
-{% load finanzas_extras %} 
+{% load finanzas_extras %}
+
 {% block title %}Balance General - {{ titulo_periodo }}{% endblock %}
 
 {% block extra_css %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
 <style>
+    :root {
+        --primary-color: #0f172a;
+        --secondary-color: #64748b;
+        --success-color: #10b981;
+        --danger-color: #ef4444;
+        --warning-color: #f59e0b;
+        --info-color: #3b82f6;
+    }
+
     /* === KPI CARDS === */
     .kpi-card {
         background: white;
         border-radius: 16px;
-        padding: 1.75rem;
+        padding: 1.5rem;
         border: 1px solid #e2e8f0;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
         transition: transform 0.2s, box-shadow 0.2s;
         height: 100%;
         position: relative;
         overflow: hidden;
+        display: flex; flex-direction: column; justify-content: space-between;
     }
-    .kpi-card:hover { transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+    .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08); border-color: #cbd5e1; }
     
-    .kpi-label { font-size: 0.75rem; text-transform: uppercase; font-weight: 800; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
-    .kpi-value { font-size: 2.25rem; font-weight: 800; letter-spacing: -0.025em; line-height: 1; margin-bottom: 0.5rem; }
-    .kpi-sub { font-size: 0.875rem; color: #64748b; font-weight: 500; }
+    .kpi-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; }
+    .kpi-icon { width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; }
+    
+    .kpi-label { font-size: 0.7rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; color: var(--secondary-color); margin-bottom: 0.25rem; }
+    .kpi-value { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1; color: var(--primary-color); }
+    .kpi-sub { font-size: 0.75rem; color: var(--secondary-color); font-weight: 500; margin-top: 0.5rem; display: flex; align-items: center; gap: 0.35rem;}
 
     /* === TABLAS PRO === */
     .table-clean th { 
         font-size: 0.7rem; 
         text-transform: uppercase; 
-        color: #64748b; 
+        color: var(--secondary-color); 
         font-weight: 700; 
         border-bottom: 1px solid #e2e8f0; 
         padding-bottom: 0.75rem; 
         letter-spacing: 0.5px;
+        background-color: #f8fafc;
     }
     .table-clean td { 
-        padding: 1rem 0.75rem; 
-        border-bottom: 1px solid #f8fafc; 
+        padding: 0.85rem 0.75rem; 
+        border-bottom: 1px solid #f1f5f9; 
         vertical-align: middle; 
-        font-size: 0.9rem; 
+        font-size: 0.85rem; 
+        color: var(--primary-color);
     }
     .table-clean tr:last-child td { border-bottom: none; }
+    .table-clean tr:hover td { background-color: #f8fafc; }
     
     /* Rankings */
     .rank-badge {
-        width: 24px; height: 24px; border-radius: 50%;
+        width: 24px; height: 24px; border-radius: 6px;
         display: inline-flex; align-items: center; justify-content: center;
-        font-size: 0.75rem; font-weight: 800;
+        font-size: 0.75rem; font-weight: 700;
     }
-    .rank-1 { background-color: #fbbf24; color: #78350f; } /* Oro */
-    .rank-2 { background-color: #94a3b8; color: #fff; }    /* Plata */
-    .rank-3 { background-color: #b45309; color: #fff; }    /* Bronce */
-    .rank-N { background-color: #f1f5f9; color: #64748b; } /* Resto */
+    .rank-1 { background-color: #fef3c7; color: #d97706; border: 1px solid #fcd34d; } /* Oro */
+    .rank-2 { background-color: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; } /* Plata */
+    .rank-3 { background-color: #ffedd5; color: #c2410c; border: 1px solid #fdba74; } /* Bronce */
+    .rank-N { background-color: transparent; color: #94a3b8; font-weight: 500;} 
 
     /* === FILTROS === */
     .filter-bar {
         background: white;
-        padding: 0.75rem;
+        padding: 0.6rem;
         border-radius: 12px;
         border: 1px solid #e2e8f0;
-        margin-bottom: 2.5rem;
+        margin-bottom: 2rem;
         display: flex;
         gap: 0.5rem;
         align-items: center;
         flex-wrap: wrap;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        box-shadow: 0 1px 2px rgba(0,0,0,0.02);
     }
+
+    /* === PROGRESS BARS === */
+    .progress-thin { height: 6px; border-radius: 10px; background-color: #f1f5f9; overflow: hidden; }
 
     /* === PRINT CONFIG === */
     @media print {
-        @page { size: A4; margin: 1cm; }
-        body { background: white !important; font-family: 'Inter', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 9pt; }
+        @page { size: A4; margin: 10mm; }
+        body { background: white !important; font-family: 'Inter', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 9pt; color: #000; }
         .no-print, header, nav, .sidebar, .navbar, .filter-bar, .btn { display: none !important; }
         .container-fluid { padding: 0 !important; max-width: 100% !important; margin: 0 !important; }
         .row { display: flex; flex-wrap: wrap; margin-right: -10px; margin-left: -10px; }
-        .col-md-4 { width: 33%; } .col-lg-6 { width: 50%; } .col-lg-8 { width: 66%; } .col-lg-4 { width: 33%; } .col-lg-7 { width: 60%; } .col-lg-5 { width: 40%; }
-        .card, .kpi-card { border: 1px solid #ccc !important; box-shadow: none !important; break-inside: avoid; margin-bottom: 1rem; border-radius: 6px !important; }
-        canvas { max-width: 100% !important; }
+        .col-md-4 { width: 33.333%; padding: 0 10px; } 
+        .col-lg-6 { width: 50%; padding: 0 10px; } 
+        .col-lg-8 { width: 66.666%; padding: 0 10px; } 
+        .col-lg-4 { width: 33.333%; padding: 0 10px; } 
+        .col-lg-7 { width: 58.333%; padding: 0 10px; } 
+        .col-lg-5 { width: 41.666%; padding: 0 10px; }
+        .card, .kpi-card { border: 1px solid #ddd !important; box-shadow: none !important; break-inside: avoid; margin-bottom: 1rem; border-radius: 8px !important; page-break-inside: avoid; }
         .bg-light { background-color: #f8fafc !important; }
         .text-white { color: #000 !important; }
+        canvas { max-width: 100% !important; height: auto !important; }
+        a { text-decoration: none; color: #000; }
     }
 </style>
 {% endblock %}
@@ -89,23 +115,23 @@
 
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 animate-fade-in gap-3">
     <div>
-        <h1 class="h3 fw-bold text-dark mb-1">
-            <i class="bi bi-pie-chart-fill me-2 text-primary"></i>Balance General
+        <h1 class="h4 fw-bold text-dark mb-1">
+            <i class="bi bi-file-earmark-bar-graph-fill me-2 text-primary"></i>Balance General
         </h1>
         <p class="text-secondary mb-0 small fw-medium">
-            Reporte Financiero y Operativo | Periodo: <strong class="text-dark bg-warning bg-opacity-10 px-2 rounded">{{ titulo_periodo }}</strong>
+            Reporte Financiero y Operativo | Periodo: <strong class="text-dark bg-warning bg-opacity-10 px-2 rounded border border-warning-subtle">{{ titulo_periodo }}</strong>
         </p>
     </div>
     
     <div class="d-flex gap-2 no-print">
-        <button onclick="window.print()" class="btn btn-dark shadow-sm fw-bold rounded-pill px-4 hover-lift">
-            <i class="bi bi-printer-fill me-2"></i>Imprimir
+        <button onclick="window.print()" class="btn btn-dark shadow-sm fw-bold rounded-pill px-4 hover-lift btn-sm">
+            <i class="bi bi-printer-fill me-2"></i>Imprimir Reporte
         </button>
     </div>
 </div>
 
 <form method="get" class="filter-bar shadow-sm no-print animate-fade-in">
-    <div class="btn-group shadow-sm rounded-3" role="group">
+    <div class="btn-group shadow-sm rounded-3 me-auto" role="group">
         <button type="submit" name="periodo" value="hoy" class="btn btn-sm px-3 {% if periodo_seleccionado == 'hoy' %}btn-dark fw-bold{% else %}btn-white text-secondary hover-bg-light{% endif %}">Hoy</button>
         <button type="submit" name="periodo" value="ayer" class="btn btn-sm px-3 {% if periodo_seleccionado == 'ayer' %}btn-dark fw-bold{% else %}btn-white text-secondary hover-bg-light{% endif %}">Ayer</button>
         <button type="submit" name="periodo" value="semana" class="btn btn-sm px-3 {% if periodo_seleccionado == 'semana' %}btn-dark fw-bold{% else %}btn-white text-secondary hover-bg-light{% endif %}">Semana</button>
@@ -113,52 +139,67 @@
         <button type="submit" name="periodo" value="anio" class="btn btn-sm px-3 {% if periodo_seleccionado == 'anio' %}btn-dark fw-bold{% else %}btn-white text-secondary hover-bg-light{% endif %}">Año</button>
     </div>
     
-    <div class="vr mx-3 text-muted opacity-25"></div>
+    <div class="vr mx-2 text-muted opacity-25 d-none d-md-block"></div>
     
-    <div class="d-flex align-items-center gap-2 bg-light rounded-3 p-1 px-2 border">
-        <input type="date" name="fecha_desde" class="form-control form-control-sm border-0 bg-transparent py-0 text-secondary fw-bold" value="{{ fecha_desde|date:'Y-m-d' }}" style="max-width: 130px;">
+    <div class="d-flex align-items-center gap-2 bg-light rounded-3 p-1 px-2 border ms-auto ms-md-0">
+        <span class="small text-muted fw-bold text-uppercase" style="font-size: 0.65rem;">Personalizado:</span>
+        <input type="date" name="fecha_desde" class="form-control form-control-sm border-0 bg-transparent py-0 text-secondary fw-bold" value="{{ fecha_desde|date:'Y-m-d' }}" style="max-width: 110px; font-size: 0.8rem;">
         <i class="bi bi-arrow-right-short text-muted"></i>
-        <input type="date" name="fecha_hasta" class="form-control form-control-sm border-0 bg-transparent py-0 text-secondary fw-bold" value="{{ fecha_hasta|date:'Y-m-d' }}" style="max-width: 130px;">
-        <button type="submit" name="periodo" value="custom" class="btn btn-sm btn-primary rounded-circle shadow-sm" style="width: 28px; height: 28px; padding: 0;" title="Aplicar Filtro"><i class="bi bi-search" style="font-size: 0.8rem;"></i></button>
+        <input type="date" name="fecha_hasta" class="form-control form-control-sm border-0 bg-transparent py-0 text-secondary fw-bold" value="{{ fecha_hasta|date:'Y-m-d' }}" style="max-width: 110px; font-size: 0.8rem;">
+        <button type="submit" name="periodo" value="custom" class="btn btn-sm btn-primary rounded-circle shadow-sm d-flex align-items-center justify-content-center" style="width: 24px; height: 24px;" title="Aplicar"><i class="bi bi-search" style="font-size: 0.7rem;"></i></button>
     </div>
 </form>
 
-<div class="row g-4 mb-4">
+<div class="row g-3 mb-4">
     <div class="col-12 col-md-4">
-        <div class="kpi-card border-bottom border-4 border-success">
-            <div class="d-flex justify-content-between align-items-start mb-3">
-                <div class="kpi-label text-success">Ingresos</div>
-                <div class="bg-success bg-opacity-10 text-success rounded-circle p-2 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;"><i class="bi bi-graph-up-arrow fs-5"></i></div>
+        <div class="kpi-card border-bottom border-3 border-success">
+            <div class="kpi-header">
+                <div>
+                    <div class="kpi-label text-success">Ingresos Totales</div>
+                    <div class="kpi-value text-dark font-monospace">${{ ingresos_periodo|floatformat:2|intcomma }}</div>
+                </div>
+                <div class="kpi-icon bg-success bg-opacity-10 text-success"><i class="bi bi-graph-up-arrow"></i></div>
             </div>
-            <div class="kpi-value text-dark font-monospace tracking-tight">${{ ingresos_periodo|floatformat:2|intcomma }}</div>
-            <div class="kpi-sub d-flex align-items-center gap-2">
-                <i class="bi bi-calendar-check"></i> <span>Recaudación del periodo</span>
+            <div class="kpi-sub">
+                <i class="bi bi-calendar-check me-1"></i> Recaudación del periodo
             </div>
         </div>
     </div>
 
     <div class="col-12 col-md-4">
-        <div class="kpi-card border-bottom border-4 border-danger">
-            <div class="d-flex justify-content-between align-items-start mb-3">
-                <div class="kpi-label text-danger">Gastos</div>
-                <div class="bg-danger bg-opacity-10 text-danger rounded-circle p-2 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;"><i class="bi bi-graph-down-arrow fs-5"></i></div>
+        <div class="kpi-card border-bottom border-3 border-danger">
+            <div class="kpi-header">
+                <div>
+                    <div class="kpi-label text-danger">Gastos Ejecutados</div>
+                    <div class="kpi-value text-dark font-monospace">-${{ gastos_periodo|floatformat:2|intcomma }}</div>
+                </div>
+                <div class="kpi-icon bg-danger bg-opacity-10 text-danger"><i class="bi bi-graph-down-arrow"></i></div>
             </div>
-            <div class="kpi-value text-dark font-monospace tracking-tight">-${{ gastos_periodo|floatformat:2|intcomma }}</div>
-            <div class="kpi-sub d-flex align-items-center gap-2">
-                <i class="bi bi-wallet2"></i> <span>Egresos del periodo</span>
+            <div class="kpi-sub">
+                <i class="bi bi-wallet2 me-1"></i> Egresos de Caja (Pagados)
             </div>
         </div>
     </div>
 
     <div class="col-12 col-md-4">
-        <div class="kpi-card bg-primary bg-opacity-10 border-primary border-opacity-25">
-            <div class="d-flex justify-content-between align-items-start mb-3">
-                <div class="kpi-label text-primary-emphasis">Saldo Real en Caja</div>
-                <div class="bg-white text-primary rounded-circle p-2 d-flex align-items-center justify-content-center shadow-sm" style="width: 40px; height: 40px;"><i class="bi bi-safe2-fill fs-5"></i></div>
+        <div class="kpi-card bg-light border-secondary border-opacity-25">
+            <div class="kpi-header">
+                <div>
+                    <div class="kpi-label text-primary-emphasis">Saldo Neto (Caja)</div>
+                    <div class="kpi-value text-primary-emphasis font-monospace">${{ saldo_periodo|floatformat:2|intcomma }}</div>
+                </div>
+                <div class="kpi-icon bg-white shadow-sm text-primary"><i class="bi bi-safe2-fill"></i></div>
             </div>
-            <div class="kpi-value text-primary-emphasis font-monospace tracking-tight">${{ saldo_caja|floatformat:2|intcomma }}</div>
-            <div class="kpi-sub text-primary-emphasis opacity-75 d-flex align-items-center gap-2">
-                <i class="bi bi-clock-history"></i> <span>Acumulado histórico disponible</span>
+            
+            <div class="mt-2 pt-2 border-top border-secondary border-opacity-10">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small fw-bold text-muted text-uppercase" style="font-size: 0.65rem;">Deuda Flotante (OCs)</span>
+                    <span class="small fw-bold text-danger">-${{ deuda_flotante|floatformat:0|intcomma }}</span>
+                </div>
+                <div class="progress progress-thin bg-white">
+                    {% widthratio deuda_flotante saldo_caja 100 as porcentaje_deuda %}
+                    <div class="progress-bar {% if porcentaje_deuda|add:'0' > 80 %}bg-danger{% else %}bg-warning{% endif %}" role="progressbar" style="width: {{ porcentaje_deuda }}%"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -171,17 +212,23 @@
                 <h6 class="mb-0 fw-bold text-uppercase small ls-1 text-secondary">Flujo Financiero</h6>
             </div>
             <div class="card-body">
-                <div style="height: 250px;"><canvas id="balanceChart"></canvas></div>
+                <div style="height: 250px; width: 100%;"><canvas id="balanceChart"></canvas></div>
             </div>
         </div>
     </div>
+
     <div class="col-lg-4">
         <div class="card border-0 shadow-sm rounded-4 h-100">
             <div class="card-header bg-white py-3 px-4 border-bottom">
                 <h6 class="mb-0 fw-bold text-uppercase small ls-1 text-secondary">Distribución de Gastos</h6>
             </div>
-            <div class="card-body">
-                <div style="height: 250px;"><canvas id="gastosChart"></canvas></div>
+            <div class="card-body d-flex flex-column justify-content-center align-items-center">
+                <div style="height: 200px; width: 100%; position: relative;">
+                    <canvas id="gastosChart"></canvas>
+                </div>
+                <div class="mt-3 text-center small text-muted fst-italic">
+                    Principales rubros del periodo
+                </div>
             </div>
         </div>
     </div>
@@ -191,18 +238,29 @@
     <div class="col-lg-6">
         <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
             <div class="card-header bg-white py-3 px-4 border-bottom d-flex align-items-center justify-content-between">
-                <h6 class="mb-0 fw-bold text-uppercase small ls-1 text-secondary">Gastos por Rubro</h6>
+                <h6 class="mb-0 fw-bold text-uppercase small ls-1 text-secondary">Top 5 Gastos por Categoría</h6>
             </div>
             <div class="card-body p-0">
-                <table class="table table-clean mb-0 table-hover">
+                <table class="table table-clean mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4">Categoría</th>
+                            <th class="text-end pe-4">Total</th>
+                        </tr>
+                    </thead>
                     <tbody>
                         {% for item in top_categorias %}
                         <tr>
-                            <td class="ps-4"><span class="fw-medium text-dark">{{ item.categoria__nombre|default:"General" }}</span></td>
+                            <td class="ps-4">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="rank-badge rank-N">{{ forloop.counter }}</span>
+                                    <span class="fw-medium text-dark">{{ item.categoria__nombre|default:"General" }}</span>
+                                </div>
+                            </td>
                             <td class="text-end pe-4"><span class="fw-bold text-dark font-monospace">${{ item.total|floatformat:2|intcomma }}</span></td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="2" class="text-center text-muted py-5 small">Sin movimientos</td></tr>
+                        <tr><td colspan="2" class="text-center text-muted py-4 small">Sin movimientos</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -213,18 +271,29 @@
     <div class="col-lg-6">
         <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
             <div class="card-header bg-white py-3 px-4 border-bottom d-flex align-items-center justify-content-between">
-                <h6 class="mb-0 fw-bold text-uppercase small ls-1 text-secondary">Gastos por Área</h6>
+                <h6 class="mb-0 fw-bold text-uppercase small ls-1 text-secondary">Top 5 Gastos por Área</h6>
             </div>
             <div class="card-body p-0">
-                <table class="table table-clean mb-0 table-hover">
+                <table class="table table-clean mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4">Área Solicitante</th>
+                            <th class="text-end pe-4">Total</th>
+                        </tr>
+                    </thead>
                     <tbody>
                         {% for item in top_areas %}
                         <tr>
-                            <td class="ps-4"><span class="fw-medium text-dark">{{ item.area__nombre|default:"Administración Central" }}</span></td>
+                            <td class="ps-4">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="rank-badge rank-N">{{ forloop.counter }}</span>
+                                    <span class="fw-medium text-dark">{{ item.area__nombre|default:"Administración Central" }}</span>
+                                </div>
+                            </td>
                             <td class="text-end pe-4"><span class="fw-bold text-dark font-monospace">${{ item.total|floatformat:2|intcomma }}</span></td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="2" class="text-center text-muted py-5 small">Sin movimientos</td></tr>
+                        <tr><td colspan="2" class="text-center text-muted py-4 small">Sin movimientos</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -233,10 +302,10 @@
     </div>
 </div>
 
-<div class="row g-4 mb-5 animate-fade-in">
+<div class="row g-4 mb-5 animate-fade-in break-inside-avoid">
     <div class="col-12">
         <h6 class="text-uppercase text-secondary fw-bold small ls-1 mb-2 ps-1 border-start border-4 border-warning ps-2">
-            Impacto Social (Ayudas Directas)
+            Inversión Social Directa (Caja + OCs)
         </h6>
     </div>
 
@@ -244,17 +313,17 @@
         <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
             <div class="card-header bg-white py-3 px-4 border-bottom d-flex justify-content-between align-items-center">
                 <span class="small fw-bold text-uppercase text-secondary">Ranking de Asistencia</span>
-                <span class="badge bg-warning text-dark border border-warning-subtle">Top Social</span>
+                <span class="badge bg-warning text-dark border border-warning-subtle">Top 5</span>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-clean mb-0 align-middle table-hover">
+                    <table class="table table-clean mb-0 align-middle">
                         <thead class="bg-light">
                             <tr>
                                 <th class="ps-4 text-center" style="width: 50px;">#</th>
-                                <th>Beneficiario / Vecino</th>
-                                <th class="text-center">Frecuencia</th>
-                                <th class="text-end pe-4">Monto Total</th>
+                                <th>Beneficiario</th>
+                                <th class="text-center">Ayudas</th>
+                                <th class="text-end pe-4">Monto</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -267,38 +336,30 @@
                                 </td>
                                 <td>
                                     <div class="d-flex align-items-center">
-                                        <div class="rounded-circle bg-light border d-flex align-items-center justify-content-center text-muted fw-bold me-2" style="width: 32px; height: 32px; font-size: 0.75rem;">
-                                            {{ b.beneficiario__apellido|slice:":1" }}{{ b.beneficiario__nombre|slice:":1" }}
+                                        <div class="rounded-circle bg-light border d-flex align-items-center justify-content-center text-secondary fw-bold me-2" style="width: 32px; height: 32px; font-size: 0.75rem;">
+                                            {{ b.beneficiario__apellido|slice:":1" }}
                                         </div>
                                         <div>
                                             <div class="fw-bold text-dark">{{ b.beneficiario__apellido }} {{ b.beneficiario__nombre }}</div>
-                                            <div class="small text-muted font-monospace" style="font-size: 0.75rem;">
+                                            <div class="small text-muted font-monospace" style="font-size: 0.7rem;">
                                                 DNI: {{ b.beneficiario__dni|default:"-" }}
                                             </div>
                                         </div>
                                     </div>
                                 </td>
                                 <td class="text-center">
-                                    <span class="badge bg-white text-dark border shadow-sm rounded-pill px-3">{{ b.cantidad }} ayudas</span>
+                                    <span class="badge bg-white text-dark border shadow-sm rounded-pill px-2 small">{{ b.cantidad }}</span>
                                 </td>
                                 <td class="text-end pe-4">
                                     <span class="fw-bold text-dark font-monospace">${{ b.total|floatformat:2|intcomma }}</span>
-                                    <div class="progress mt-1" style="height: 3px;">
-                                        <div class="progress-bar bg-warning" role="progressbar" style="width: 50%" aria-valuenow="50" aria-valuemin="0" aria-valuemax="100"></div>
-                                    </div>
                                 </td>
                             </tr>
                             {% empty %}
-                            <tr><td colspan="4" class="text-center py-5 text-muted small fst-italic">Sin registros de asistencia social directa.</td></tr>
+                            <tr><td colspan="4" class="text-center py-5 text-muted small fst-italic">Sin registros de asistencia.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
-            </div>
-            <div class="card-footer bg-light p-2 text-center">
-                <small class="text-muted fst-italic" style="font-size: 0.75rem;">
-                    * Este ranking muestra solo ayudas directas.
-                </small>
             </div>
         </div>
     </div>
@@ -306,7 +367,7 @@
     <div class="col-lg-5">
         <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
             <div class="card-header bg-white py-3 px-4 border-bottom">
-                <span class="small fw-bold text-uppercase text-secondary">Distribución Geográfica</span>
+                <span class="small fw-bold text-uppercase text-secondary">Zonas de Impacto</span>
             </div>
             <div class="card-body p-0">
                 <ul class="list-group list-group-flush">
@@ -315,14 +376,14 @@
                         <div class="d-flex align-items-start gap-3">
                             <div class="mt-1 text-danger opacity-75"><i class="bi bi-geo-alt-fill"></i></div>
                             <div>
-                                <div class="fw-bold text-dark">{{ barrio.beneficiario__direccion|default:"Zona no especificada"|truncatechars:30 }}</div>
-                                <div class="small text-muted" style="font-size: 0.8rem;">{{ barrio.ayudas }} asistencias</div>
+                                <div class="fw-bold text-dark text-truncate" style="max-width: 150px;">{{ barrio.beneficiario__direccion|default:"Zona no especificada" }}</div>
+                                <div class="small text-muted" style="font-size: 0.75rem;">{{ barrio.ayudas }} asistencias</div>
                             </div>
                         </div>
-                        <span class="fw-bold text-dark font-monospace small border px-2 py-1 rounded bg-light">${{ barrio.total|floatformat:2|intcomma }}</span>
+                        <span class="fw-bold text-dark font-monospace small bg-light px-2 py-1 rounded border">${{ barrio.total|floatformat:2|intcomma }}</span>
                     </li>
                     {% empty %}
-                    <li class="list-group-item text-center py-5 text-muted small fst-italic border-0">Sin datos de ubicación.</li>
+                    <li class="list-group-item text-center py-5 text-muted small fst-italic border-0">Sin datos geográficos.</li>
                     {% endfor %}
                 </ul>
             </div>
@@ -330,37 +391,33 @@
     </div>
 </div>
 
-<div class="row g-4 mb-5 animate-fade-in">
+<div class="row g-4 mb-5 animate-fade-in break-inside-avoid">
     <div class="col-12">
         <h6 class="text-uppercase text-secondary fw-bold small ls-1 mb-2 ps-1 border-start border-4 border-info ps-2">
-            Eficiencia Operativa
+            Eficiencia Operativa (Flota)
         </h6>
     </div>
-    <div class="col-md-6 col-lg-4">
+    <div class="col-md-6">
         <div class="card border-0 shadow-sm rounded-4 h-100 bg-white border-start border-4 border-info">
-            <div class="card-body p-4">
-                <div class="small text-uppercase text-muted fw-bold mb-3 ls-1">Logística</div>
-                <div class="d-flex align-items-center gap-3">
-                    <div class="bg-info bg-opacity-10 text-info rounded-circle p-3"><i class="bi bi-truck fs-3"></i></div>
-                    <div>
-                        <h2 class="mb-0 fw-bold text-dark">{{ total_viajes|default:0 }}</h2>
-                        <span class="text-muted small">viajes realizados</span>
-                    </div>
+            <div class="card-body p-4 d-flex align-items-center justify-content-between">
+                <div>
+                    <div class="small text-uppercase text-muted fw-bold mb-1 ls-1">Actividad Logística</div>
+                    <h2 class="mb-0 fw-bold text-dark">{{ total_viajes|default:0 }}</h2>
+                    <span class="text-muted small">viajes registrados</span>
                 </div>
+                <div class="bg-info bg-opacity-10 text-info rounded-circle p-3"><i class="bi bi-truck fs-3"></i></div>
             </div>
         </div>
     </div>
-    <div class="col-md-6 col-lg-4">
+    <div class="col-md-6">
         <div class="card border-0 shadow-sm rounded-4 h-100 bg-white border-start border-4 border-warning">
-            <div class="card-body p-4">
-                <div class="small text-uppercase text-muted fw-bold mb-3 ls-1">Combustible</div>
-                <div class="d-flex align-items-center gap-3">
-                    <div class="bg-warning bg-opacity-10 text-warning rounded-circle p-3"><i class="bi bi-fuel-pump fs-3"></i></div>
-                    <div>
-                        <h2 class="mb-0 fw-bold text-dark font-monospace fs-4">${{ gasto_combustible|floatformat:2|intcomma }}</h2>
-                        <span class="text-muted small">inversión total</span>
-                    </div>
+            <div class="card-body p-4 d-flex align-items-center justify-content-between">
+                <div>
+                    <div class="small text-uppercase text-muted fw-bold mb-1 ls-1">Inversión Combustible</div>
+                    <h2 class="mb-0 fw-bold text-dark font-monospace fs-4">${{ gasto_combustible|floatformat:2|intcomma }}</h2>
+                    <span class="badge bg-warning text-dark border border-warning-subtle small">Real (Caja + OCs)</span>
                 </div>
+                <div class="bg-warning bg-opacity-10 text-warning rounded-circle p-3"><i class="bi bi-fuel-pump fs-3"></i></div>
             </div>
         </div>
     </div>
@@ -370,42 +427,40 @@
     <div class="row text-center align-items-end" style="height: 100px;">
         <div class="col-6">
             <div class="border-top border-dark border-2 mx-auto mb-2" style="width: 60%;"></div>
-            <small class="text-uppercase fw-bold text-dark d-block">Secretaría de Hacienda</small>
+            <small class="text-uppercase fw-bold text-dark d-block" style="font-size: 8pt;">Secretaría de Hacienda</small>
         </div>
         <div class="col-6">
             <div class="border-top border-dark border-2 mx-auto mb-2" style="width: 60%;"></div>
-            <small class="text-uppercase fw-bold text-dark d-block">Presidencia Comunal</small>
+            <small class="text-uppercase fw-bold text-dark d-block" style="font-size: 8pt;">Presidencia Comunal</small>
         </div>
     </div>
     <div class="text-center mt-4 border-top pt-2">
-        <small class="text-muted fst-italic" style="font-size: 8pt;">Generado el {% now "d/m/Y H:i" %} - MuniFinanzas (Sistema de Gestión Integral Tacuarendí)</small>
+        <small class="text-muted fst-italic" style="font-size: 8pt;">Generado el {% now "d/m/Y H:i" %} - Sistema de Gestión Integral Tacuarendí</small>
     </div>
 </div>
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-    // === CONFIGURACIÓN DE GRÁFICOS ===
-    // Aseguramos formato 'float' estándar para JS (1234.56)
+    // === DATOS DESDE DJANGO ===
     const ingresos = parseFloat("{{ ingresos_periodo|stringformat:'f' }}") || 0;
     const gastos = parseFloat("{{ gastos_periodo|stringformat:'f' }}") || 0;
     
-    // Arrays para el gráfico circular
-    const categoriasLabels = [{% for item in top_categorias %}"{{ item.categoria__nombre }}",{% endfor %}];
+    const categoriasLabels = [{% for item in top_categorias %}"{{ item.categoria__nombre|truncatechars:15 }}",{% endfor %}];
     const categoriasData = [{% for item in top_categorias %}{{ item.total|stringformat:'f' }},{% endfor %}];
 
-    // 1. Chart Balance (Barras)
+    // 1. Chart Flujo Financiero (Barras)
     const ctxBalance = document.getElementById('balanceChart');
     if(ctxBalance) {
-        new Chart(ctxBalance.getContext('2d'), {
+        new Chart(ctxBalance, {
             type: 'bar',
             data: {
                 labels: ['Ingresos', 'Gastos'],
                 datasets: [{
                     label: 'Monto',
                     data: [ingresos, gastos],
-                    backgroundColor: ['#10b981', '#ef4444'], // Verde Emerald, Rojo
-                    borderRadius: 6,
-                    barPercentage: 0.6
+                    backgroundColor: ['#10b981', '#ef4444'], 
+                    borderRadius: 8,
+                    barThickness: 50,
                 }]
             },
             options: {
@@ -413,8 +468,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: { 
-                    x: { grid: { display: false } },
-                    y: { beginAtZero: true }
+                    y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                    x: { grid: { display: false } }
                 }
             }
         });
@@ -423,35 +478,35 @@ document.addEventListener("DOMContentLoaded", function() {
     // 2. Chart Gastos (Doughnut)
     const ctxGastos = document.getElementById('gastosChart');
     if (ctxGastos && categoriasData.length > 0) {
-        new Chart(ctxGastos.getContext('2d'), {
+        new Chart(ctxGastos, {
             type: 'doughnut',
             data: {
                 labels: categoriasLabels,
                 datasets: [{
                     data: categoriasData,
-                    backgroundColor: ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#6366f1'],
+                    backgroundColor: ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6'],
                     borderWidth: 0,
-                    hoverOffset: 4
+                    hoverOffset: 6
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                cutout: '70%',
+                cutout: '65%',
                 plugins: { 
                     legend: { 
-                        position: 'right', 
-                        labels: { boxWidth: 10, font: { size: 10 }, padding: 15 } 
+                        position: 'bottom', 
+                        labels: { boxWidth: 10, font: { size: 10 }, padding: 15, usePointStyle: true } 
                     } 
                 }
             }
         });
     } else if (ctxGastos) {
-        // Fallback visual si no hay datos
+        // Fallback si no hay datos
         ctxGastos.parentElement.innerHTML = `
             <div class="h-100 d-flex flex-column align-items-center justify-content-center text-muted">
                 <i class="bi bi-pie-chart display-4 opacity-25 mb-2"></i>
-                <span class="small">Sin datos de gastos</span>
+                <span class="small">Sin gastos registrados</span>
             </div>`;
     }
 });

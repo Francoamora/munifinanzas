@@ -1,133 +1,257 @@
 {% extends "finanzas/base.html" %}
-{% load humanize finanzas_extras %}
+{% load humanize %}
+{% load static %}
+{% load finanzas_extras %}
 
-{% block title %}Consumo de combustible – Flota{% endblock %}
+{% block title %}Reporte de Combustible (Flota){% endblock %}
+
+{% block extra_css %}
+<style>
+    /* === KPI CARDS ESTILO PRO === */
+    .kpi-card {
+        background: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+        height: 100%;
+        transition: transform 0.2s, box-shadow 0.2s;
+        display: flex; flex-direction: column; justify-content: space-between;
+    }
+    .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); border-color: #cbd5e1; }
+    
+    .kpi-label { font-size: 0.7rem; text-transform: uppercase; font-weight: 700; color: #64748b; margin-bottom: 0.5rem; letter-spacing: 0.5px;}
+    .kpi-value { font-size: 2rem; font-weight: 800; line-height: 1; color: #0f172a; margin-bottom: 0.5rem; }
+    
+    /* === TABLA === */
+    .table-clean th { 
+        font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700; 
+        border-bottom: 2px solid #e2e8f0; background: #f8fafc; padding: 1rem;
+    }
+    .table-clean td { padding: 1rem; vertical-align: middle; border-bottom: 1px solid #f1f5f9; }
+    .table-clean tr:hover td { background-color: #f8fafc; }
+
+    /* === BARRAS === */
+    .progress-thin { height: 6px; border-radius: 4px; background-color: #f1f5f9; overflow: hidden; }
+
+    @media print {
+        .no-print { display: none !important; }
+        .kpi-card { border: 1px solid #ccc; box-shadow: none; }
+        body { background: white; }
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
-  <div>
-    <h1 class="h4 mb-0 fw-bold"><i class="bi bi-fuel-pump text-danger me-2"></i>Consumo de combustible</h1>
-    <div class="text-muted small">
-      Control de consumo, costos y kilometraje de la flota municipal.
-    </div>
-  </div>
 
-  <div class="text-end small text-muted bg-light px-3 py-1 rounded border">
-    <div>Período analizado</div>
-    <div class="fw-bold text-dark">
-      {{ fecha_desde|date:"d/m/Y" }} – {{ fecha_hasta|date:"d/m/Y" }}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+    <div>
+        <h1 class="h3 fw-bold text-dark mb-1">
+            <i class="bi bi-fuel-pump-fill text-danger me-2"></i>Gestión de Combustible
+        </h1>
+        <p class="text-secondary mb-0 small">
+            Control de consumo real (Caja + Órdenes de Compra)
+        </p>
     </div>
-  </div>
+
+    <div class="d-flex align-items-center gap-2 bg-white p-2 rounded-3 border shadow-sm no-print">
+        <i class="bi bi-calendar-event text-muted ms-2"></i>
+        <span class="fw-bold text-dark small">
+            {{ desde_fecha|date:"d/m/Y" }} — {{ hasta_fecha|date:"d/m/Y" }}
+        </span>
+        <div class="vr mx-2"></div>
+        <button onclick="window.print()" class="btn btn-sm btn-dark rounded-pill px-3 fw-bold">
+            <i class="bi bi-printer me-2"></i>Imprimir
+        </button>
+    </div>
 </div>
 
-<form method="get" class="card card-body mb-4 shadow-sm border-0">
-  <div class="row g-2 align-items-end">
-    <div class="col-12 col-md-4 col-lg-3">
-      <label class="form-label form-label-sm fw-bold text-muted mb-1">Vehículo</label>
-      <select name="vehiculo" class="form-select form-select-sm">
-        <option value="">-- Todos los vehículos --</option>
-        {% for v in vehiculos %}
-          <option value="{{ v.id }}" {% if vehiculo_actual|default:'' == v.id|stringformat:"s" %}selected{% endif %}>
-            {{ v.patente|default:"S/P" }} - {{ v.descripcion }}
-          </option>
-        {% endfor %}
-      </select>
+<form method="get" class="card card-body mb-4 shadow-sm border-0 no-print bg-light">
+    <div class="row g-2 align-items-end">
+        <div class="col-12 col-md-4 col-lg-3">
+            <label class="form-label form-label-sm fw-bold text-muted mb-1">Desde</label>
+            <input type="date" name="desde" value="{{ desde_fecha|date:'Y-m-d' }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-6 col-md-4 col-lg-3">
+            <label class="form-label form-label-sm fw-bold text-muted mb-1">Hasta</label>
+            <input type="date" name="hasta" value="{{ hasta_fecha|date:'Y-m-d' }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-12 col-lg-3 d-flex gap-2">
+            <button class="btn btn-dark btn-sm px-4" type="submit">
+                <i class="bi bi-filter"></i> Actualizar
+            </button>
+            <a href="{% url 'finanzas:consumo_combustible' %}" class="btn btn-outline-secondary btn-sm" title="Limpiar Filtros">
+                <i class="bi bi-arrow-counterclockwise"></i>
+            </a>
+        </div>
     </div>
-    <div class="col-6 col-md-4 col-lg-3">
-      <label class="form-label form-label-sm fw-bold text-muted mb-1">Desde</label>
-      <input type="date" name="desde" value="{{ fecha_desde|date:'Y-m-d' }}" class="form-control form-control-sm">
-    </div>
-    <div class="col-6 col-md-4 col-lg-3">
-      <label class="form-label form-label-sm fw-bold text-muted mb-1">Hasta</label>
-      <input type="date" name="hasta" value="{{ fecha_hasta|date:'Y-m-d' }}" class="form-control form-control-sm">
-    </div>
-    <div class="col-12 col-lg-3 d-flex gap-2 justify-content-lg-end">
-      <button class="btn btn-dark btn-sm flex-fill flex-lg-grow-0" type="submit">
-        <i class="bi bi-filter"></i> Filtrar
-      </button>
-      <a href="{% url 'finanzas:consumo_combustible' %}" class="btn btn-outline-secondary btn-sm flex-fill flex-lg-grow-0">
-        Limpiar
-      </a>
-    </div>
-  </div>
 </form>
 
-<div class="row g-3 mb-4">
-  <div class="col-12 col-md-4">
-    <div class="card border-0 shadow-sm h-100 border-start border-4 border-danger">
-      <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-1">
-            <span class="text-muted small text-uppercase fw-bold">Gasto Total</span>
-            <i class="bi bi-cash-coin text-danger opacity-50 fs-5"></i>
+<div class="row g-4 mb-4">
+    
+    <div class="col-12 col-md-4">
+        <div class="kpi-card border-start border-4 border-danger">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="kpi-label text-danger">Inversión Total</div>
+                    <div class="kpi-value text-dark">${{ total_dinero_mes|default:0|formato_pesos }}</div>
+                </div>
+                <div class="bg-danger bg-opacity-10 text-danger p-3 rounded-circle">
+                    <i class="bi bi-cash-stack fs-4"></i>
+                </div>
+            </div>
+            
+            <div class="mt-3 pt-3 border-top">
+                <div class="d-flex justify-content-between small mb-1 fw-bold">
+                    <span class="text-secondary">Pagado (Caja)</span>
+                    <span class="text-warning">Crédito (OCs)</span>
+                </div>
+                <div class="progress progress-thin">
+                    {% widthratio gasto_ocs_general total_dinero_mes 100 as pct_ocs %}
+                    <div class="progress-bar bg-secondary" role="progressbar" style="width: {{ 100|sub:pct_ocs }}%"></div>
+                    <div class="progress-bar bg-warning" role="progressbar" style="width: {{ pct_ocs }}%"></div>
+                </div>
+                {% if gasto_ocs_general > 0 %}
+                <div class="text-end small mt-1 text-muted fst-italic" style="font-size: 0.7rem;">
+                    (${{ gasto_ocs_general|default:0|formato_pesos }} en OCs sin asignar)
+                </div>
+                {% endif %}
+            </div>
         </div>
-        <div class="h2 fw-bold text-dark mb-0">${{ total_combustible|default:0|formato_pesos }}</div>
-        <div class="small text-muted mt-1">En combustible cargado</div>
-      </div>
     </div>
-  </div>
 
-  <div class="col-12 col-md-4">
-    <div class="card border-0 shadow-sm h-100 border-start border-4 border-info">
-      <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-1">
-            <span class="text-muted small text-uppercase fw-bold">Litros Totales</span>
-            <i class="bi bi-droplet-half text-info opacity-50 fs-5"></i>
+    <div class="col-12 col-md-4">
+        <div class="kpi-card border-start border-4 border-info">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="kpi-label text-info">Volumen Registrado</div>
+                    <div class="kpi-value text-dark">{{ total_litros_mes|default:0|floatformat:1 }} L</div>
+                    <div class="small text-muted mt-1">Consumo en surtidor</div>
+                </div>
+                <div class="bg-info bg-opacity-10 text-info p-3 rounded-circle">
+                    <i class="bi bi-droplet-half fs-4"></i>
+                </div>
+            </div>
         </div>
-        <div class="h2 fw-bold text-dark mb-0">{{ total_litros|default:0|floatformat:1 }} L</div>
-        <div class="small text-muted mt-1">Consumo volumétrico</div>
-      </div>
     </div>
-  </div>
 
-  <div class="col-12 col-md-4">
-    <div class="card border-0 shadow-sm h-100 border-start border-4 border-success">
-      <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-1">
-            <span class="text-muted small text-uppercase fw-bold">Operaciones</span>
-            <i class="bi bi-receipt text-success opacity-50 fs-5"></i>
+    <div class="col-12 col-md-4">
+        <div class="kpi-card border-start border-4 border-success">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="kpi-label text-success">Precio Promedio</div>
+                    <div class="kpi-value text-dark">
+                        ${{ total_dinero_mes|div:total_litros_mes|formato_pesos }} / L
+                    </div>
+                    <div class="small text-muted mt-1">Costo promedio ponderado</div>
+                </div>
+                <div class="bg-success bg-opacity-10 text-success p-3 rounded-circle">
+                    <i class="bi bi-graph-up-arrow fs-4"></i>
+                </div>
+            </div>
         </div>
-        <div class="h2 fw-bold text-dark mb-0">{{ total_viajes|default:0 }}</div>
-        <div class="small text-muted mt-1">Cargas registradas</div>
-      </div>
     </div>
-  </div>
 </div>
 
-<div class="card border-0 shadow-sm">
-  <div class="card-header bg-white py-3 border-bottom">
-    <h6 class="mb-0 fw-bold">Desglose por Vehículo</h6>
-  </div>
-  <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0">
-      <thead class="table-light small text-uppercase text-muted">
-        <tr>
-          <th class="ps-4">Vehículo</th>
-          <th class="text-end">Cargas</th>
-          <th class="text-end">Litros</th>
-          <th class="text-end pe-4">Total ($)</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in resumen_vehiculos %}
-          <tr>
-            <td class="ps-4">
-                <div class="fw-bold text-dark">{{ item.vehiculo.descripcion }}</div>
-                <div class="small text-muted font-monospace">{{ item.vehiculo.patente|default:"S/P" }}</div>
-            </td>
-            <td class="text-end">{{ item.total_viajes }}</td>
-            <td class="text-end">{{ item.total_litros|floatformat:1 }} L</td>
-            <td class="text-end pe-4 fw-bold text-danger">${{ item.total_combustible|formato_pesos }}</td>
-          </tr>
-        {% empty %}
-          <tr>
-            <td colspan="4" class="text-center py-5 text-muted">
-                <i class="bi bi-inbox fs-1 d-block mb-2 opacity-25"></i>
-                No hay registros de combustible en este período.
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+<div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
+    <div class="card-header bg-white py-3 px-4 border-bottom d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-bold text-uppercase small ls-1 text-secondary">
+            <i class="bi bi-truck me-2"></i>Desglose por Vehículo
+        </h6>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-clean mb-0">
+            <thead>
+                <tr>
+                    <th class="ps-4">Vehículo / Unidad</th>
+                    <th class="text-center">Cargas</th>
+                    <th class="text-end">Litros</th>
+                    <th class="text-end">Inversión (Caja)</th>
+                    <th class="text-end pe-4">Impacto</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in reporte_vehiculos %}
+                <tr>
+                    <td class="ps-4">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="rounded-circle bg-light border d-flex align-items-center justify-content-center text-muted fw-bold" style="width: 36px; height: 36px;">
+                                <i class="bi bi-car-front-fill"></i>
+                            </div>
+                            <div>
+                                <div class="fw-bold text-dark">{{ item.descripcion|default:"Vehículo Desconocido" }}</div>
+                                <div class="small text-muted font-monospace">{{ item.patente|default:"S/P" }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-light text-dark border">{{ item.cantidad_cargas|default:0 }}</span>
+                    </td>
+                    <td class="text-end font-monospace">{{ item.total_litros|default:0|floatformat:1 }} L</td>
+                    <td class="text-end fw-bold text-dark font-monospace">${{ item.total_dinero|default:0|formato_pesos }}</td>
+                    <td class="text-end pe-4">
+                        {% widthratio item.total_dinero total_dinero_mes 100 as pct %}
+                        <div class="d-flex align-items-center justify-content-end gap-2">
+                            <span class="small text-muted">{{ pct }}%</span>
+                            <div class="progress" style="width: 50px; height: 4px;">
+                                <div class="progress-bar bg-info" style="width: {{ pct }}%"></div>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="text-center py-5 text-muted fst-italic">
+                        No hay cargas registradas por Caja Chica en este periodo.
+                    </td>
+                </tr>
+                {% endfor %}
+
+                {% if gasto_ocs_general > 0 %}
+                <tr class="bg-warning bg-opacity-10 border-top border-warning">
+                    <td class="ps-4">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="rounded-circle bg-warning text-dark border border-warning d-flex align-items-center justify-content-center fw-bold" style="width: 36px; height: 36px;">
+                                <i class="bi bi-receipt"></i>
+                            </div>
+                            <div>
+                                <div class="fw-bold text-dark">Acopio / Órdenes de Compra</div>
+                                <div class="small text-muted fst-italic">Consumo a crédito (Sin vehículo asignado)</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="text-center text-muted">-</td>
+                    <td class="text-end text-muted">-</td>
+                    <td class="text-end fw-bold text-dark font-monospace">${{ gasto_ocs_general|default:0|formato_pesos }}</td>
+                    <td class="text-end pe-4">
+                        {% widthratio gasto_ocs_general total_dinero_mes 100 as pct_oc %}
+                        <div class="d-flex align-items-center justify-content-end gap-2">
+                            <span class="small text-dark fw-bold">{{ pct_oc }}%</span>
+                            <div class="progress" style="width: 50px; height: 4px;">
+                                <div class="progress-bar bg-warning" style="width: {{ pct_oc }}%"></div>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+            <tfoot class="bg-light">
+                <tr>
+                    <td class="ps-4 fw-bold text-uppercase text-secondary">Totales del Periodo</td>
+                    <td class="text-center fw-bold">-</td>
+                    <td class="text-end fw-bold">{{ total_litros_mes|default:0|floatformat:1 }} L</td>
+                    <td class="text-end fw-bold text-dark fs-6">${{ total_dinero_mes|default:0|formato_pesos }}</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
 </div>
+
+<div class="text-center no-print mt-4">
+    <a href="{% url 'finanzas:home' %}" class="btn btn-outline-secondary rounded-pill px-4 hover-lift">
+        <i class="bi bi-arrow-left me-2"></i>Volver al Tablero
+    </a>
+</div>
+
 {% endblock %}
