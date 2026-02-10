@@ -465,6 +465,17 @@ class OrdenCompra(models.Model):
     proveedor_nombre = models.CharField(max_length=200, blank=True) 
     proveedor_cuit = models.CharField(max_length=20, blank=True)    
     
+    # ✅ NUEVO CAMPO: VINCULACIÓN CON BENEFICIARIO (VECINO)
+    persona = models.ForeignKey(
+        'Beneficiario', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        verbose_name="Beneficiario (Opcional)",
+        related_name="ordenes_compra",
+        help_text="Si esta compra es una ayuda directa para un vecino, seleccionalo aquí."
+    )
+
     area = models.ForeignKey('Area', on_delete=models.SET_NULL, null=True, blank=True)
     observaciones = models.TextField(blank=True)
     

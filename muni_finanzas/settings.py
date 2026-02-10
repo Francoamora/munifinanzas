@@ -54,6 +54,9 @@ INSTALLED_APPS = [
     'finanzas',
     'agenda',
     'inventario',
+
+    # Libreria Nueva
+    'widget_tweaks',
 ]
 
 

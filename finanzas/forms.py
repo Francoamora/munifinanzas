@@ -15,7 +15,7 @@ from .models import (
     Atencion, OrdenPago, OrdenPagoLinea, OrdenCompra, OrdenCompraLinea,
     FacturaOC, Vehiculo, HojaRuta, Traslado,
     OrdenTrabajo, OrdenTrabajoMaterial, AdjuntoOrdenTrabajo,
-    Proveedor, DocumentoBeneficiario, DocumentoSensible
+    Proveedor, DocumentoBeneficiario, DocumentoSensible , Beneficiario,
 )
 
 # =========================================================
@@ -633,11 +633,23 @@ class OrdenCompraForm(EstiloFormMixin, forms.ModelForm):
         })
     )
 
+    # ✅ NUEVO CAMPO: Selector de Persona (Vecino)
+    persona = forms.ModelChoiceField(
+        queryset=Beneficiario.objects.all(),
+        required=False,
+        label="Beneficiario / Vecino (Opcional)",
+        widget=forms.Select(attrs={
+            "class": "form-select select2", # Clase select2 para buscador
+            "data-placeholder": "Buscar vecino (Ayuda Social)..."
+        })
+    )
+
     rubro_principal = forms.ChoiceField(choices=RUBROS_CHOICES, widget=forms.Select(attrs={"class": "form-select"}))
 
     class Meta:
         model = OrdenCompra
-        fields = ["fecha_oc", "numero", "area", "proveedor", "proveedor_nombre", "proveedor_cuit", "rubro_principal", "observaciones"]
+        # Agregamos 'persona' a los campos
+        fields = ["fecha_oc", "numero", "area", "proveedor", "proveedor_nombre", "proveedor_cuit", "persona", "rubro_principal", "observaciones"]
         widgets = {
             "proveedor_nombre": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly"}),
             "proveedor_cuit": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly"}),

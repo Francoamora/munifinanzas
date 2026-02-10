@@ -20,12 +20,12 @@
     .nav-tabs-pro .nav-link {
         color: rgba(255, 255, 255, 0.85);
         font-weight: 600;
-        font-size: 0.9rem;
+        font-size: 0.85rem;
         text-transform: uppercase;
         letter-spacing: 0.5px;
         border: none;
         border-radius: 8px 8px 0 0;
-        padding: 0.9rem 1.2rem;
+        padding: 0.9rem 1rem;
         transition: all 0.2s ease;
         background-color: transparent;
     }
@@ -44,25 +44,25 @@
     }
     
     /* Indicadores de Color */
-    #pagos-tab.active { border-top: 4px solid #198754; } /* Verde */
-    #ayudas-tab.active { border-top: 4px solid #0d6efd; } /* Azul */
-    #viajes-tab.active { border-top: 4px solid #6f42c1; } /* Violeta */
-    #atenciones-tab.active { border-top: 4px solid #fd7e14; } /* Naranja */
-    #legajo-tab.active { border-top: 4px solid #10b981; } /* Esmeralda */
-    #reservado-tab.active { border-top: 4px solid #dc3545; background-color: #fff0f0 !important; color: #dc3545 !important; } /* Rojo */
+    #pagos-tab.active { border-top: 4px solid #198754; } /* Verde - Pagos */
+    #ayudas-tab.active { border-top: 4px solid #0d6efd; } /* Azul - Ayudas (Monetarias + Insumos) */
+    #viajes-tab.active { border-top: 4px solid #6f42c1; } /* Violeta - Viajes */
+    #atenciones-tab.active { border-top: 4px solid #fd7e14; } /* Naranja - Casos */
+    #legajo-tab.active { border-top: 4px solid #10b981; } /* Esmeralda - Legajo */
+    #reservado-tab.active { border-top: 4px solid #dc3545; background-color: #fff0f0 !important; color: #dc3545 !important; } /* Rojo - Reservado */
 
     .kpi-box {
         background: #ffffff;
         border: 1px solid #f1f5f9;
         border-radius: 12px;
-        padding: 1rem;
-        min-width: 120px;
+        padding: 0.8rem 1rem;
+        min-width: 110px;
         transition: transform 0.2s;
         box-shadow: 0 2px 4px rgba(0,0,0,0.02);
     }
     .kpi-box:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
     .kpi-label { font-size: 0.65rem; font-weight: 800; letter-spacing: 1px; color: #94a3b8; text-transform: uppercase; display: block; margin-bottom: 0.25rem; }
-    .kpi-value { font-size: 1.25rem; font-weight: 800; color: #1e293b; }
+    .kpi-value { font-size: 1.2rem; font-weight: 800; color: #1e293b; }
 
     .avatar-gradient { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); }
     .hover-lift { transition: transform 0.2s; }
@@ -117,15 +117,18 @@
                 </div>
             </div>
 
-            <div class="d-flex gap-3 text-center">
+            <div class="d-flex gap-2 text-center flex-wrap justify-content-center">
                 {% if perms_ver_dinero %}
                     <div class="kpi-box border-success border-opacity-25">
-                        <span class="kpi-label text-success">Pagó Total</span>
+                        <span class="kpi-label text-success">Pagos</span>
                         <span class="kpi-value text-success">${{ total_pagado_historico|intcomma }}</span>
                     </div>
-                    <div class="kpi-box">
-                        <span class="kpi-label">Ayudas</span>
-                        <span class="kpi-value text-primary">${{ persona.get_total_ayudas_historico|intcomma }}</span>
+                    
+                    <div class="kpi-box border-primary border-opacity-25">
+                        <span class="kpi-label text-primary">Ayuda Total</span>
+                        <span class="kpi-value text-primary">
+                            ${{ persona.get_total_ayudas_historico|add:total_compras_historico|intcomma }}
+                        </span>
                     </div>
                 {% else %}
                     <div class="kpi-box">
@@ -305,14 +308,20 @@
 
                     {% if perms_ver_dinero %}
                     <div class="tab-pane fade" id="ayudas" role="tabpanel">
-                        <div class="table-responsive">
+                        
+                        <div class="p-3 bg-light border-bottom">
+                            <span class="badge bg-primary text-white border border-primary fw-bold rounded-pill">
+                                <i class="bi bi-cash-stack me-1"></i> TRANSFERENCIAS / SUBSIDIOS
+                            </span>
+                        </div>
+                        <div class="table-responsive mb-0">
                             <table class="table table-hover align-middle mb-0">
-                                <thead class="bg-light text-dark">
+                                <thead class="bg-white text-secondary">
                                     <tr>
-                                        <th class="ps-4 py-3 small fw-bold text-uppercase" style="width: 15%;">Fecha</th>
-                                        <th class="py-3 small fw-bold text-uppercase" style="width: 45%;">Concepto</th>
-                                        <th class="py-3 small fw-bold text-uppercase" style="width: 20%;">Categoría</th>
-                                        <th class="text-end pe-4 py-3 small fw-bold text-uppercase" style="width: 20%;">Monto</th>
+                                        <th class="ps-4 py-2 small text-uppercase">Fecha</th>
+                                        <th class="py-2 small text-uppercase">Concepto</th>
+                                        <th class="py-2 small text-uppercase">Categoría</th>
+                                        <th class="text-end pe-4 py-2 small text-uppercase">Monto</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -320,15 +329,64 @@
                                     <tr>
                                         <td class="ps-4"><div class="fw-bold text-dark">{{ mov.fecha_operacion|date:"d/m/Y" }}</div></td>
                                         <td><div class="text-dark fw-bold text-truncate" style="max-width: 250px;">{{ mov.descripcion }}</div></td>
-                                        <td><span class="badge bg-white text-dark border shadow-sm">{{ mov.categoria.nombre }}</span></td>
+                                        <td><span class="badge bg-light text-dark border">{{ mov.categoria.nombre }}</span></td>
                                         <td class="text-end pe-4"><span class="fw-bold text-danger">-${{ mov.monto|intcomma }}</span></td>
                                     </tr>
                                     {% empty %}
-                                    <tr><td colspan="4" class="text-center py-5"><div class="opacity-25 mb-2"><i class="bi bi-wallet2 fs-1"></i></div><p class="text-muted fw-bold small">Sin ayudas económicas.</p></td></tr>
+                                    <tr><td colspan="4" class="text-center py-3 text-muted small fst-italic">Sin subsidios monetarios registrados.</td></tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
                         </div>
+
+                        <div class="border-top border-4 border-light"></div>
+
+                        <div class="p-3 bg-info bg-opacity-10 border-bottom border-info border-opacity-25">
+                            <span class="badge bg-info text-dark border border-info-subtle fw-bold rounded-pill">
+                                <i class="bi bi-box-seam me-1"></i> INSUMOS Y MATERIALES/ VALE DE COMPRA
+                            </span>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="bg-white text-secondary">
+                                    <tr>
+                                        <th class="ps-4 py-2 small text-uppercase">Fecha</th>
+                                        <th class="py-2 small text-uppercase">Proveedor</th>
+                                        <th class="py-2 small text-uppercase">Detalle Compra</th>
+                                        <th class="text-end pe-4 py-2 small text-uppercase">Costo</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for oc in compras_asociadas %}
+                                    <tr onclick="window.location.href='{% url 'finanzas:oc_detail' oc.pk %}'" style="cursor: pointer;">
+                                        <td class="ps-4">
+                                            <div class="fw-bold text-dark">{{ oc.fecha_oc|date:"d/m/Y" }}</div>
+                                            <div class="small text-muted font-monospace" style="font-size:0.7rem;">#{{ oc.numero }}</div>
+                                        </td>
+                                        <td>
+                                            <div class="small text-dark fw-bold">{{ oc.proveedor_nombre }}</div>
+                                        </td>
+                                        <td>
+                                            <div class="text-secondary small fst-italic text-truncate" style="max-width: 250px;">
+                                                {{ oc.lineas.first.descripcion|default:"Varios insumos" }}
+                                            </div>
+                                        </td>
+                                        <td class="text-end pe-4">
+                                            <span class="fw-bold text-dark">${{ oc.total_monto|intcomma }}</span>
+                                            {% if oc.estado == 'BORRADOR' %}
+                                                <i class="bi bi-hourglass-split text-warning ms-1" title="Pendiente"></i>
+                                            {% elif oc.estado == 'CERRADA' %}
+                                                <i class="bi bi-check-circle-fill text-success ms-1" title="Entregado"></i>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr><td colspan="4" class="text-center py-4 text-muted small fst-italic">No hay entrega de materiales registrada.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
                     </div>
                     {% endif %}
 

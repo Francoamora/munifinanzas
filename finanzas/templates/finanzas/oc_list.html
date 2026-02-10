@@ -5,7 +5,7 @@
 
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex justify-content-between align-items-center mb-4 animate-fade-in">
     <div>
         <h1 class="h3 fw-bold text-dark mb-1">
             <i class="bi bi-cart4 me-2 text-info"></i>Órdenes de Compra
@@ -13,25 +13,25 @@
         <p class="text-muted mb-0 small">Gestión de adquisiciones y proveedores.</p>
     </div>
     {% if rol_staff_finanzas or rol_operador_finanzas %}
-    <a href="{% url 'finanzas:oc_create' %}" class="btn btn-primary shadow-sm fw-bold">
+    <a href="{% url 'finanzas:oc_create' %}" class="btn btn-primary shadow-sm fw-bold hover-lift">
         <i class="bi bi-plus-lg me-1"></i> Nueva Compra
     </a>
     {% endif %}
 </div>
 
-<div class="card border-0 shadow-sm mb-4">
-    <div class="card-body p-3">
+<div class="card border-0 shadow-sm mb-4 rounded-4 overflow-hidden">
+    <div class="card-body p-3 bg-light bg-opacity-25">
         <form method="get" class="row g-2 align-items-end">
             <div class="col-12 col-md-4">
-                <label class="form-label small fw-bold text-muted mb-1">Búsqueda</label>
+                <label class="form-label small fw-bold text-muted mb-1">BÚSQUEDA</label>
                 <div class="input-group">
                     <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
-                    <input type="text" name="q" class="form-control border-start-0" placeholder="Proveedor, CUIT o N° OC..." value="{{ request.GET.q }}">
+                    <input type="text" name="q" class="form-control border-start-0" placeholder="Proveedor, Vecino o N° OC..." value="{{ request.GET.q }}">
                 </div>
             </div>
             
             <div class="col-6 col-md-3">
-                <label class="form-label small fw-bold text-muted mb-1">Estado</label>
+                <label class="form-label small fw-bold text-muted mb-1">ESTADO</label>
                 <select name="estado" class="form-select" onchange="this.form.submit()">
                     <option value="PENDIENTES" {% if not request.GET.estado or request.GET.estado == 'PENDIENTES' %}selected{% endif %}>Pendientes (Activas)</option>
                     <option value="TODAS" {% if request.GET.estado == 'TODAS' %}selected{% endif %}>Historial Completo</option>
@@ -42,7 +42,7 @@
             </div>
 
             <div class="col-6 col-md-3">
-                <label class="form-label small fw-bold text-muted mb-1">Rubro</label>
+                <label class="form-label small fw-bold text-muted mb-1">RUBRO</label>
                 <select name="rubro" class="form-select" onchange="this.form.submit()">
                     <option value="">Todos los rubros</option>
                     {% for value, label in RUBROS_OC %}
@@ -52,21 +52,22 @@
             </div>
 
             <div class="col-12 col-md-2 text-end">
-                <a href="{% url 'finanzas:oc_list' %}" class="btn btn-light border w-100 text-muted">Limpiar</a>
+                <a href="{% url 'finanzas:oc_list' %}" class="btn btn-light border w-100 text-muted fw-bold" title="Limpiar filtros">
+                    <i class="bi bi-x-lg"></i>
+                </a>
             </div>
         </form>
     </div>
 </div>
 
-<div class="card border-0 shadow-sm overflow-hidden">
+<div class="card border-0 shadow-sm overflow-hidden rounded-4 animate-fade-in">
     <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
-            <thead class="bg-light small text-uppercase text-muted">
+            <thead class="bg-light small text-uppercase text-secondary fw-bold">
                 <tr>
                     <th class="ps-4 py-3">Número / Fecha</th>
                     <th>Proveedor</th>
-                    <th>Detalle / Rubro</th>
-                    <th class="text-end">Monto Total</th>
+                    <th>Destinatario / Rubro</th> <th class="text-end">Monto Total</th>
                     <th class="text-center">Estado</th>
                     <th class="text-end pe-4"></th>
                 </tr>
@@ -75,34 +76,54 @@
                 {% for orden in ordenes %}
                 <tr>
                     <td class="ps-4">
-                        <div class="fw-bold text-dark">
+                        <div class="fw-bold text-dark font-monospace">
                             {% if orden.numero %}{{ orden.numero }}{% else %}#{{ orden.id }}{% endif %}
                         </div>
                         <div class="small text-muted">{{ orden.fecha_oc|date:"d/m/Y" }}</div>
                     </td>
+                    
                     <td>
-                        <div class="fw-medium text-dark">{{ orden.proveedor.nombre|default:orden.proveedor_nombre }}</div>
+                        <div class="fw-bold text-dark text-truncate" style="max-width: 200px;">
+                            {{ orden.proveedor.nombre|default:orden.proveedor_nombre }}
+                        </div>
                         {% if orden.proveedor.cuit or orden.proveedor_cuit %}
                             <div class="small text-muted" style="font-size: 0.75rem;">
                                 CUIT: {{ orden.proveedor.cuit|default:orden.proveedor_cuit }}
                             </div>
                         {% endif %}
                     </td>
+
                     <td>
-                        {% if orden.rubro_principal %}
-                            <span class="badge bg-light text-dark border mb-1">{{ orden.get_rubro_principal_display }}</span>
+                        {% if orden.persona %}
+                            <div class="d-flex align-items-center">
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle me-2 rounded-circle p-1 d-flex align-items-center justify-content-center" style="width: 24px; height: 24px;" title="Ayuda Social">
+                                    <i class="bi bi-person-heart"></i>
+                                </span>
+                                <div>
+                                    <div class="fw-bold text-primary small">{{ orden.persona }}</div>
+                                    <div class="small text-muted" style="font-size: 0.7rem;">Ayuda Directa</div>
+                                </div>
+                            </div>
+                        {% else %}
+                            {% if orden.rubro_principal %}
+                                <span class="badge bg-light text-secondary border mb-1" style="font-size: 0.7rem;">
+                                    {{ orden.get_rubro_principal_display }}
+                                </span>
+                            {% endif %}
+                            <div class="small text-muted fst-italic text-truncate" style="max-width: 200px;">
+                                {{ orden.lineas.first.descripcion|default:"Sin detalle" }}
+                            </div>
                         {% endif %}
-                        <div class="small text-muted fst-italic text-truncate" style="max-width: 250px;">
-                            {{ orden.lineas.first.descripcion|default:"Sin detalle" }}
-                        </div>
                     </td>
-                    <td class="text-end font-monospace">
+
+                    <td class="text-end font-monospace fw-bold text-dark">
                         {% if orden.total_monto > 0 %}
                             ${{ orden.total_monto|intcomma }}
                         {% else %}
                             <span class="text-muted">-</span>
                         {% endif %}
                     </td>
+
                     <td class="text-center">
                         {% if orden.estado == 'BORRADOR' %}
                             <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill">BORRADOR</span>
@@ -114,17 +135,18 @@
                             <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill">ANULADA</span>
                         {% endif %}
                     </td>
+
                     <td class="text-end pe-4">
-                        <a href="{% url 'finanzas:oc_detail' orden.pk %}" class="btn btn-sm btn-light border hover-lift">
-                            Ver <i class="bi bi-chevron-right ms-1"></i>
+                        <a href="{% url 'finanzas:oc_detail' orden.pk %}" class="btn btn-sm btn-light border shadow-sm hover-lift" title="Ver detalle">
+                            <i class="bi bi-chevron-right"></i>
                         </a>
                     </td>
                 </tr>
                 {% empty %}
                 <tr>
                     <td colspan="6" class="text-center py-5">
-                        <div class="text-muted opacity-50 mb-3"><i class="bi bi-cart-x fs-1"></i></div>
-                        <p class="mb-0 text-muted">No se encontraron órdenes de compra.</p>
+                        <div class="text-muted opacity-25 mb-3"><i class="bi bi-cart-x fs-1"></i></div>
+                        <p class="mb-0 text-muted fw-bold">No se encontraron órdenes de compra.</p>
                     </td>
                 </tr>
                 {% endfor %}

@@ -185,7 +185,7 @@ def proveedor_create_express(request):
 # =========================================================
 from django.utils import timezone
 from datetime import date, timedelta
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, Count
 from django.views.generic import TemplateView
 from .models import HojaRuta, Atencion, OrdenCompra, Movimiento, OrdenPago
 
@@ -208,31 +208,26 @@ class HomeView(DashboardAccessMixin, TemplateView):
             fecha_inicio = hoy
             fecha_fin = hoy
             titulo_periodo = "Día de Hoy"
-
         elif filtro == 'ayer':
             fecha_inicio = hoy - timedelta(days=1)
             fecha_fin = fecha_inicio
             titulo_periodo = "Día de Ayer"
-
         elif filtro == 'semana':
             fecha_inicio = hoy - timedelta(days=hoy.weekday()) # Lunes de esta semana
             fecha_fin = hoy
             titulo_periodo = "Esta Semana"
-
         elif filtro == 'gestion':
             fecha_inicio = inicio_gestion
             fecha_fin = hoy
             titulo_periodo = "Gestión (Desde 10/12/2025)"
-
         else: # Default: 'mes'
             fecha_inicio = inicio_mes_actual
             fecha_fin = hoy
             titulo_periodo = "Mes en Curso"
 
         # =================================================
-        # 2. PULSO OPERATIVO (AHORA OBEDECE AL FILTRO)
+        # 2. PULSO OPERATIVO (FILTRADO)
         # =================================================
-        # Antes estaba fijo en 'hoy', ahora usa el rango seleccionado.
         
         # Atenciones
         try:
@@ -240,8 +235,7 @@ class HomeView(DashboardAccessMixin, TemplateView):
                 fecha_atencion__gte=fecha_inicio, 
                 fecha_atencion__lte=fecha_fin
             ).count()
-        except:
-            ctx['atenciones_stat'] = 0
+        except: ctx['atenciones_stat'] = 0
 
         # Flota / Viajes
         try:
@@ -249,8 +243,7 @@ class HomeView(DashboardAccessMixin, TemplateView):
                 fecha__gte=fecha_inicio, 
                 fecha__lte=fecha_fin
             ).count()
-        except:
-            ctx['viajes_stat'] = 0
+        except: ctx['viajes_stat'] = 0
 
         # Compras (OCs)
         try:
@@ -258,14 +251,14 @@ class HomeView(DashboardAccessMixin, TemplateView):
                 fecha_oc__gte=fecha_inicio, 
                 fecha_oc__lte=fecha_fin
             ).count()
-        except:
-            ctx['ocs_stat'] = 0
+        except: ctx['ocs_stat'] = 0
 
 
         # =================================================
-        # 3. DATOS FINANCIEROS
+        # 3. DATOS FINANCIEROS & SOCIALES
         # =================================================
         
+        # A. Movimientos de Caja (Aprobados)
         movs_periodo = Movimiento.objects.filter(
             estado=Movimiento.ESTADO_APROBADO,
             fecha_operacion__gte=fecha_inicio,
@@ -279,20 +272,43 @@ class HomeView(DashboardAccessMixin, TemplateView):
         ingresos = balance["ingresos"] or 0
         gastos = balance["gastos"] or 0
         
-        # KPIs Financieros
-        ctx['ayudas_mes_cant'] = movs_periodo.filter(
-            tipo__iexact="GASTO", categoria__es_ayuda_social=True
-        ).count()
-        
-        ctx['ayudas_mes_monto'] = movs_periodo.filter(
-            tipo__iexact="GASTO", categoria__es_ayuda_social=True
+        # B. Compras de Insumos para Vecinos (OCs cerradas o autorizadas en el periodo)
+        # Solo sumamos las que tienen "persona" asignada.
+        compras_sociales = OrdenCompra.objects.filter(
+            fecha_oc__gte=fecha_inicio,
+            fecha_oc__lte=fecha_fin,
+            persona__isnull=False # <--- CLAVE: Solo ayudas directas
+        ).exclude(estado='ANULADA')
+
+
+        # --- CÁLCULO DE KPIs ---
+
+        # 1. AYUDA SOCIAL TOTAL (Dinero + Insumos)
+        # Dinero directo (Subsidios)
+        monto_subsidios = movs_periodo.filter(
+            tipo__iexact="GASTO", 
+            beneficiario__isnull=False
         ).aggregate(t=Sum('monto'))['t'] or 0
 
+        # Insumos (Materiales, Alimentos, etc.)
+        # Nota: Sumamos en Python porque total_monto es una property en tu modelo
+        monto_insumos = sum(oc.total_monto for oc in compras_sociales)
+
+        ctx['ayudas_mes_monto'] = monto_subsidios + monto_insumos
+
+        # Cantidad de personas asistidas (aproximado, sumando casos únicos de ambos lados)
+        cant_subsidios = movs_periodo.filter(tipo__iexact="GASTO", beneficiario__isnull=False).count()
+        cant_insumos = compras_sociales.count()
+        ctx['ayudas_mes_cant'] = cant_subsidios + cant_insumos
+
+
+        # 2. COMBUSTIBLE
         ctx['combustible_mes'] = movs_periodo.filter(
             tipo__iexact="GASTO", categoria__es_combustible=True
         ).aggregate(t=Sum('monto'))['t'] or 0
         
-        # Últimos Movimientos
+        
+        # 3. ÚLTIMOS MOVIMIENTOS
         ultimos = Movimiento.objects.filter(
             estado=Movimiento.ESTADO_APROBADO
         ).select_related(
@@ -1006,7 +1022,10 @@ class OrdenPagoGenerarMovimientoView(StaffRequiredMixin, View):
 
 from django.db.models import Sum, Q
 from django.shortcuts import redirect, get_object_or_404
-from .models import Beneficiario, DocumentoBeneficiario, Movimiento, DocumentoSensible
+from django.views.generic import ListView, CreateView, UpdateView, DetailView
+from django.urls import reverse
+from django.contrib import messages
+from .models import Beneficiario, DocumentoBeneficiario, Movimiento, DocumentoSensible, OrdenCompra # <--- Agregamos OrdenCompra
 from .forms import BeneficiarioForm, DocumentoBeneficiarioForm, DocumentoSensibleForm
 from .mixins import (
     puede_ver_historial_economico, 
@@ -1077,7 +1096,7 @@ class PersonaListView(PersonaCensoAccessMixin, ListView):
         ctx["highlight_id"] = self.request.GET.get("highlight")
 
         ctx["perms_ver_dinero"] = puede_ver_historial_economico(self.request.user)
-        ctx.update(roles_ctx(self.request.user))
+        if 'roles_ctx' in globals(): ctx.update(roles_ctx(self.request.user))
         return ctx
 
 class PersonaCreateView(PersonaCensoEditMixin, CreateView):
@@ -1087,7 +1106,7 @@ class PersonaCreateView(PersonaCensoEditMixin, CreateView):
     
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx.update(roles_ctx(self.request.user))
+        if 'roles_ctx' in globals(): ctx.update(roles_ctx(self.request.user))
         return ctx
     
     def form_valid(self, form):
@@ -1106,7 +1125,7 @@ class PersonaUpdateView(PersonaCensoEditMixin, UpdateView):
     
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx.update(roles_ctx(self.request.user))
+        if 'roles_ctx' in globals(): ctx.update(roles_ctx(self.request.user))
         return ctx
 
     def get_success_url(self):
@@ -1128,17 +1147,33 @@ class PersonaDetailView(PersonaCensoAccessMixin, DetailView):
         ctx['perms_ver_dinero'] = ver_dinero
         
         if ver_dinero:
+            # 1. Historial de Pagos (Ingresos)
             pagos = Movimiento.objects.filter(
                 beneficiario=self.object,
                 tipo='INGRESO'
             ).order_by('-fecha_operacion')
             ctx['pagos_servicios'] = pagos
             ctx['total_pagado_historico'] = pagos.aggregate(total=Sum('monto'))['total'] or 0
+
+            # 2. Historial de Compras (Ayudas / Insumos) - NUEVO
+            compras = OrdenCompra.objects.filter(
+                persona=self.object
+            ).order_by('-fecha_oc')
+            
+            # Calculamos el total sumando propiedad total_monto de cada OC (un poco más lento pero exacto)
+            # Ojo: total_monto es property, no campo de DB, asi que sumamos en python
+            total_compras = sum(oc.total_monto for oc in compras)
+
+            ctx['compras_asociadas'] = compras
+            ctx['total_compras_historico'] = total_compras
+
         else:
             ctx['pagos_servicios'] = []
             ctx['total_pagado_historico'] = 0
+            ctx['compras_asociadas'] = []
+            ctx['total_compras_historico'] = 0
         
-        ctx.update(roles_ctx(self.request.user))
+        if 'roles_ctx' in globals(): ctx.update(roles_ctx(self.request.user))
         return ctx
 
 class BeneficiarioUploadView(PersonaCensoEditMixin, CreateView):
@@ -1346,3 +1381,94 @@ class ReciboIngresoPrintView(LoginRequiredMixin, View):
         }
         
         return render(request, 'finanzas/recibo_print.html', context)
+
+
+# =========================================================
+# FUNCIONES AUXILIARES ORDENES DE COMPRA
+# =========================================================
+
+def oc_cambiar_estado(request, pk, accion):
+    """
+    Permite Autorizar o Anular una OC desde el detalle.
+    """
+    oc = get_object_or_404(OrdenCompra, pk=pk)
+    
+    if accion == 'autorizar':
+        if oc.estado == OrdenCompra.ESTADO_BORRADOR:
+            oc.estado = OrdenCompra.ESTADO_AUTORIZADA
+            oc.save()
+            messages.success(request, f"OC #{oc.numero} AUTORIZADA correctamente.")
+        else:
+            messages.warning(request, "La orden no está en borrador.")
+            
+    elif accion == 'anular':
+        if oc.estado != OrdenCompra.ESTADO_CERRADA: # No anular lo ya pagado
+            oc.estado = OrdenCompra.ESTADO_ANULADA
+            oc.save()
+            messages.error(request, f"OC #{oc.numero} ANULADA.")
+        else:
+            messages.error(request, "No se puede anular una orden ya pagada/cerrada.")
+            
+    return redirect('finanzas:oc_detail', pk=pk)
+
+
+def oc_generar_movimiento(request, pk):
+    """
+    Genera el MOVIMIENTO DE CAJA (Gasto) a partir de una OC Autorizada.
+    Si la OC tiene Persona, el Gasto hereda la Persona (Impacto Social).
+    """
+    oc = get_object_or_404(OrdenCompra, pk=pk)
+    
+    # Validaciones
+    if oc.estado != OrdenCompra.ESTADO_AUTORIZADA:
+        messages.error(request, "Solo se pueden pagar órdenes AUTORIZADAS.")
+        return redirect('finanzas:oc_detail', pk=pk)
+
+    # Buscar Categoría y Cuenta por defecto
+    # Intentamos usar la categoría del primer item, o buscamos "General"
+    cat_item = oc.lineas.first().categoria if oc.lineas.exists() else None
+    if not cat_item:
+        cat_item = Categoria.objects.filter(nombre__icontains="General").first()
+        if not cat_item: # Si no existe, agarramos la primera que haya
+             cat_item = Categoria.objects.first()
+
+    # Cuenta de origen (Caja principal - ID 1 o la primera)
+    cuenta_origen = Cuenta.objects.first() 
+
+    try:
+        with transaction.atomic():
+            # CREAR EL MOVIMIENTO (EL GASTO REAL)
+            mov = Movimiento(
+                tipo=Movimiento.TIPO_GASTO,
+                fecha_operacion=timezone.now().date(),
+                monto=oc.total_monto,
+                
+                # --- AQUÍ ESTÁ LA MAGIA ---
+                # Si la OC tiene persona, el gasto hereda esa persona.
+                beneficiario=oc.persona, 
+                beneficiario_nombre=str(oc.persona) if oc.persona else "",
+                
+                proveedor=oc.proveedor,
+                proveedor_nombre=oc.proveedor_nombre,
+                proveedor_cuit=oc.proveedor_cuit,
+                
+                categoria=cat_item,
+                area=oc.area,
+                oc=oc, # Vinculamos la OC al movimiento para trazabilidad
+                descripcion=f"Pago OC #{oc.numero} - {oc.proveedor_nombre}",
+                estado=Movimiento.ESTADO_APROBADO, # Impacta saldo directo
+                cuenta_origen=cuenta_origen, 
+                creado_por=request.user
+            )
+            mov.save()
+
+            # CERRAR LA OC
+            oc.estado = OrdenCompra.ESTADO_CERRADA
+            oc.save()
+
+        messages.success(request, f"¡Pago registrado! Se generó el gasto y se cerró la OC #{oc.numero}.")
+        return redirect('finanzas:movimiento_detail', pk=mov.pk)
+
+    except Exception as e:
+        messages.error(request, f"Error al generar el pago: {e}")
+        return redirect('finanzas:oc_detail', pk=pk)
