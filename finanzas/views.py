@@ -91,7 +91,7 @@ except ImportError: pass
 # 1) UTILIDADES INTERNAS
 # =========================================================
 
-def _resolver_proveedor_y_beneficiario(form, movimiento: Movimiento) -> None:
+def _resolver_proveedor_y_beneficiario(form, movimiento) -> None:
     """Sincroniza FKs con campos de texto (snapshot)."""
     cleaned = form.cleaned_data
     
@@ -99,7 +99,8 @@ def _resolver_proveedor_y_beneficiario(form, movimiento: Movimiento) -> None:
     prov_obj = cleaned.get("proveedor")
     if prov_obj:
         movimiento.proveedor = prov_obj
-        movimiento.proveedor_nombre = prov_obj.razon_social # Ajuste: Usamos razon_social
+        # CORRECCIÓN CLAVE: Usamos .nombre en lugar de .razon_social
+        movimiento.proveedor_nombre = prov_obj.nombre 
         movimiento.proveedor_cuit = prov_obj.cuit or ""
     
     # Beneficiario
@@ -107,13 +108,17 @@ def _resolver_proveedor_y_beneficiario(form, movimiento: Movimiento) -> None:
     if ben_obj:
         movimiento.beneficiario = ben_obj
         movimiento.beneficiario_nombre = f"{ben_obj.apellido}, {ben_obj.nombre}".strip()
-        movimiento.beneficiario_dni = ben_obj.dni or ""
+        # Verificamos si el modelo tiene dni antes de asignarlo para evitar errores
+        if hasattr(movimiento, 'beneficiario_dni'):
+            movimiento.beneficiario_dni = ben_obj.dni or ""
 
-def _redirect_movimiento_post_save(request, mov: Movimiento, msg: str):
+def _redirect_movimiento_post_save(request, mov, msg: str):
     """Redirección inteligente según estado."""
     messages.success(request, msg)
-    if mov.estado == Movimiento.ESTADO_APROBADO:
+    # Usamos string "APROBADO" o la constante si está importada
+    if str(mov.estado) == "APROBADO": 
         return redirect("finanzas:movimiento_detail", pk=mov.pk)
+    
     # Si es borrador, volver a la lista filtrada
     url = reverse("finanzas:movimiento_list")
     return redirect(f"{url}?estado={mov.estado}&highlight={mov.pk}")
