@@ -12,46 +12,52 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
 
 <style>
-    /* 1. Estética: Más espacio en la tabla */
-    .table-relaxed td, .table-relaxed th {
-        padding-top: 0.8rem !important;
-        padding-bottom: 0.8rem !important;
-        vertical-align: middle;
-    }
-    
-    /* 2. Limpieza: Eliminar flechas de los inputs numéricos */
-    .no-arrow::-webkit-outer-spin-button,
-    .no-arrow::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-    }
-    .no-arrow {
-        -moz-appearance: textfield;
-    }
-
-    /* 3. Inputs modernos */
+    /* === ESTILOS GENERALES === */
     .form-control, .form-select { border-color: #cbd5e1; }
     .form-control:focus, .form-select:focus { border-color: #0d6efd; box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15); }
     
-    /* 4. Switch Manual/Auto */
-    .btn-check:checked + .btn-outline-primary {
-        background-color: #0d6efd;
-        color: white;
-        border-color: #0d6efd;
+    .table-relaxed td, .table-relaxed th { padding-top: 0.8rem; padding-bottom: 0.8rem; vertical-align: middle; }
+    
+    /* Input numérico limpio */
+    .no-arrow::-webkit-outer-spin-button, .no-arrow::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .no-arrow { -moz-appearance: textfield; }
+
+    /* Switch Custom */
+    .btn-check:checked + .btn-outline-primary { background-color: #0d6efd; color: white; border-color: #0d6efd; }
+    
+    /* Select2 Ajustes */
+    .select2-container--bootstrap-5 .select2-selection { border-color: #cbd5e1; min-height: 38px; }
+    .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered { line-height: 36px; padding-left: 12px; }
+
+    /* === TEXTAREA PRO (LA SOLUCIÓN QUIRÚRGICA) === */
+    .textarea-pro {
+        resize: vertical; /* Solo permite estirar hacia abajo, nunca a los costados */
+        min-height: 120px; /* Altura inicial decente */
+        border-radius: 12px; /* Bordes suaves */
+        background-color: #f8fafc; /* Gris muy clarito */
+        border: 2px solid #e2e8f0;
+        transition: all 0.2s ease-in-out;
+        font-size: 0.95rem;
+        line-height: 1.6;
     }
     
-    /* 5. Ajustes Select2 */
-    .select2-container--bootstrap-5 .select2-selection {
-        border-color: #cbd5e1;
+    .textarea-pro:focus {
+        background-color: #ffffff;
+        border-color: #86b7fe;
+        box-shadow: 0 4px 12px rgba(13, 110, 253, 0.1);
+        outline: none;
     }
+
+    /* Animaciones */
+    .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 </style>
 {% endblock %}
 
 {% block content %}
 
-<div class="row justify-content-center animate-fade-in" style="padding-bottom: 120px;">
-    
-    <div class="col-12 col-xl-10">
+<div class="row justify-content-center animate-fade-in pb-5">
+    <div class="col-12 col-xl-11">
 
         <form method="post" novalidate id="ocForm">
             {% csrf_token %}
@@ -95,12 +101,12 @@
             {% endif %}
 
             <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
-                <div class="card-header bg-white py-3 px-4 border-bottom d-flex justify-content-between align-items-center">
+                <div class="card-header bg-white py-3 px-4 border-bottom">
                     <h6 class="mb-0 fw-bold text-dark text-uppercase small ls-1">
                         <i class="bi bi-sliders me-2 text-primary"></i>Configuración
                     </h6>
                 </div>
-                <div class="card-body p-4 bg-light bg-opacity-25">
+                <div class="card-body p-4 bg-light bg-opacity-50">
                     <div class="row g-4">
                         <div class="col-md-4">
                             <label class="form-label small fw-bold text-dark mb-2">MODO DE NUMERACIÓN</label>
@@ -154,11 +160,18 @@
                         </div>
 
                         <div class="col-12">
-                            <div class="p-3 bg-primary bg-opacity-10 border border-primary border-opacity-25 rounded-3">
+                            <div class="p-3 bg-primary bg-opacity-10 border border-primary border-opacity-25 rounded-3 position-relative">
                                 <label class="form-label small fw-bold text-primary mb-1">
                                     <i class="bi bi-person-heart me-1"></i>BENEFICIARIO / VECINO (OPCIONAL)
                                 </label>
-                                {{ form.persona }}
+                                
+                                <div class="input-group">
+                                    {{ form.persona }}
+                                    <button type="button" class="btn btn-success fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalNuevoVecino" title="Crear Nuevo Vecino">
+                                        <i class="bi bi-plus-lg"></i>
+                                    </button>
+                                </div>
+                                
                                 <div class="form-text text-primary opacity-75 small fst-italic mt-1">
                                     <i class="bi bi-info-circle me-1"></i>Si esta compra es una ayuda directa (ej: materiales), seleccione al vecino aquí.
                                 </div>
@@ -226,9 +239,18 @@
             </div>
 
             <div class="card border-0 shadow-sm rounded-4 mb-5">
+                <div class="card-header bg-white py-3 px-4 border-bottom">
+                    <h6 class="mb-0 fw-bold text-dark text-uppercase small ls-1">
+                        <i class="bi bi-journal-text me-2 text-primary"></i>Notas y Observaciones
+                    </h6>
+                </div>
                 <div class="card-body p-4">
-                    <label class="form-label small fw-bold text-dark text-uppercase">Notas Adicionales</label>
-                    {{ form.observaciones }}
+                    {{ form.observaciones|add_class:"form-control textarea-pro" }}
+                    
+                    <div class="form-text small text-muted mt-2 d-flex align-items-center gap-1">
+                        <i class="bi bi-info-circle"></i>
+                        <span>Puede detallar condiciones de entrega, plazos de pago o referencias internas.</span>
+                    </div>
                 </div>
             </div>
 
@@ -236,29 +258,74 @@
     </div>
 </div>
 
+<div class="modal fade" id="modalNuevoVecino" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header bg-success text-white border-bottom-0 rounded-top-4">
+                <h5 class="modal-title fw-bold"><i class="bi bi-person-plus-fill me-2"></i>Nuevo Vecino Rápido</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4 pt-3">
+                <div id="modalAlert" class="alert alert-danger d-none small mb-3"></div>
+                
+                <form id="formNuevoVecino" method="post">
+                    {% csrf_token %}
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-muted">Nombre</label>
+                            {{ beneficiario_form.nombre }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-muted">Apellido</label>
+                            {{ beneficiario_form.apellido }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-muted">DNI</label>
+                            {{ beneficiario_form.dni }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-muted">Teléfono</label>
+                            {{ beneficiario_form.telefono }}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small fw-bold text-muted">Dirección</label>
+                            {{ beneficiario_form.direccion }}
+                        </div>
+                    </div>
+                    <div class="d-grid mt-4">
+                        <button type="button" id="btnGuardarVecino" class="btn btn-success fw-bold rounded-pill">
+                            <i class="bi bi-check-lg me-2"></i>Guardar y Seleccionar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script type="text/template" id="empty-row-template">
     <tr class="linea-row bg-white animate-fade-in">
         <td class="ps-4">
-            <select name="lineas-__prefix__-categoria" class="form-select form-select-sm" id="id_lineas-__prefix__-categoria">
+            <select name="lineas-__prefix__-categoria" class="form-select form-select-sm">
                 {% for x, y in lineas.empty_form.fields.categoria.choices %}<option value="{{ x }}">{{ y }}</option>{% endfor %}
             </select>
         </td>
         <td>
-            <select name="lineas-__prefix__-area" class="form-select form-select-sm" id="id_lineas-__prefix__-area">
+            <select name="lineas-__prefix__-area" class="form-select form-select-sm">
                 {% for x, y in lineas.empty_form.fields.area.choices %}<option value="{{ x }}">{{ y }}</option>{% endfor %}
             </select>
         </td>
         <td>
-            <input type="text" name="lineas-__prefix__-descripcion" class="form-control form-control-sm" placeholder="Detalle del ítem..." id="id_lineas-__prefix__-descripcion">
+            <input type="text" name="lineas-__prefix__-descripcion" class="form-control form-control-sm" placeholder="Detalle del ítem...">
         </td>
         <td class="pe-4">
             <div class="input-group input-group-sm">
                 <span class="input-group-text bg-light border-end-0 text-muted">$</span>
-                <input type="number" name="lineas-__prefix__-monto" step="0.01" class="form-control text-end no-arrow" placeholder="0.00" id="id_lineas-__prefix__-monto">
+                <input type="number" name="lineas-__prefix__-monto" step="0.01" class="form-control text-end no-arrow input-monto" placeholder="0.00">
             </div>
         </td>
         <td class="text-center">
-            <input type="checkbox" name="lineas-__prefix__-DELETE" id="id_lineas-__prefix__-DELETE" class="d-none">
+            <input type="checkbox" name="lineas-__prefix__-DELETE" class="d-none">
             <button type="button" class="btn btn-sm btn-outline-danger border-0 btn-delete-row shadow-none">
                 <i class="bi bi-trash"></i>
             </button>
@@ -275,148 +342,153 @@
 document.addEventListener("DOMContentLoaded", function() {
     
     // ============================================
-    // 1. INICIALIZACIÓN DE SELECT2 (Proveedor y Persona)
+    // 1. SELECT2 PROVEEDOR & PERSONA
     // ============================================
     const $proveedor = $('#id_proveedor');
-    const $persona = $('#id_persona');
+    const $persona = $('#id_persona_select');
     
-    // Configuración Base Bootstrap 5
     $.fn.select2.defaults.set("theme", "bootstrap-5");
     $.fn.select2.defaults.set("width", "100%");
 
-    // PROVEEDOR (AJAX)
+    // Proveedor Ajax
     $proveedor.select2({
-        placeholder: 'Buscar proveedor por nombre o CUIT...',
+        placeholder: 'Buscar proveedor...',
         allowClear: true,
         ajax: {
             url: "{% url 'finanzas:oc_proveedores_suggest' %}",
             dataType: 'json',
             delay: 250,
-            data: params => ({ q: params.term, page: params.page }),
+            data: params => ({ q: params.term }),
             processResults: data => ({ results: data.results }),
             cache: true
-        },
-        minimumInputLength: 0
+        }
     });
 
-    // Guardar nombre/cuit ocultos al seleccionar
     $proveedor.on('select2:select', function (e) {
         var data = e.params.data;
-        var nombre = data.text.split('(')[0].trim();
-        var cuit = "";
-        
-        if(data.cuit) cuit = data.cuit;
-        else {
-            var match = data.text.match(/\(([^)]+)\)/);
-            if(match) cuit = match[1];
-        }
-        $('#id_proveedor_nombre').val(nombre);
-        $('#id_proveedor_cuit').val(cuit);
+        $('#id_proveedor_nombre').val(data.nombre);
+        $('#id_proveedor_cuit').val(data.cuit);
     });
 
-    $proveedor.on('select2:clear', function() {
-        $('#id_proveedor_nombre').val('');
-        $('#id_proveedor_cuit').val('');
-    });
-
-    // PERSONA (AJAX Local o Remoto según prefieras, acá uso el estándar)
+    // Persona (Vecino) Simple
     $persona.select2({
-        placeholder: 'Seleccione un vecino (opcional)...',
+        placeholder: 'Seleccione vecino...',
         allowClear: true
     });
 
 
     // ============================================
-    // 2. SWITCH AUTO/MANUAL (Numeración)
+    // 2. MODAL NUEVO VECINO (AJAX)
+    // ============================================
+    $('#btnGuardarVecino').click(function() {
+        const btn = $(this);
+        const originalText = btn.html();
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Guardando...');
+        
+        $.ajax({
+            url: "{% url 'finanzas:api_beneficiario_create' %}",
+            type: "POST",
+            data: $('#formNuevoVecino').serialize(),
+            success: function(response) {
+                if(response.success) {
+                    // 1. Cerrar Modal
+                    var modalEl = document.getElementById('modalNuevoVecino');
+                    var modal = bootstrap.Modal.getInstance(modalEl);
+                    modal.hide();
+                    
+                    // 2. Crear la opción y seleccionarla en Select2
+                    var newOption = new Option(response.text, response.id, true, true);
+                    $persona.append(newOption).trigger('change');
+                    
+                    // 3. Limpiar form
+                    $('#formNuevoVecino')[0].reset();
+                } else {
+                    $('#modalAlert').text("Error: " + response.error).removeClass('d-none');
+                }
+            },
+            error: function() {
+                $('#modalAlert').text("Error de conexión con el servidor.").removeClass('d-none');
+            },
+            complete: function() {
+                btn.prop('disabled', false).html(originalText);
+            }
+        });
+    });
+
+
+    // ============================================
+    // 3. SWITCH NUMERACIÓN AUTO/MANUAL
     // ============================================
     const radios = document.querySelectorAll('input[name="tipo_numeracion"]');
     const inputNumero = document.getElementById('id_numero');
-    const helpText = document.getElementById('numHelp');
-
-    function updateNumeracionState() {
-        let checkedRadio = document.querySelector('input[name="tipo_numeracion"]:checked');
-        let selected = checkedRadio ? checkedRadio.value : 'AUTO';
+    
+    function updateNumeracion() {
+        let checked = document.querySelector('input[name="tipo_numeracion"]:checked');
+        let val = checked ? checked.value : 'AUTO';
         
-        if (selected === 'AUTO') {
+        if (val === 'AUTO') {
             inputNumero.setAttribute('readonly', true);
             inputNumero.classList.add('bg-light');
-            inputNumero.value = ''; 
-            inputNumero.placeholder = "Se generará automáticamente";
-            helpText.innerText = "El sistema asignará el siguiente número disponible.";
-            helpText.classList.remove('text-danger');
+            inputNumero.value = '';
+            inputNumero.placeholder = "Automático al guardar";
+            $('#numHelp').text('');
         } else {
             inputNumero.removeAttribute('readonly');
             inputNumero.classList.remove('bg-light');
-            inputNumero.placeholder = "Ej: 000504";
-            helpText.innerText = "Ingrese el número del talonario físico.";
-            helpText.classList.add('text-danger');
-            if(document.activeElement !== inputNumero) inputNumero.focus();
+            inputNumero.placeholder = "Ej: 000123";
+            $('#numHelp').text('Ingrese el número del talonario físico.');
         }
     }
-    radios.forEach(radio => radio.addEventListener('change', updateNumeracionState));
-    // Ejecutar al inicio
-    if(radios.length > 0) updateNumeracionState();
+    radios.forEach(r => r.addEventListener('change', updateNumeracion));
+    updateNumeracion(); // Init
 
 
     // ============================================
-    // 3. FORMSET DINÁMICO
+    // 4. FORMSET Y CÁLCULOS
     // ============================================
     const $container = $('#lineas-container');
     const $totalForms = $('#id_lineas-TOTAL_FORMS');
     const $totalDisplay = $('#totalDisplay');
 
-    $('#add-row').click(function() {
-        var formIdx = parseInt($totalForms.val());
-        
-        // Clonar template
-        var templateSource = document.getElementById('empty-row-template').innerHTML;
-        var newRowHtml = templateSource.replace(/__prefix__/g, formIdx);
-        var $newRow = $(newRowHtml);
-        
-        // Agregar
-        $container.append($newRow);
-        
-        // Inicializar selects de la nueva fila (si quisieras buscadores ahí también)
-        // $newRow.find('select').select2({ theme: 'bootstrap-5', width: '100%' });
-
-        $totalForms.val(formIdx + 1);
-        bindCalcEvents(); // Re-bindear eventos de cálculo
-    });
-
-    $container.on('click', '.btn-delete-row', function() {
-        var $row = $(this).closest('tr');
-        // Marcar checkbox hidden de DELETE
-        $row.find('input[type="checkbox"]').prop('checked', true);
-        $row.hide(); // Ocultar visualmente
-        calcularTotal(); // Recalcular
-    });
-
-
-    // ============================================
-    // 4. CÁLCULOS EN TIEMPO REAL
-    // ============================================
     function calcularTotal() {
         let total = 0;
-        $('input[name$="-monto"]').each(function() {
+        // Buscamos todos los inputs que terminen en -monto
+        $container.find('input[name$="-monto"]').each(function() {
             var $row = $(this).closest('tr');
-            // Si la fila está oculta (borrada), no sumar
-            if ($row.is(':hidden')) return;
+            if ($row.is(':hidden')) return; // Ignorar eliminados
             
             let val = parseFloat($(this).val());
             if (!isNaN(val)) total += val;
         });
         
-        const formatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 2 });
+        const formatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
         $totalDisplay.text(formatter.format(total));
     }
 
-    function bindCalcEvents() {
-        $('input[name$="-monto"]').off('input').on('input', calcularTotal);
-    }
+    // Agregar Fila
+    $('#add-row').click(function() {
+        var formIdx = parseInt($totalForms.val());
+        var template = document.getElementById('empty-row-template').innerHTML;
+        var newHtml = template.replace(/__prefix__/g, formIdx);
+        
+        $container.append(newHtml);
+        $totalForms.val(formIdx + 1);
+        
+        // Rebindear evento input para la nueva fila
+        $container.find('input[name$="-monto"]').last().on('input', calcularTotal);
+    });
 
-    // Init
-    bindCalcEvents();
-    calcularTotal();
+    // Eliminar Fila
+    $container.on('click', '.btn-delete-row', function() {
+        var $row = $(this).closest('tr');
+        $row.find('input[type="checkbox"]').prop('checked', true);
+        $row.hide();
+        calcularTotal();
+    });
+
+    // Bind inicial
+    $('input[name$="-monto"]').on('input', calcularTotal);
+    calcularTotal(); // Calc inicial por si es edición
 });
 </script>
 {% endblock %}

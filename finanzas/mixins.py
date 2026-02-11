@@ -180,3 +180,34 @@ def roles_ctx(context_input):
         'rol_operador_finanzas': es_operador_finanzas(user),
         'rol_operador_social': es_operador_social(user),
     }
+
+    # =========================================================
+# MIXINS DE ESTILO Y FORMULARIOS (Agregalo al final)
+# =========================================================
+from django import forms
+
+class EstiloFormMixin:
+    """
+    Mixin para aplicar estilos Bootstrap 5 automáticamente a los campos del form.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name, field in self.fields.items():
+            # Si ya tiene clase, la mantenemos y agregamos la nuestra
+            attrs = field.widget.attrs
+            clase_actual = attrs.get('class', '')
+
+            # Checkboxes
+            if isinstance(field.widget, forms.CheckboxInput):
+                if 'form-check-input' not in clase_actual:
+                    attrs['class'] = f"{clase_actual} form-check-input".strip()
+            
+            # Selects
+            elif isinstance(field.widget, (forms.Select, forms.SelectMultiple)):
+                if 'form-select' not in clase_actual:
+                    attrs['class'] = f"{clase_actual} form-select".strip()
+            
+            # Inputs normales (Texto, fecha, número, etc)
+            elif isinstance(field.widget, (forms.TextInput, forms.NumberInput, forms.EmailInput, forms.DateInput, forms.PasswordInput)):
+                if 'form-control' not in clase_actual:
+                    attrs['class'] = f"{clase_actual} form-control".strip()

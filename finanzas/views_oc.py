@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.views.generic import ListView, CreateView, UpdateView, DetailView, View
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.decorators import login_required
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_POST, require_GET
 from django.urls import reverse_lazy
 from django.contrib import messages
 from django.db.models import Q, Sum
@@ -10,8 +10,8 @@ from django.http import JsonResponse
 from django.db import transaction
 from django.utils import timezone
 
-from .models import OrdenCompra, Proveedor, Vehiculo, SerieOC, Movimiento
-from .forms import OrdenCompraForm, OrdenCompraLineaFormSet
+from .models import OrdenCompra, Proveedor, Vehiculo, SerieOC, Movimiento, Beneficiario
+from .forms import OrdenCompraForm, OrdenCompraLineaFormSet, BeneficiarioQuickForm # <--- Importamos el nuevo form
 from .mixins import StaffRequiredMixin, OperadorSocialRequiredMixin, roles_ctx
 
 # ==================== LISTADO Y DETALLE ====================
@@ -72,6 +72,10 @@ class OCCreateView(OperadorSocialRequiredMixin, CreateView):
             ctx["lineas"] = OrdenCompraLineaFormSet(self.request.POST)
         else:
             ctx["lineas"] = OrdenCompraLineaFormSet()
+        
+        # INYECTAMOS EL FORMULARIO RÁPIDO PARA EL MODAL
+        ctx["beneficiario_form"] = BeneficiarioQuickForm()
+        
         ctx.update(roles_ctx(self.request.user))
         return ctx
 
@@ -88,13 +92,8 @@ class OCCreateView(OperadorSocialRequiredMixin, CreateView):
             tipo_num = form.cleaned_data.get('tipo_numeracion')
 
             if tipo_num == 'MANUAL':
-                # Usamos el número que escribió el usuario
-                # (Ya se validó en forms.py que no esté vacío)
                 self.object.numero = form.cleaned_data['numero']
-                # Opcional: Agregar prefijo si querés estandarizar, ej: "MAN-0052"
-                # self.object.numero = f"MAN-{form.cleaned_data['numero']}"
             else:
-                # --- LÓGICA AUTOMÁTICA ---
                 serie, created = SerieOC.objects.get_or_create(
                     nombre="General", 
                     defaults={'prefijo': 'OC', 'siguiente_numero': 1, 'activo': True}
@@ -105,7 +104,6 @@ class OCCreateView(OperadorSocialRequiredMixin, CreateView):
                 self.object.serie = serie
                 serie.siguiente_numero += 1
                 serie.save()
-                # -------------------------
 
             if self.object.proveedor:
                 self.object.proveedor_nombre = self.object.proveedor.nombre
@@ -141,6 +139,10 @@ class OCUpdateView(OperadorSocialRequiredMixin, UpdateView):
             ctx["lineas"] = OrdenCompraLineaFormSet(self.request.POST, instance=self.object)
         else:
             ctx["lineas"] = OrdenCompraLineaFormSet(instance=self.object)
+        
+        # INYECTAMOS EL FORMULARIO RÁPIDO TAMBIÉN EN EDICIÓN
+        ctx["beneficiario_form"] = BeneficiarioQuickForm()
+
         ctx.update(roles_ctx(self.request.user))
         return ctx
 
@@ -150,7 +152,6 @@ class OCUpdateView(OperadorSocialRequiredMixin, UpdateView):
         lineas = ctx["lineas"]
         
         if form.is_valid() and lineas.is_valid():
-            # En edición NO regeneramos número, mantenemos el que tiene
             self.object = form.save()
             lineas.save()
             messages.success(self.request, "Orden de Compra actualizada correctamente.")
@@ -225,7 +226,30 @@ class OCGenerarMovimientoView(StaffRequiredMixin, View):
         messages.success(request, f"Pago de ${total} registrado en caja. OC #{oc.numero} cerrada.")
         return redirect("finanzas:oc_detail", pk=pk)
 
-# ==================== APIS PARA SELECT2 ====================
+# ==================== APIS PARA AJAX/SELECT2 ====================
+
+@require_POST
+@login_required
+def api_beneficiario_create(request):
+    """
+    API para crear un beneficiario rápido desde el modal de OC.
+    Devuelve JSON con el ID y TEXTO para Select2.
+    """
+    form = BeneficiarioQuickForm(request.POST)
+    if form.is_valid():
+        b = form.save(commit=False)
+        b.activo = True
+        b.save()
+        return JsonResponse({
+            'success': True,
+            'id': b.id,
+            'text': f"{b.apellido}, {b.nombre} ({b.dni})",
+            'msg': 'Vecino registrado correctamente.'
+        })
+    else:
+        # Devolvemos los errores en formato texto simple
+        errors = "\n".join([f"{k}: {v[0]}" for k, v in form.errors.items()])
+        return JsonResponse({'success': False, 'error': errors})
 
 @require_GET
 @login_required

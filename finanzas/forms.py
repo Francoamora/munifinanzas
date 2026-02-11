@@ -595,8 +595,16 @@ class MovimientoForm(EstiloFormMixin, forms.ModelForm):
 
 
 # =========================================================
-# 3) ÓRDENES DE COMPRA (OC)
+# 3) ÓRDENES DE COMPRA (OC) Y FORMULARIOS RÁPIDOS
 # =========================================================
+from django import forms
+from django.utils import timezone
+from django.forms import inlineformset_factory
+from django.urls import reverse_lazy
+
+from .models import OrdenCompra, OrdenCompraLinea, Proveedor, Beneficiario
+# Asumo que tenés un mixin de estilos, si no, borrá "EstiloFormMixin"
+from .mixins import EstiloFormMixin 
 
 class OrdenCompraForm(EstiloFormMixin, forms.ModelForm):
     RUBROS_CHOICES = [
@@ -609,11 +617,11 @@ class OrdenCompraForm(EstiloFormMixin, forms.ModelForm):
         ("OT", "OT - Otros"),
     ]
 
-    # NUEVO: Selector de Modo de Numeración
     TIPO_NUMERO_CHOICES = [
         ('AUTO', 'Automático (Sistema)'),
         ('MANUAL', 'Manual (Talonario)'),
     ]
+    
     tipo_numeracion = forms.ChoiceField(
         choices=TIPO_NUMERO_CHOICES,
         widget=forms.RadioSelect(attrs={"class": "btn-check"}),
@@ -633,14 +641,15 @@ class OrdenCompraForm(EstiloFormMixin, forms.ModelForm):
         })
     )
 
-    # ✅ NUEVO CAMPO: Selector de Persona (Vecino)
+    # Selector de Persona (Vecino)
     persona = forms.ModelChoiceField(
-        queryset=Beneficiario.objects.all(),
+        queryset=Beneficiario.objects.filter(activo=True), # Solo activos
         required=False,
         label="Beneficiario / Vecino (Opcional)",
         widget=forms.Select(attrs={
-            "class": "form-select select2", # Clase select2 para buscador
-            "data-placeholder": "Buscar vecino (Ayuda Social)..."
+            "class": "form-select select2", 
+            "data-placeholder": "Buscar vecino (Ayuda Social)...",
+            "id": "id_persona_select" # ID explícito para actualizarlo via JS
         })
     )
 
@@ -648,12 +657,10 @@ class OrdenCompraForm(EstiloFormMixin, forms.ModelForm):
 
     class Meta:
         model = OrdenCompra
-        # Agregamos 'persona' a los campos
         fields = ["fecha_oc", "numero", "area", "proveedor", "proveedor_nombre", "proveedor_cuit", "persona", "rubro_principal", "observaciones"]
         widgets = {
             "proveedor_nombre": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly"}),
             "proveedor_cuit": forms.TextInput(attrs={"class": "bg-light", "readonly": "readonly"}),
-            # El readonly se maneja ahora con JS según el switch
             "numero": forms.TextInput(attrs={"class": "bg-light", "placeholder": "Automático al guardar"}),
             "observaciones": forms.Textarea(attrs={"rows": 3}),
         }
@@ -663,11 +670,9 @@ class OrdenCompraForm(EstiloFormMixin, forms.ModelForm):
         tipo = cleaned.get("tipo_numeracion")
         numero = cleaned.get("numero")
         
-        # Validación lógica
         if tipo == 'MANUAL' and not numero:
             self.add_error('numero', 'Si elige numeración Manual, debe ingresar el N° de Comprobante.')
         
-        # Guardar snapshots
         p = cleaned.get("proveedor")
         if p:
             cleaned["proveedor_nombre"] = p.nombre
@@ -675,12 +680,24 @@ class OrdenCompraForm(EstiloFormMixin, forms.ModelForm):
             
         return cleaned
 
+# ✅ NUEVO FORMULARIO RÁPIDO PARA EL MODAL
+class BeneficiarioQuickForm(EstiloFormMixin, forms.ModelForm):
+    class Meta:
+        model = Beneficiario
+        fields = ['nombre', 'apellido', 'dni', 'direccion', 'telefono']
+        widgets = {
+            'nombre': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nombres'}),
+            'apellido': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Apellidos'}),
+            'dni': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Solo números'}),
+            'direccion': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Domicilio actual'}),
+            'telefono': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Celular / WhatsApp'}),
+        }
+
 OrdenCompraLineaFormSet = inlineformset_factory(
     OrdenCompra, OrdenCompraLinea,
     fields=["categoria", "area", "descripcion", "monto"],
     extra=0,
     can_delete=True,
-    # Usamos widgets custom para evitar las flechas feas del input number
     widgets={
         "monto": forms.NumberInput(attrs={"class": "form-control text-end no-arrow", "step": "0.01", "placeholder": "0.00"}),
         "descripcion": forms.TextInput(attrs={"class": "form-control", "placeholder": "Detalle del ítem..."}),
