@@ -17,3 +17,6 @@ media/
 
 # Archivos de sistema Mac
 .DS_Store
+
+
+db.sqlite3
