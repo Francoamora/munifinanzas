@@ -9,9 +9,10 @@ from django.db.models import Q, Sum
 from django.http import JsonResponse
 from django.db import transaction
 from django.utils import timezone
+from datetime import datetime, timedelta
 
 from .models import OrdenCompra, Proveedor, Vehiculo, SerieOC, Movimiento, Beneficiario
-from .forms import OrdenCompraForm, OrdenCompraLineaFormSet, BeneficiarioQuickForm # <--- Importamos el nuevo form
+from .forms import OrdenCompraForm, OrdenCompraLineaFormSet, BeneficiarioQuickForm
 from .mixins import StaffRequiredMixin, OperadorSocialRequiredMixin, roles_ctx
 
 # ==================== LISTADO Y DETALLE ====================
@@ -20,31 +21,87 @@ class OCListView(OperadorSocialRequiredMixin, ListView):
     model = OrdenCompra
     template_name = "finanzas/oc_list.html"
     context_object_name = "ordenes"
-    paginate_by = 20
+    paginate_by = 30
     ordering = ["-id"]
 
     def get_queryset(self):
-        qs = super().get_queryset().select_related("proveedor", "area")
+        qs = super().get_queryset().select_related("proveedor", "area", "persona")
         q = self.request.GET.get("q")
-        estado = self.request.GET.get("estado")
+        estado = self.request.GET.get("estado", "PENDIENTES")
+        rubro = self.request.GET.get("rubro")
+        fecha_desde = self.request.GET.get("fecha_desde")
+        fecha_hasta = self.request.GET.get("fecha_hasta")
         
+        # Filtro de Búsqueda
         if q:
             qs = qs.filter(
                 Q(numero__icontains=q) | 
                 Q(proveedor__nombre__icontains=q) |
                 Q(proveedor__cuit__icontains=q) |
                 Q(proveedor_nombre__icontains=q) |
-                Q(observaciones__icontains=q)
+                Q(persona__nombre__icontains=q) |
+                Q(persona__apellido__icontains=q)
             )
         
-        if estado and estado != "TODAS":
+        # Filtro de Estado
+        if estado == "PENDIENTES":
+            qs = qs.filter(estado__in=[OrdenCompra.ESTADO_BORRADOR, OrdenCompra.ESTADO_AUTORIZADA])
+        elif estado != "TODAS":
             qs = qs.filter(estado=estado)
+            
+        # Filtro de Rubro
+        if rubro:
+            qs = qs.filter(rubro_principal=rubro)
+            
+        # Filtro de Fechas con Escudo Anti-SQLite
+        if fecha_desde:
+            try:
+                desde_date = datetime.strptime(fecha_desde, "%Y-%m-%d").date()
+                qs = qs.filter(fecha_oc__gte=desde_date)
+            except ValueError:
+                pass
+                
+        if fecha_hasta:
+            try:
+                hasta_date = datetime.strptime(fecha_hasta, "%Y-%m-%d").date() + timedelta(days=1)
+                qs = qs.filter(fecha_oc__lt=hasta_date)
+            except ValueError:
+                pass
             
         return qs
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
+        
+        # Inyectamos permisos y roles
         ctx.update(roles_ctx(self.request.user))
+        
+        # Validación: Solo calcular KPIs si el usuario es de Finanzas o Superadmin
+        es_finanzas = self.request.user.is_superuser or self.request.user.groups.filter(name='Finanzas').exists()
+        ctx['es_finanzas'] = es_finanzas
+        
+        if es_finanzas:
+            # Los KPIs se calculan sobre el queryset YA FILTRADO
+            qs_filtrado = self.get_queryset()
+            
+            # 1. Total emitido (excluye anuladas) - USAMOS LINEAS__MONTO PARA EVITAR ERROR 500
+            ctx['kpi_total_emitido'] = qs_filtrado.exclude(
+                estado=OrdenCompra.ESTADO_ANULADA
+            ).aggregate(t=Sum('lineas__monto'))['t'] or 0
+            
+            # 2. Deuda Latente (Borradores y Autorizadas del filtro actual)
+            ctx['kpi_deuda_pendiente'] = qs_filtrado.filter(
+                estado__in=[OrdenCompra.ESTADO_BORRADOR, OrdenCompra.ESTADO_AUTORIZADA]
+            ).aggregate(t=Sum('lineas__monto'))['t'] or 0
+            
+            # 3. Cantidades
+            ctx['kpi_cantidad_ocs'] = qs_filtrado.exclude(estado=OrdenCompra.ESTADO_ANULADA).count()
+            ctx['kpi_cantidad_anuladas'] = qs_filtrado.filter(estado=OrdenCompra.ESTADO_ANULADA).count()
+            
+        # Pasamos opciones del modelo de forma segura
+        ctx['RUBROS_OC'] = getattr(OrdenCompra, 'RUBROS_CHOICES', getattr(OrdenCompra, 'RUBRO_CHOICES', []))
+        ctx['rubro_actual'] = self.request.GET.get("rubro", "")
+        
         return ctx
 
 class OCDetailView(OperadorSocialRequiredMixin, DetailView):
@@ -73,9 +130,7 @@ class OCCreateView(OperadorSocialRequiredMixin, CreateView):
         else:
             ctx["lineas"] = OrdenCompraLineaFormSet()
         
-        # INYECTAMOS EL FORMULARIO RÁPIDO PARA EL MODAL
         ctx["beneficiario_form"] = BeneficiarioQuickForm()
-        
         ctx.update(roles_ctx(self.request.user))
         return ctx
 
@@ -140,9 +195,7 @@ class OCUpdateView(OperadorSocialRequiredMixin, UpdateView):
         else:
             ctx["lineas"] = OrdenCompraLineaFormSet(instance=self.object)
         
-        # INYECTAMOS EL FORMULARIO RÁPIDO TAMBIÉN EN EDICIÓN
         ctx["beneficiario_form"] = BeneficiarioQuickForm()
-
         ctx.update(roles_ctx(self.request.user))
         return ctx
 
@@ -184,6 +237,27 @@ class OCCambiarEstadoView(OperadorSocialRequiredMixin, View):
         oc.save()
         messages.info(request, f"Estado actualizado a: {oc.get_estado_display()}")
         return redirect("finanzas:oc_detail", pk=pk)
+
+class OCAutorizarMasivoView(StaffRequiredMixin, View):
+    """Vista para autorizar múltiples OCs de golpe (Solo Jefaturas/Finanzas)."""
+    @transaction.atomic
+    def post(self, request):
+        oc_ids = request.POST.getlist("oc_ids")
+        
+        if not oc_ids:
+            messages.warning(request, "No seleccionaste ninguna orden para autorizar.")
+            return redirect("finanzas:oc_list")
+            
+        ordenes = OrdenCompra.objects.filter(id__in=oc_ids, estado=OrdenCompra.ESTADO_BORRADOR)
+        cantidad = ordenes.count()
+        
+        if cantidad > 0:
+            ordenes.update(estado=OrdenCompra.ESTADO_AUTORIZADA)
+            messages.success(request, f"¡Éxito! Se autorizaron {cantidad} Órdenes de Compra.")
+        else:
+            messages.error(request, "Las órdenes seleccionadas ya estaban autorizadas o no existen.")
+            
+        return redirect("finanzas:oc_list")
 
 class OCGenerarMovimientoView(StaffRequiredMixin, View):
     @transaction.atomic
@@ -231,10 +305,6 @@ class OCGenerarMovimientoView(StaffRequiredMixin, View):
 @require_POST
 @login_required
 def api_beneficiario_create(request):
-    """
-    API para crear un beneficiario rápido desde el modal de OC.
-    Devuelve JSON con el ID y TEXTO para Select2.
-    """
     form = BeneficiarioQuickForm(request.POST)
     if form.is_valid():
         b = form.save(commit=False)
@@ -247,7 +317,6 @@ def api_beneficiario_create(request):
             'msg': 'Vecino registrado correctamente.'
         })
     else:
-        # Devolvemos los errores en formato texto simple
         errors = "\n".join([f"{k}: {v[0]}" for k, v in form.errors.items()])
         return JsonResponse({'success': False, 'error': errors})
 

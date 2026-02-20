@@ -1,7 +1,6 @@
 import json
 from decimal import Decimal
-from datetime import datetime, timedelta
-from datetime import date
+from datetime import datetime, timedelta, date
 from .models import DocumentoSensible
 from .forms import DocumentoSensibleForm
 from .mixins import GeneroRequiredMixin
@@ -23,24 +22,29 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 
 # === MIXINS PROPIOS ===
 from .mixins import (
-    roles_ctx, es_staff_finanzas, StaffRequiredMixin, OperadorFinanzasRequiredMixin,OperadorSocialRequiredMixin,
-    MovimientosAccessMixin, DashboardAccessMixin, OrdenPagoAccessMixin,
-    OrdenPagoEditMixin, PersonaCensoAccessMixin, PersonaCensoEditMixin,
-    es_staff_finanzas
+    roles_ctx, 
+    es_staff_finanzas, 
+    puede_ver_historial_economico,
+    SoloFinanzasMixin, 
+    OperadorOperativoRequiredMixin, 
+    GeneroRequiredMixin,
+    StaffRequiredMixin, 
+    OperadorFinanzasRequiredMixin, 
+    OperadorSocialRequiredMixin,
+    MovimientosAccessMixin, 
+    DashboardAccessMixin, 
+    OrdenPagoAccessMixin,
+    OrdenPagoEditMixin, 
+    PersonaCensoAccessMixin, 
+    PersonaCensoEditMixin
 )
-
-# === MODELOS DE OTRAS APPS (Agenda / Operativo) ===
-try:
-    from agenda.models import Atencion
-except ImportError:
-    Atencion = None
 
 # === MODELOS LOCALES (Finanzas) ===
 from .models import (
     Movimiento, Categoria, Area, Proveedor, Beneficiario,
     OrdenPago, OrdenPagoLinea, OrdenCompra, OrdenCompraLinea, 
     Vehiculo, ProgramaAyuda, HojaRuta, 
-    OrdenTrabajo, OrdenTrabajoMaterial
+    OrdenTrabajo, OrdenTrabajoMaterial, Atencion  # <--- ¡ATENCIÓN AHORA SE IMPORTA AQUÍ!
 )
 
 # === FORMULARIOS ===
@@ -194,169 +198,161 @@ class HomeView(DashboardAccessMixin, TemplateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         
-        # --- 1. CEREBRO DEL DASHBOARD (FECHAS) ---
-        hoy = timezone.localdate()
-        inicio_mes_actual = hoy.replace(day=1)
-        inicio_gestion = date(2025, 12, 10) 
-
+        # --- 1. CEREBRO DEL DASHBOARD (FECHAS NATIVAS) ---
+        hoy = date.today()
         filtro = self.request.GET.get('ver', 'mes')
         
-        # LÓGICA DE FECHAS (FILTROS)
+        # Filtros base
+        fecha_inicio = hoy.replace(day=1) # Por defecto mes
+        fecha_fin = hoy
+        titulo_periodo = "Mes en Curso"
+
         if filtro == 'hoy':
             fecha_inicio = hoy
             fecha_fin = hoy
             titulo_periodo = "Día de Hoy"
         elif filtro == 'ayer':
             fecha_inicio = hoy - timedelta(days=1)
-            fecha_fin = fecha_inicio
+            fecha_fin = hoy - timedelta(days=1)
             titulo_periodo = "Día de Ayer"
         elif filtro == 'semana':
-            fecha_inicio = hoy - timedelta(days=hoy.weekday()) # Lunes de esta semana
+            fecha_inicio = hoy - timedelta(days=hoy.weekday())
             fecha_fin = hoy
             titulo_periodo = "Esta Semana"
         elif filtro == 'gestion':
-            fecha_inicio = inicio_gestion
+            fecha_inicio = date(2025, 12, 10)
             fecha_fin = hoy
             titulo_periodo = "Gestión (Desde 10/12/2025)"
-        else: # Default: 'mes'
-            fecha_inicio = inicio_mes_actual
-            fecha_fin = hoy
-            titulo_periodo = "Mes en Curso"
-
+            
         # =================================================
-        # 2. PULSO OPERATIVO
+        # 2. PULSO OPERATIVO (FILTROS BLINDADOS)
         # =================================================
+        # Usamos __date (para castear dateTime a Date) o validaciones exactas de año/mes/dia si es un día específico
         
-        # Atenciones Sociales
-        try:
-            ctx['atenciones_stat'] = Atencion.objects.filter(
-                fecha_atencion__gte=fecha_inicio, 
-                fecha_atencion__lte=fecha_fin
-            ).count()
-        except: ctx['atenciones_stat'] = 0
+        # ATENCIONES
+        if Atencion:
+            if filtro in ['hoy', 'ayer']:
+                # Búsqueda exacta por día para evitar problemas de horas
+                ctx['atenciones_stat'] = Atencion.objects.filter(
+                    fecha_atencion__year=fecha_inicio.year,
+                    fecha_atencion__month=fecha_inicio.month,
+                    fecha_atencion__day=fecha_inicio.day
+                ).count()
+            else:
+                ctx['atenciones_stat'] = Atencion.objects.filter(
+                    fecha_atencion__range=[fecha_inicio, fecha_fin]
+                ).count()
+        else:
+            ctx['atenciones_stat'] = 0
 
-        # Flota / Viajes
-        try:
+        # FLOTA / VIAJES
+        if filtro in ['hoy', 'ayer']:
             ctx['viajes_stat'] = HojaRuta.objects.filter(
-                fecha__gte=fecha_inicio, 
-                fecha__lte=fecha_fin
+                fecha__year=fecha_inicio.year,
+                fecha__month=fecha_inicio.month,
+                fecha__day=fecha_inicio.day
             ).count()
-        except: ctx['viajes_stat'] = 0
+        else:
+            ctx['viajes_stat'] = HojaRuta.objects.filter(
+                fecha__range=[fecha_inicio, fecha_fin]
+            ).count()
 
-        # Compras (OCs Generadas)
-        try:
+        # COMPRAS (OC)
+        if filtro in ['hoy', 'ayer']:
             ctx['ocs_stat'] = OrdenCompra.objects.filter(
-                fecha_oc__gte=fecha_inicio, 
-                fecha_oc__lte=fecha_fin
+                fecha_oc__year=fecha_inicio.year,
+                fecha_oc__month=fecha_inicio.month,
+                fecha_oc__day=fecha_inicio.day
             ).exclude(estado=OrdenCompra.ESTADO_ANULADA).count()
-        except: ctx['ocs_stat'] = 0
-
+        else:
+            ctx['ocs_stat'] = OrdenCompra.objects.filter(
+                fecha_oc__range=[fecha_inicio, fecha_fin]
+            ).exclude(estado=OrdenCompra.ESTADO_ANULADA).count()
 
         # =================================================
-        # 3. INTELIGENCIA FINANCIERA (CAJA + DEVENGADO)
+        # 3. INTELIGENCIA FINANCIERA Y KPIS DE CAJA
         # =================================================
         
-        # --- A. SALDO BANCARIO (La plata en mano - Criterio Percibido) ---
-        movs_periodo = Movimiento.objects.filter(
-            estado=Movimiento.ESTADO_APROBADO,
-            fecha_operacion__gte=fecha_inicio,
-            fecha_operacion__lte=fecha_fin, 
-        )
-        
+        if filtro in ['hoy', 'ayer']:
+            movs_periodo = Movimiento.objects.filter(
+                estado=Movimiento.ESTADO_APROBADO,
+                fecha_operacion__year=fecha_inicio.year,
+                fecha_operacion__month=fecha_inicio.month,
+                fecha_operacion__day=fecha_inicio.day
+            )
+            ocs_periodo = OrdenCompraLinea.objects.filter(
+                orden__fecha_oc__year=fecha_inicio.year,
+                orden__fecha_oc__month=fecha_inicio.month,
+                orden__fecha_oc__day=fecha_inicio.day,
+                orden__estado__in=[OrdenCompra.ESTADO_AUTORIZADA, OrdenCompra.ESTADO_CERRADA]
+            )
+            ocs_sociales_periodo = OrdenCompra.objects.filter(
+                fecha_oc__year=fecha_inicio.year,
+                fecha_oc__month=fecha_inicio.month,
+                fecha_oc__day=fecha_inicio.day,
+                persona__isnull=False
+            ).exclude(estado=OrdenCompra.ESTADO_ANULADA)
+        else:
+            movs_periodo = Movimiento.objects.filter(
+                estado=Movimiento.ESTADO_APROBADO,
+                fecha_operacion__range=[fecha_inicio, fecha_fin]
+            )
+            ocs_periodo = OrdenCompraLinea.objects.filter(
+                orden__fecha_oc__range=[fecha_inicio, fecha_fin],
+                orden__estado__in=[OrdenCompra.ESTADO_AUTORIZADA, OrdenCompra.ESTADO_CERRADA]
+            )
+            ocs_sociales_periodo = OrdenCompra.objects.filter(
+                fecha_oc__range=[fecha_inicio, fecha_fin],
+                persona__isnull=False
+            ).exclude(estado=OrdenCompra.ESTADO_ANULADA)
+
+        # Cálculos Financieros
         balance = movs_periodo.aggregate(
             ingresos=Sum("monto", filter=Q(tipo__iexact="INGRESO")),
-            gastos=Sum("monto", filter=Q(tipo__iexact="GASTO")),
+            gastos=Sum("monto", filter=Q(tipo__iexact="GASTO"))
         )
         ingresos = balance["ingresos"] or 0
         gastos = balance["gastos"] or 0
-        
         saldo_periodo = ingresos - gastos
 
-        # --- B. DEUDA FLOTANTE (Lo que debemos - Criterio Devengado) ---
-        # Sumamos todas las líneas de OCs que están "AUTORIZADAS" (Emitidas pero no cerradas/pagadas)
-        # Esto es DEUDA TOTAL HISTÓRICA, no depende del filtro de fecha del dashboard (lo que debés, lo debés hoy).
         deuda_flotante_total = OrdenCompraLinea.objects.filter(
             orden__estado=OrdenCompra.ESTADO_AUTORIZADA
         ).aggregate(t=Sum('monto'))['t'] or 0
 
-        # =================================================
-        # 4. KPIs ESPECÍFICOS (Lógica Unificada: Caja + OCs)
-        # =================================================
-
-        # --- KPI 1: COMBUSTIBLE (Gasto Real) ---
-        # 1. Caja Chica (Movimientos directos sin OC)
-        combustible_caja = movs_periodo.filter(
-            tipo__iexact="GASTO", 
-            categoria__es_combustible=True
-        ).aggregate(t=Sum('monto'))['t'] or 0
-
-        # 2. OCs de Combustible (Rubro 'CB', estados Autorizada o Cerrada en el periodo)
-        combustible_ocs = OrdenCompraLinea.objects.filter(
-            orden__fecha_oc__gte=fecha_inicio,
-            orden__fecha_oc__lte=fecha_fin,
-            orden__rubro_principal='CB', 
-            orden__estado__in=[OrdenCompra.ESTADO_AUTORIZADA, OrdenCompra.ESTADO_CERRADA]
-        ).aggregate(t=Sum('monto'))['t'] or 0
-
+        # KPIs Combustible
+        combustible_caja = movs_periodo.filter(tipo__iexact="GASTO", categoria__es_combustible=True).aggregate(t=Sum('monto'))['t'] or 0
+        combustible_ocs = ocs_periodo.filter(orden__rubro_principal='CB').aggregate(t=Sum('monto'))['t'] or 0
         ctx['combustible_mes'] = combustible_caja + combustible_ocs
 
-
-        # --- KPI 2: AYUDA SOCIAL TOTAL ---
-        # 1. Subsidios en efectivo
-        social_caja = movs_periodo.filter(
-            tipo__iexact="GASTO", 
-            beneficiario__isnull=False
-        ).aggregate(t=Sum('monto'))['t'] or 0
-
-        # 2. Insumos por OC (Vinculados a Persona)
-        social_ocs = OrdenCompraLinea.objects.filter(
-            orden__fecha_oc__gte=fecha_inicio,
-            orden__fecha_oc__lte=fecha_fin,
-            orden__persona__isnull=False, # Tiene vecino asignado
-            orden__estado__in=[OrdenCompra.ESTADO_AUTORIZADA, OrdenCompra.ESTADO_CERRADA]
-        ).aggregate(t=Sum('monto'))['t'] or 0
-
+        # KPIs Sociales
+        social_caja = movs_periodo.filter(tipo__iexact="GASTO", beneficiario__isnull=False).aggregate(t=Sum('monto'))['t'] or 0
+        social_ocs = ocs_periodo.filter(orden__persona__isnull=False).aggregate(t=Sum('monto'))['t'] or 0
+        
         ctx['ayudas_mes_monto'] = social_caja + social_ocs
-        
-        # Cantidad de ayudas
-        cant_social_caja = movs_periodo.filter(tipo__iexact="GASTO", beneficiario__isnull=False).count()
-        cant_social_ocs = OrdenCompra.objects.filter(
-            fecha_oc__gte=fecha_inicio, fecha_oc__lte=fecha_fin,
-            persona__isnull=False
-        ).exclude(estado=OrdenCompra.ESTADO_ANULADA).count()
-        
-        ctx['ayudas_mes_cant'] = cant_social_caja + cant_social_ocs
-
+        ctx['ayudas_mes_cant'] = (
+            movs_periodo.filter(tipo__iexact="GASTO", beneficiario__isnull=False).count() +
+            ocs_sociales_periodo.count()
+        )
 
         # =================================================
-        # 5. CONTEXTO FINAL
+        # 4. CONTEXTO FINAL
         # =================================================
-        ultimos = Movimiento.objects.filter(
-            estado=Movimiento.ESTADO_APROBADO
-        ).select_related(
-            "categoria", "beneficiario", "proveedor"
-        ).order_by("-fecha_operacion", "-id")[:7]
+        ultimos = Movimiento.objects.filter(estado=Movimiento.ESTADO_APROBADO).select_related("categoria", "beneficiario", "proveedor").order_by("-fecha_operacion", "-id")[:7]
 
         ctx.update({
             "hoy": hoy,
             "titulo_periodo": titulo_periodo,
             "filtro_activo": filtro,
-            
-            # Semáforo Financiero
-            "saldo_mes": saldo_periodo,             # Caja Pura
+            "saldo_mes": saldo_periodo,             
             "total_ingresos_mes": ingresos,
             "total_gastos_mes": gastos,
-            
-            "deuda_flotante": deuda_flotante_total, # Deuda acumulada
-            "saldo_real_disponible": saldo_periodo - deuda_flotante_total, # Caja - Deuda
-            
+            "deuda_flotante": deuda_flotante_total, 
+            "saldo_real_disponible": saldo_periodo - deuda_flotante_total, 
             "cantidad_ordenes_pendientes": OrdenPago.objects.filter(estado="BORRADOR").count(),
             "ultimos_movimientos": ultimos,
         })
         
-        if 'roles_ctx' in globals(): 
-            ctx.update(roles_ctx(self.request.user))
-            
+        if 'roles_ctx' in globals(): ctx.update(roles_ctx(self.request.user))
         return ctx
 
 # Alias para compatibilidad
@@ -367,7 +363,7 @@ DashboardView = HomeView
 # 3) BALANCE RESUMEN
 # =========================================================
 
-class BalanceResumenView(DashboardAccessMixin, TemplateView):
+class BalanceResumenView(SoloFinanzasMixin, TemplateView):
     template_name = "finanzas/balance_resumen.html"
 
     def get_context_data(self, **kwargs):
@@ -375,7 +371,10 @@ class BalanceResumenView(DashboardAccessMixin, TemplateView):
         
         # 1. CONFIGURACIÓN DE FECHAS
         hoy = timezone.now().date()
-        periodo = self.request.GET.get("periodo", "mes")
+        
+        # Leemos 'periodo' o 'ver' para compatibilidad con botones del Dashboard
+        periodo = self.request.GET.get("periodo") or self.request.GET.get("ver") or "mes"
+        
         fecha_desde_str = self.request.GET.get("fecha_desde")
         fecha_hasta_str = self.request.GET.get("fecha_hasta")
 
@@ -400,6 +399,11 @@ class BalanceResumenView(DashboardAccessMixin, TemplateView):
         elif periodo == "anio":
             fecha_desde = hoy.replace(month=1, day=1)
             titulo_periodo = "Año en Curso"
+        elif periodo == "gestion":
+            # Fecha de inicio de gestión
+            fecha_desde = date(2025, 12, 10) 
+            fecha_hasta = hoy
+            titulo_periodo = "Gestión (Desde 10/12/2025)"
         elif periodo == "custom" and fecha_desde_str and fecha_hasta_str:
             try:
                 fecha_desde = timezone.datetime.strptime(fecha_desde_str, "%Y-%m-%d").date()
@@ -408,9 +412,17 @@ class BalanceResumenView(DashboardAccessMixin, TemplateView):
             except ValueError:
                 pass
 
+        # 🚀 LA MAGIA ANTI-SQLITE: Creamos el límite exacto del día siguiente a las 00:00:00
+        fecha_limite = fecha_hasta + timedelta(days=1)
+
         # 2. QUERYSETS BASE (MOVIMIENTOS DE CAJA)
         qs_historico = Movimiento.objects.filter(estado=Movimiento.ESTADO_APROBADO)
-        qs_periodo = qs_historico.filter(fecha_operacion__range=[fecha_desde, fecha_hasta])
+        
+        # Filtro estricto que atrapa horas ocultas
+        qs_periodo = qs_historico.filter(
+            fecha_operacion__gte=fecha_desde, 
+            fecha_operacion__lt=fecha_limite
+        )
 
         # 3. KPI FINANCIEROS (CAJA)
         ingresos_periodo = qs_periodo.filter(tipo__iexact="INGRESO").aggregate(s=Sum("monto"))["s"] or 0
@@ -423,6 +435,7 @@ class BalanceResumenView(DashboardAccessMixin, TemplateView):
         saldo_caja = hist_ingresos - hist_gastos
         
         # 5. INDICADOR DE DEUDA FLOTANTE (Para el Balance también)
+        # Esto es histórico total, no depende de fechas
         deuda_flotante_total = OrdenCompraLinea.objects.filter(
             orden__estado=OrdenCompra.ESTADO_AUTORIZADA
         ).aggregate(t=Sum('monto'))['t'] or 0
@@ -468,7 +481,10 @@ class BalanceResumenView(DashboardAccessMixin, TemplateView):
         )
 
         # 8. EFICIENCIA OPERATIVA & COMBUSTIBLE REAL
-        qs_viajes = HojaRuta.objects.filter(fecha__range=[fecha_desde, fecha_hasta])
+        qs_viajes = HojaRuta.objects.filter(
+            fecha__gte=fecha_desde, 
+            fecha__lt=fecha_limite
+        )
         total_viajes = qs_viajes.count()
         
         kms_data = qs_viajes.aggregate(total_km=Sum(F('odometro_fin') - F('odometro_inicio')))
@@ -483,7 +499,8 @@ class BalanceResumenView(DashboardAccessMixin, TemplateView):
         # B. Combustible Comprometido (OCs)
         # Sumamos OCs del periodo que sean de combustible (Rubro CB)
         gasto_combustible_ocs = OrdenCompraLinea.objects.filter(
-            orden__fecha_oc__range=[fecha_desde, fecha_hasta],
+            orden__fecha_oc__gte=fecha_desde,
+            orden__fecha_oc__lt=fecha_limite,
             orden__rubro_principal='CB',
             orden__estado__in=[OrdenCompra.ESTADO_AUTORIZADA, OrdenCompra.ESTADO_CERRADA]
         ).aggregate(s=Sum("monto"))["s"] or 0
@@ -529,7 +546,9 @@ class BalanceResumenView(DashboardAccessMixin, TemplateView):
             "movs_directos": movs_directos,
         })
         
-        if 'roles_ctx' in globals(): ctx.update(roles_ctx(self.request.user))
+        if 'roles_ctx' in globals(): 
+            ctx.update(roles_ctx(self.request.user))
+            
         return ctx
 
 
@@ -537,7 +556,7 @@ class BalanceResumenView(DashboardAccessMixin, TemplateView):
 # 3) PROVEEDORES
 # =========================================================
 
-class ProveedorListView(StaffRequiredMixin, ListView):
+class ProveedorListView(OperadorOperativoRequiredMixin, ListView):
     model = Proveedor
     template_name = "finanzas/proveedor_list.html"
     context_object_name = "proveedores"
@@ -550,7 +569,7 @@ class ProveedorListView(StaffRequiredMixin, ListView):
             qs = qs.filter(Q(nombre__icontains=q) | Q(cuit__icontains=q) | Q(rubro__icontains=q))
         return qs
 
-class ProveedorCreateView(StaffRequiredMixin, CreateView):
+class ProveedorCreateView(OperadorOperativoRequiredMixin, CreateView):
     model = Proveedor
     fields = ["nombre", "cuit", "telefono", "email", "direccion", "rubro", "cbu", "alias"] 
     template_name = "finanzas/proveedor_form.html"
@@ -560,7 +579,7 @@ class ProveedorCreateView(StaffRequiredMixin, CreateView):
         messages.success(self.request, "Proveedor registrado exitosamente.")
         return super().form_valid(form)
 
-class ProveedorUpdateView(StaffRequiredMixin, UpdateView):
+class ProveedorUpdateView(OperadorOperativoRequiredMixin, UpdateView):
     model = Proveedor
     fields = ["nombre", "cuit", "telefono", "email", "direccion", "rubro", "cbu", "alias"]
     template_name = "finanzas/proveedor_form.html"
@@ -570,7 +589,7 @@ class ProveedorUpdateView(StaffRequiredMixin, UpdateView):
         messages.success(self.request, "Datos actualizados.")
         return super().form_valid(form)
 
-class ProveedorDetailView(StaffRequiredMixin, DetailView):
+class ProveedorDetailView(OperadorOperativoRequiredMixin, DetailView):
     model = Proveedor
     template_name = "finanzas/proveedor_detail.html"
     context_object_name = "proveedor"
@@ -583,7 +602,8 @@ class ProveedorDetailView(StaffRequiredMixin, DetailView):
         
         ctx["ultimos_pagos"] = pagos[:10]
         ctx["ultimas_ocs"] = ocs[:10]
-        ctx["total_pagado_historico"] = total_pagado
+        # Ocultamos la suma total si el usuario no tiene permisos para ver dinero global
+        ctx["total_pagado_historico"] = total_pagado if puede_ver_historial_economico(self.request.user) else None
         return ctx
 
 
@@ -591,7 +611,7 @@ class ProveedorDetailView(StaffRequiredMixin, DetailView):
 # 4) MOVIMIENTOS
 # =========================================================
 
-class MovimientoListView(MovimientosAccessMixin, ListView):
+class MovimientoListView(SoloFinanzasMixin, ListView):
     model = Movimiento
     template_name = "finanzas/movimiento_list.html"
     context_object_name = "movimientos"
@@ -1192,20 +1212,53 @@ class PersonaDetailView(PersonaCensoAccessMixin, DetailView):
         ver_dinero = puede_ver_historial_economico(self.request.user)
         ctx['perms_ver_dinero'] = ver_dinero
         
+        # Variables de compatibilidad para el template rediseñado
+        ctx['perms_ver_dinero_global'] = ver_dinero
+        ctx['perms_ver_dinero_social'] = ver_dinero
+        
         if ver_dinero:
-            # 1. Historial de CAJA (Subsidios en efectivo)
-            pagos = Movimiento.objects.filter(
+            # 🚀 1. INGRESOS / TRIBUTOS (Lo que el vecino le paga a la Comuna)
+            ingresos = Movimiento.objects.filter(
                 beneficiario=self.object,
-                tipo='GASTO', # Asumimos que es ayuda social
+                tipo='INGRESO',
                 estado=Movimiento.ESTADO_APROBADO
-            ).annotate(
-                tipo_registro=Value('CAJA', output_field=CharField()),
+            ).select_related('categoria').order_by('-fecha_operacion')
+            
+            ctx['pagos_servicios'] = ingresos
+            ctx['total_pagado_historico'] = ingresos.aggregate(total=Sum('monto'))['total'] or 0
+
+            # 🚀 2. GASTOS (Jornales y Ayuda Social)
+            todos_los_gastos = Movimiento.objects.filter(
+                beneficiario=self.object,
+                tipo='GASTO',
+                estado=Movimiento.ESTADO_APROBADO
+            ).select_related('categoria').annotate(
                 fecha_ref=F('fecha_operacion')
             )
             
-            total_pagado = pagos.aggregate(total=Sum('monto'))['total'] or 0
+            pagos_ayuda = []
+            pagos_laborales = []
+            total_caja_ayuda = 0
+            total_caja_laboral = 0
+            
+            # FILTRO INTELIGENTE: ¿Es Ayuda Social o es Pago por Servicio/Jornal?
+            for p in todos_los_gastos:
+                es_ayuda = (
+                    (p.tipo_pago_persona and p.tipo_pago_persona != 'NINGUNO') or 
+                    getattr(p.categoria, 'es_ayuda_social', False) or 
+                    p.programa_ayuda_id is not None
+                )
+                
+                if es_ayuda:
+                    p.tipo_registro = 'CAJA_AYUDA'
+                    pagos_ayuda.append(p)
+                    total_caja_ayuda += p.monto
+                else:
+                    p.tipo_registro = 'CAJA_LABORAL'
+                    pagos_laborales.append(p)
+                    total_caja_laboral += p.monto
 
-            # 2. Historial de OCs (Materiales / Insumos)
+            # 🚀 3. Historial de OCs (Materiales / Insumos)
             compras = OrdenCompra.objects.filter(
                 persona=self.object
             ).exclude(estado=OrdenCompra.ESTADO_ANULADA).annotate(
@@ -1213,25 +1266,36 @@ class PersonaDetailView(PersonaCensoAccessMixin, DetailView):
                 fecha_ref=F('fecha_oc')
             )
             
-            # Calculamos el total sumando property en python (porque es calculado)
             total_compras = sum(oc.total_monto for oc in compras)
 
-            # 3. FUSIÓN DE HISTORIAL (TIMELINE UNIFICADO)
-            # Unimos ambas listas y ordenamos por fecha descendente (lo más nuevo arriba)
-            historial_unificado = sorted(
-                chain(pagos, compras),
+            # 🚀 4. FUSIÓN Y SEPARACIÓN DE HISTORIALES
+            historial_ayuda_unificado = sorted(
+                chain(pagos_ayuda, compras),
+                key=attrgetter('fecha_ref'),
+                reverse=True
+            )
+            
+            historial_laboral_ordenado = sorted(
+                pagos_laborales,
                 key=attrgetter('fecha_ref'),
                 reverse=True
             )
 
-            ctx['historial_unificado'] = historial_unificado
-            ctx['total_ayuda_historica'] = total_pagado + total_compras
-            ctx['total_caja'] = total_pagado
+            # Pasamos todo al template
+            ctx['historial_unificado'] = historial_ayuda_unificado
+            ctx['historial_laboral'] = historial_laboral_ordenado
+            ctx['total_ayuda_historica'] = total_caja_ayuda + total_compras
+            ctx['total_caja'] = total_caja_ayuda
             ctx['total_especies'] = total_compras
+            ctx['total_jornales'] = total_caja_laboral
 
         else:
+            ctx['pagos_servicios'] = []
+            ctx['total_pagado_historico'] = 0
             ctx['historial_unificado'] = []
+            ctx['historial_laboral'] = []
             ctx['total_ayuda_historica'] = 0
+            ctx['total_jornales'] = 0
         
         if 'roles_ctx' in globals(): ctx.update(roles_ctx(self.request.user))
         return ctx

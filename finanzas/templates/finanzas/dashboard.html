@@ -1,225 +1,492 @@
 {% extends "finanzas/base.html" %}
 {% load humanize %}
-{% load finanzas_extras %}
+{% load static %}
 
 {% block title %}Tablero de Control{% endblock %}
 
+{% block extra_css %}
+<style>
+    :root {
+        --primary-gradient: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+        --card-bg: #ffffff;
+        --text-muted: #64748b;
+    }
+
+    /* === HEADER PRO (AURORA) === */
+    .dashboard-header {
+        background: var(--primary-gradient);
+        border-radius: 24px;
+        padding: 2.5rem 2rem;
+        color: #ffffff;
+        position: relative;
+        box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.4);
+        margin-bottom: 2rem;
+        overflow: hidden;
+    }
+    
+    .dashboard-header::before {
+        content: ''; position: absolute; top: -150px; right: -50px;
+        width: 600px; height: 600px;
+        background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, rgba(0,0,0,0) 70%);
+        border-radius: 50%; pointer-events: none; z-index: 0;
+    }
+
+    /* === MINI STATS === */
+    .mini-stat-box {
+        background: rgba(255,255,255,0.05);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 16px;
+        padding: 0.8rem 1.2rem;
+        min-width: 130px;
+        transition: transform 0.2s ease, background 0.2s;
+        position: relative;
+    }
+    .mini-stat-box:hover { 
+        transform: translateY(-3px); 
+        background: rgba(255,255,255,0.1); 
+        border-color: rgba(255,255,255,0.25); 
+    }
+    .mini-stat-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1px; opacity: 0.7; font-weight: 700; color: #e2e8f0; margin-bottom: 2px;}
+    .mini-stat-value { font-size: 1.5rem; font-weight: 800; line-height: 1; color: #fff; }
+
+    /* === TARJETAS KPI === */
+    .kpi-card {
+        background: var(--card-bg);
+        border-radius: 20px;
+        padding: 1.5rem;
+        height: 100%;
+        border: 1px solid #f1f5f9;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        display: flex; flex-direction: column; position: relative; overflow: hidden;
+    }
+    .kpi-card:hover { transform: translateY(-4px); box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02); border-color: #cbd5e1; }
+
+    /* KPI DESTACADA (SALDO) */
+    .kpi-card.featured {
+        background: linear-gradient(145deg, #2563eb, #1e40af);
+        border: none; color: white;
+    }
+    .kpi-card.featured .kpi-label { color: rgba(255,255,255,0.8); }
+    .kpi-card.featured .kpi-value { color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .kpi-card.featured .small { color: rgba(255,255,255,0.7); }
+    
+    .glass-icon {
+        width: 48px; height: 48px;
+        border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.4rem;
+        background: rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(4px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: white;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+
+    .kpi-label { font-size: 0.7rem; text-transform: uppercase; font-weight: 700; margin-bottom: 0.5rem; letter-spacing: 0.5px; color: var(--text-muted); }
+    .kpi-value { font-size: 1.8rem; font-weight: 800; line-height: 1; letter-spacing: -0.5px; margin-bottom: 0.2rem;}
+    .kpi-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; margin-bottom: 0.8rem; }
+
+    /* BOTONES ACCESO RÁPIDO */
+    .btn-glass { 
+        background: rgba(255, 255, 255, 0.1); 
+        border: 1px solid rgba(255, 255, 255, 0.2); 
+        color: #ffffff; font-weight: 600; font-size: 0.85rem; padding: 0.6rem 1.2rem;
+        backdrop-filter: blur(4px); transition: all 0.2s; 
+    }
+    .btn-glass:hover { background: #ffffff; color: #0f172a; border-color: #fff; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+
+    /* ANIMACIONES */
+    .animate-in { opacity: 0; animation: fadeIn 0.6s ease-out forwards; }
+    @keyframes fadeIn { to { opacity: 1; } }
+    
+    .progress-thin { height: 6px; border-radius: 10px; background-color: #f1f5f9; }
+
+    /* ESTILOS SEMÁFORO (NUEVO) */
+    .deuda-badge {
+        background: rgba(255,255,255,0.15);
+        border-radius: 8px;
+        padding: 4px 8px;
+        font-size: 0.75rem;
+        display: flex; justify-content: space-between; align-items: center;
+        margin-top: 8px;
+    }
+    .saldo-real-container {
+        border-top: 1px solid rgba(255,255,255,0.2);
+        margin-top: 12px;
+        padding-top: 10px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-5 gap-3 animate-fade-in">
-    <div>
-        <h1 class="h3 fw-bold text-dark mb-1">Tablero de Control</h1>
-        <p class="text-secondary mb-0 small fw-medium">
-            Estado al <strong>{{ hoy|date:"d \d\e F" }}</strong> · 
-            <span class="badge bg-light text-dark border fw-normal">
-                {{ user.get_full_name|default:user.username }}
-            </span>
-        </p>
-    </div>
+<div class="dashboard-header animate-in">
+    <div class="row align-items-center gy-4 position-relative z-1">
+        
+        <div class="col-lg-5">
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <div class="d-inline-flex bg-black bg-opacity-25 rounded-pill p-1 border border-white border-opacity-10 backdrop-blur">
+                    <a href="?ver=hoy" class="btn btn-sm rounded-pill px-3 fw-bold transition-all {% if filtro_activo == 'hoy' %}bg-white text-dark shadow-sm{% else %}text-white opacity-75 hover-opacity-100{% endif %}" title="Ver Hoy">Hoy</a>
+                    <a href="?ver=ayer" class="btn btn-sm rounded-pill px-3 fw-bold transition-all {% if filtro_activo == 'ayer' %}bg-white text-dark shadow-sm{% else %}text-white opacity-75 hover-opacity-100{% endif %}" title="Ver Ayer">Ayer</a>
+                    <a href="?ver=semana" class="btn btn-sm rounded-pill px-3 fw-bold transition-all {% if filtro_activo == 'semana' %}bg-white text-dark shadow-sm{% else %}text-white opacity-75 hover-opacity-100{% endif %}" title="Ver Semana">Semana</a>
+                </div>
 
-    <div class="d-flex gap-2">
-        {% if rol_operador_finanzas or rol_staff_finanzas %}
-            <a href="{% url 'finanzas:movimiento_create' %}" class="btn btn-primary shadow-sm fw-bold hover-lift">
-                <i class="bi bi-plus-lg me-2"></i>Nuevo Movimiento
-            </a>
-        {% endif %}
-        <div class="btn-group shadow-sm">
-            <a href="{% url 'finanzas:balance_resumen' %}" class="btn btn-white border" title="Ver Balance Histórico">
-                <i class="bi bi-graph-up text-secondary"></i>
-            </a>
-            <a href="{% url 'finanzas:movimiento_list' %}" class="btn btn-white border" title="Ver Listado Completo">
-                <i class="bi bi-list-ul text-secondary"></i>
-            </a>
+                <div class="d-inline-flex bg-black bg-opacity-25 rounded-pill p-1 border border-white border-opacity-10 backdrop-blur">
+                    <a href="?ver=mes" class="btn btn-sm rounded-pill px-3 fw-bold transition-all {% if filtro_activo == 'mes' %}bg-white text-dark shadow-sm{% else %}text-white opacity-75 hover-opacity-100{% endif %}">Mes</a>
+                    <a href="?ver=gestion" class="btn btn-sm rounded-pill px-3 fw-bold transition-all {% if filtro_activo == 'gestion' %}bg-white text-dark shadow-sm{% else %}text-white opacity-75 hover-opacity-100{% endif %}">Gestión</a>
+                </div>
+            </div>
+            
+            <h1 class="fw-bold mb-1 h3 text-white">
+                Hola, {{ request.user.first_name|default:request.user.username }}
+            </h1>
+            <p class="mb-0 text-white opacity-75 fw-light small">
+                Viendo datos de: <strong class="text-white opacity-100">{{ titulo_periodo }}</strong>
+            </p>
         </div>
-    </div>
-</div>
 
-<div class="row g-3 mb-4 animate-fade-in">
-    
-    <div class="col-12 col-md-6 col-xl-3">
-        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
-            <div class="card-body position-relative">
-                <div class="d-flex justify-content-between align-items-start mb-3">
-                    <div>
-                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle mb-1">Mes Actual</span>
-                        <h6 class="text-uppercase text-secondary small fw-bold ls-1 mb-0">Ayuda Social</h6>
-                    </div>
-                    <div class="bg-danger text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 42px; height: 42px;">
-                        <i class="bi bi-heart-fill"></i>
-                    </div>
-                </div>
-                <div class="d-flex align-items-baseline gap-2">
-                    <h3 class="fw-bold text-dark mb-0">${{ ayudas_mes_monto|intcomma }}</h3>
-                </div>
-                <div class="small text-muted mt-1">
-                    <strong>{{ ayudas_mes_cant }}</strong> asistencias entregadas.
-                </div>
-            </div>
-            <div class="progress" style="height: 3px;">
-                <div class="progress-bar bg-danger" role="progressbar" style="width: 65%"></div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-12 col-md-6 col-xl-3">
-        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-3">
-                    <div>
-                        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle mb-1">Operativo</span>
-                        <h6 class="text-uppercase text-secondary small fw-bold ls-1 mb-0">Flota</h6>
-                    </div>
-                    <div class="bg-info text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 42px; height: 42px;">
-                        <i class="bi bi-truck-front-fill"></i>
-                    </div>
-                </div>
-                <div class="d-flex align-items-end gap-2">
-                    <h3 class="fw-bold text-dark mb-0">{{ viajes_hoy }}</h3>
-                    <span class="text-muted small mb-1">viajes hoy</span>
-                </div>
-                <div class="small text-muted mt-1">
-                    Acumulado mes: <strong>{{ viajes_mes_cant }}</strong> salidas.
-                </div>
-            </div>
-            <div class="progress" style="height: 3px;">
-                <div class="progress-bar bg-info" role="progressbar" style="width: 45%"></div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-12 col-md-6 col-xl-3">
-        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-3">
-                    <div>
-                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle mb-1">Diario</span>
-                        <h6 class="text-uppercase text-secondary small fw-bold ls-1 mb-0">Atención</h6>
-                    </div>
-                    <div class="bg-warning text-dark rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 42px; height: 42px;">
-                        <i class="bi bi-people-fill"></i>
-                    </div>
-                </div>
-                <h3 class="fw-bold text-dark mb-0">{{ atenciones_hoy }}</h3>
-                <div class="small text-muted mt-1">
-                    Personas atendidas hoy.
-                </div>
-            </div>
-            <div class="progress" style="height: 3px;">
-                <div class="progress-bar bg-warning" role="progressbar" style="width: 30%"></div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-12 col-md-6 col-xl-3">
-        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-3">
-                    <div>
-                        <span class="badge bg-dark-subtle text-dark border border-dark-subtle mb-1">Gestión</span>
-                        <h6 class="text-uppercase text-secondary small fw-bold ls-1 mb-0">Compras</h6>
-                    </div>
-                    <div class="bg-dark text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 42px; height: 42px;">
-                        <i class="bi bi-cart4"></i>
-                    </div>
-                </div>
-                <h3 class="fw-bold text-dark mb-0">{{ ocs_hoy }}</h3>
-                <div class="small text-muted mt-1">
-                    Órdenes emitidas hoy.
-                </div>
-            </div>
-            <div class="progress" style="height: 3px;">
-                <div class="progress-bar bg-dark" role="progressbar" style="width: 20%"></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row g-4 mb-4">
-    
-    <div class="col-lg-5 col-xl-4">
-        <div class="card border-0 shadow-sm h-100 rounded-4">
-            <div class="card-body p-4">
-                <h6 class="text-uppercase text-secondary small fw-bold ls-1 mb-4">Balance Mensual</h6>
+        <div class="col-lg-7">
+            <div class="d-flex flex-wrap gap-3 justify-content-lg-end">
                 
-                <div class="text-center py-2">
-                    <div class="display-6 fw-bold {% if saldo_mes >= 0 %}text-success{% else %}text-danger{% endif %} mb-0">
-                        ${{ saldo_mes|intcomma }}
-                    </div>
-                    <small class="text-muted">Saldo Neto (Ingresos - Gastos)</small>
+                {% if perms_operar_social %}
+                <div class="mini-stat-box text-center text-lg-start">
+                    <div class="mini-stat-label">Atenciones</div>
+                    <div class="mini-stat-value">{{ atenciones_stat|default:"0" }}</div>
+                    <a href="{% url 'finanzas:atencion_list' %}" class="stretched-link"></a>
                 </div>
+                {% endif %}
 
-                <hr class="border-light my-4">
-
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="bg-success bg-opacity-10 text-success rounded p-1"><i class="bi bi-arrow-down"></i></div>
-                        <span class="text-secondary fw-medium">Ingresos</span>
-                    </div>
-                    <span class="fw-bold text-dark">+ ${{ total_ingresos_mes|intcomma }}</span>
+                {% if perms_operar_operativo %}
+                <div class="mini-stat-box text-center text-lg-start">
+                    <div class="mini-stat-label">Flota</div>
+                    <div class="mini-stat-value">{{ viajes_stat|default:"0" }}</div>
+                    <a href="{% url 'finanzas:hoja_ruta_list' %}" class="stretched-link"></a>
                 </div>
-
-                <div class="d-flex justify-content-between align-items-center">
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="bg-danger bg-opacity-10 text-danger rounded p-1"><i class="bi bi-arrow-up"></i></div>
-                        <span class="text-secondary fw-medium">Gastos</span>
-                    </div>
-                    <span class="fw-bold text-dark">- ${{ total_gastos_mes|intcomma }}</span>
+                
+                <div class="mini-stat-box text-center text-lg-start">
+                    <div class="mini-stat-label">Compras (OC)</div>
+                    <div class="mini-stat-value">{{ ocs_stat|default:"0" }}</div>
+                    <a href="{% url 'finanzas:oc_list' %}" class="stretched-link"></a>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-lg-7 col-xl-8">
-        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
-            <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
-                <h6 class="mb-0 fw-bold text-dark text-uppercase small ls-1">
-                    <i class="bi bi-activity me-2 text-primary"></i>Actividad Reciente
-                </h6>
-                {% if cantidad_ordenes_pendientes > 0 %}
-                    <a href="{% url 'finanzas:orden_pago_list' %}" class="badge bg-warning text-dark text-decoration-none border border-warning-subtle">
-                        {{ cantidad_ordenes_pendientes }} Pagos Pendientes
-                    </a>
                 {% endif %}
             </div>
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead class="bg-light text-secondary small text-uppercase">
-                        <tr>
-                            <th class="ps-4 py-2">Fecha</th>
-                            <th class="py-2">Detalle</th>
-                            <th class="text-end pe-4 py-2">Monto</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for m in ultimos_movimientos %}
-                        <tr class="cursor-pointer" onclick="window.location='{% url 'finanzas:movimiento_detail' m.pk %}';">
-                            <td class="ps-4 text-secondary small" style="width: 15%;">{{ m.fecha_operacion|date:"d/m" }}</td>
-                            <td>
-                                <div class="fw-medium text-dark text-truncate" style="max-width: 280px;">{{ m.descripcion }}</div>
-                                <div class="d-flex align-items-center gap-2 mt-1">
-                                    <span class="badge bg-light text-secondary border fw-normal" style="font-size: 0.65rem;">
-                                        {{ m.categoria.nombre|default:"General" }}
-                                    </span>
-                                </div>
-                            </td>
-                            <td class="text-end pe-4 fw-bold {% if m.tipo == 'INGRESO' %}text-success{% else %}text-danger{% endif %}" style="width: 25%;">
-                                {% if m.tipo == 'GASTO' %}- {% endif %}${{ m.monto|intcomma }}
-                            </td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="3" class="text-center py-5 text-muted">
-                                <i class="bi bi-inbox fs-1 d-block opacity-25 mb-2"></i>
-                                No hay movimientos registrados este mes.
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+        </div>
+
+        <div class="col-12 mt-4 pt-3 border-top border-white border-opacity-10 d-flex gap-3 overflow-x-auto pb-1 no-scrollbar">
+            {% if perms_operar_operativo %}
+            <a href="{% url 'finanzas:movimiento_create' %}" class="btn btn-glass rounded-pill text-nowrap">
+                <i class="bi bi-currency-dollar me-2"></i>Cargar Caja
+            </a>
+            <a href="{% url 'finanzas:hoja_ruta_create' %}" class="btn btn-glass rounded-pill text-nowrap">
+                <i class="bi bi-truck me-2"></i>Hoja Ruta
+            </a>
+            {% endif %}
+            
+            {% if perms_operar_social %}
+            <a href="{% url 'finanzas:atencion_create' %}" class="btn btn-glass rounded-pill text-nowrap">
+                <i class="bi bi-people me-2"></i>Atención
+            </a>
+            {% endif %}
+
+            {% if perms_operar_operativo %}
+            <a href="{% url 'finanzas:orden_trabajo_create' %}" class="btn btn-glass rounded-pill text-nowrap">
+                <i class="bi bi-cone-striped me-2"></i>Orden Trabajo
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-5">
+    
+    {% if perms_ver_dinero_global %}
+    <div class="col-12 col-md-6 col-xl-3 animate-in" style="animation-delay: 0.1s;">
+        <div class="kpi-card featured">
+            <div class="d-flex justify-content-between align-items-start w-100 mb-1">
+                <div class="glass-icon">
+                    <i class="bi bi-wallet2"></i>
+                </div>
+                <a href="{% url 'finanzas:balance_resumen' %}" class="text-white opacity-75 hover-opacity-100" title="Ver Balance Detallado"><i class="bi bi-arrow-right"></i></a>
+            </div>
+            
+            <div class="mt-auto">
+                <div class="kpi-label opacity-75">Saldo Banco (Caja)</div>
+                <div class="kpi-value counter-anim" data-target="{{ saldo_mes|stringformat:'f' }}">$0,00</div>
+                
+                <div class="deuda-badge" title="Órdenes de Compra Autorizadas Pendientes de Pago">
+                    <span class="opacity-75"><i class="bi bi-receipt me-1"></i>Deuda OC:</span>
+                    <span class="fw-bold text-white">-${{ deuda_flotante|floatformat:0|intcomma }}</span>
+                </div>
+
+                <div class="saldo-real-container d-flex justify-content-between align-items-center">
+                    <span class="small opacity-75 fw-bold text-uppercase" style="font-size: 0.65rem;">Disponible Real</span>
+                    {% if saldo_real_disponible < 0 %}
+                        <span class="badge bg-danger text-white border border-white border-opacity-25 shadow-sm">
+                            <i class="bi bi-exclamation-triangle-fill me-1"></i> ${{ saldo_real_disponible|floatformat:0|intcomma }}
+                        </span>
+                    {% else %}
+                        <span class="fw-bold text-white font-monospace small">
+                            ${{ saldo_real_disponible|floatformat:0|intcomma }}
+                        </span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="col-12 col-md-6 col-xl-3 animate-in" style="animation-delay: 0.2s;">
+        <div class="kpi-card">
+            <div class="d-flex justify-content-between align-items-start w-100 mb-2">
+                <div class="kpi-icon bg-danger-subtle text-danger rounded-3">
+                    <i class="bi bi-heart-fill"></i>
+                </div>
+                <span class="badge bg-light text-secondary border fw-normal" style="font-size: 0.65rem;">Caja + OCs</span>
+            </div>
+            <div class="mt-auto">
+                <div class="kpi-label">Inversión Social</div>
+                
+                {% if perms_ver_dinero_global %}
+                    <div class="kpi-value text-dark counter-anim" data-target="{{ ayudas_mes_monto|stringformat:'f' }}">$0,00</div>
+                {% else %}
+                    <div class="kpi-value text-secondary fs-5 mt-2">Gestión Activa</div>
+                {% endif %}
+                
+                <div class="mt-3 pt-3 border-top d-flex justify-content-between small text-muted">
+                    <span>Vecinos Asistidos</span>
+                    <span class="fw-bold text-danger">{{ ayudas_mes_cant }} personas</span>
+                </div>
             </div>
         </div>
     </div>
 
+    <div class="col-12 col-md-6 col-xl-3 animate-in" style="animation-delay: 0.3s;">
+        <div class="kpi-card">
+            <div class="d-flex justify-content-between align-items-start w-100 mb-2">
+                <div class="kpi-icon bg-info-subtle text-info rounded-3">
+                    <i class="bi bi-fuel-pump-fill"></i>
+                </div>
+                <span class="badge bg-light text-secondary border fw-normal" style="font-size: 0.65rem;">Caja + OCs</span>
+            </div>
+            <div class="mt-auto">
+                <div class="kpi-label">Consumo Combustible</div>
+                
+                {% if perms_ver_dinero_global %}
+                    <div class="kpi-value text-dark counter-anim" data-target="{{ combustible_mes|stringformat:'f' }}">$0,00</div>
+                {% else %}
+                    <div class="kpi-value text-secondary fs-5 mt-2">Logística</div>
+                {% endif %}
+
+                <div class="mt-3 pt-3 border-top d-flex justify-content-between small text-muted">
+                    <span>Actividad Flota</span>
+                    <span class="fw-bold text-info">{{ viajes_stat|default:"0" }} viajes</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if perms_ver_dinero_global %}
+    <div class="col-12 col-md-6 col-xl-3 animate-in" style="animation-delay: 0.4s;">
+        <div class="kpi-card">
+            <div class="d-flex justify-content-between align-items-start w-100 mb-2">
+                <div class="kpi-icon bg-warning-subtle text-warning-emphasis rounded-3">
+                    <i class="bi bi-hourglass-split"></i>
+                </div>
+            </div>
+            <div class="mt-auto">
+                <div class="kpi-label">Pagos Pendientes (OP)</div>
+                <div class="kpi-value text-dark">{{ cantidad_ordenes_pendientes }}</div>
+                <div class="mt-3 pt-3 border-top">
+                    <a href="{% url 'finanzas:orden_pago_list' %}?estado=BORRADOR" class="d-block text-decoration-none small fw-bold text-primary">
+                        Gestionar Pagos <i class="bi bi-arrow-right ms-1"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>
 
+{% if perms_ver_dinero_global %}
+<div class="row g-4 animate-in" style="animation-delay: 0.5s;">
+    
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
+            <div class="card-body p-4 d-flex flex-column">
+                <h6 class="fw-bold text-secondary text-uppercase small ls-1 mb-4">Balance Financiero (Caja)</h6>
+                
+                {% if total_ingresos_mes == 0 and total_gastos_mes == 0 %}
+                    <div class="m-auto text-center py-5 text-muted">
+                        <i class="bi bi-pie-chart fs-1 opacity-25 mb-2"></i>
+                        <p class="small mb-0 fst-italic">Sin movimientos de caja.</p>
+                    </div>
+                {% else %}
+                    <div style="height: 200px; position: relative;" class="mb-3">
+                        <canvas id="balanceChart"></canvas>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mb-2 px-1">
+                        <span class="small fw-bold text-muted"><i class="bi bi-circle-fill text-success me-2" style="font-size: 6px;"></i>Ingresos</span>
+                        <span class="fw-bold text-dark font-monospace" style="font-size: 0.9rem;">${{ total_ingresos_mes|floatformat:2|intcomma }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between px-1 mb-3">
+                        <span class="small fw-bold text-muted"><i class="bi bi-circle-fill text-danger me-2" style="font-size: 6px;"></i>Gastos (Caja)</span>
+                        <span class="fw-bold text-dark font-monospace" style="font-size: 0.9rem;">${{ total_gastos_mes|floatformat:2|intcomma }}</span>
+                    </div>
+
+                    <div class="pt-3 border-top mt-auto">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-bold text-secondary" style="font-size: 0.7rem;">RATIO GASTO/INGRESO</span>
+                            <span class="small fw-bold text-dark" id="ratio-text">0%</span>
+                        </div>
+                        <div class="progress progress-thin">
+                            <div class="progress-bar bg-primary" role="progressbar" id="ratio-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
+            <div class="card-header bg-white py-3 px-4 border-bottom d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-bold text-secondary text-uppercase small ls-1">Últimos Movimientos</h6>
+                <a href="{% url 'finanzas:movimiento_list' %}" class="btn btn-sm btn-light border rounded-pill px-3 fw-bold small hover-lift">Ver Todo</a>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for m in ultimos_movimientos %}
+                <a href="{% url 'finanzas:movimiento_detail' m.pk %}" class="list-group-item list-group-item-action py-3 px-4 border-bottom-0 border-top bg-transparent">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 shadow-sm border border-white {% if m.tipo == 'INGRESO' %}bg-success-subtle text-success{% else %}bg-danger-subtle text-danger{% endif %}" style="width: 42px; height: 42px;">
+                            {% if m.tipo == 'INGRESO' %}<i class="bi bi-arrow-down-left fs-5"></i>{% else %}<i class="bi bi-arrow-up-right fs-5"></i>{% endif %}
+                        </div>
+                        <div class="flex-grow-1 overflow-hidden">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <h6 class="mb-0 text-truncate fw-bold text-dark" style="max-width: 350px; font-size: 0.9rem;">{{ m.descripcion|default:"Sin descripción" }}</h6>
+                                <span class="fw-bold font-monospace {% if m.tipo == 'INGRESO' %}text-success{% else %}text-danger{% endif %} text-nowrap">
+                                    {% if m.tipo == 'INGRESO' %}+{% else %}-{% endif %} ${{ m.monto|floatformat:2|intcomma }}
+                                </span>
+                            </div>
+                            <div class="d-flex align-items-center gap-2 small text-secondary">
+                                <span class="badge bg-light text-secondary border fw-normal">{{ m.categoria.nombre }}</span>
+                                <span class="opacity-50">•</span>
+                                <span>{{ m.fecha_operacion|date:"d/m/Y" }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </a>
+                {% empty %}
+                <div class="text-center py-5 text-muted">
+                    <p class="small mb-0">No hay movimientos recientes.</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="row g-4 animate-in" style="animation-delay: 0.5s;">
+    <div class="col-12">
+        <div class="alert alert-light border shadow-sm rounded-4 p-4 d-flex align-items-center gap-3">
+            <div class="bg-primary bg-opacity-10 text-primary rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 48px; height: 48px;">
+                <i class="bi bi-shield-lock-fill fs-4"></i>
+            </div>
+            <div>
+                <h6 class="fw-bold mb-1">Módulos Financieros Protegidos</h6>
+                <p class="mb-0 text-secondary small">Estás operando con acceso restringido. Los saldos, montos generales y el historial de caja están reservados para el área de Finanzas.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // 1. ANIMACIÓN DE NÚMEROS
+    const counters = document.querySelectorAll('.counter-anim');
+    const formatter = new Intl.NumberFormat('es-AR', { 
+        style: 'currency', currency: 'ARS', minimumFractionDigits: 2 
+    });
+
+    counters.forEach(counter => {
+        let raw = counter.getAttribute('data-target'); 
+        if(!raw) return;
+        
+        let target = parseFloat(raw.replace(',', '.'));
+        if(isNaN(target)) target = 0;
+        
+        // Animación simple
+        let start = 0;
+        const duration = 1000;
+        const startTime = performance.now();
+
+        function update(currentTime) {
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            // Easing function (easeOutQuart)
+            const ease = 1 - Math.pow(1 - progress, 4);
+            
+            const current = start + (target - start) * ease;
+            counter.innerText = formatter.format(current);
+
+            if (progress < 1) requestAnimationFrame(update);
+            else counter.innerText = formatter.format(target);
+        }
+        requestAnimationFrame(update);
+    });
+
+    // 2. GRÁFICO DONUT (BALANCE) - Solo intenta cargar si el canvas existe
+    const ctx = document.getElementById('balanceChart');
+    if (ctx) {
+        const ing = {{ total_ingresos_mes|default:0|stringformat:"f" }};
+        const gas = {{ total_gastos_mes|default:0|stringformat:"f" }};
+
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Ingresos', 'Gastos'],
+                datasets: [{
+                    data: [ing, gas],
+                    backgroundColor: ['#10b981', '#f43f5e'],
+                    borderWidth: 0, 
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true, 
+                maintainAspectRatio: false, 
+                cutout: '75%',
+                plugins: { legend: { display: false }, tooltip: { enabled: true } }
+            }
+        });
+
+        // BARRA DE RATIO
+        if (ing > 0) {
+            let ratio = (gas / ing) * 100;
+            let displayRatio = ratio.toFixed(1);
+            if (ratio > 100) ratio = 100;
+            
+            const bar = document.getElementById('ratio-bar');
+            const txt = document.getElementById('ratio-text');
+            
+            if (bar && txt) {
+                bar.style.width = ratio + "%";
+                txt.innerText = displayRatio + "%";
+                if (ratio > 100) {
+                    bar.classList.remove('bg-primary'); bar.classList.add('bg-danger');
+                } else if (ratio > 80) {
+                    bar.classList.remove('bg-primary'); bar.classList.add('bg-warning');
+                }
+            }
+        }
+    }
+});
+</script>
 {% endblock %}

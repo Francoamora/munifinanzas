@@ -164,7 +164,7 @@
                 </a>
               </li>
 
-              {% if es_operador_finanzas or es_staff_finanzas or es_admin_sistema or es_operador_social %}
+              {% if perms_operar_operativo %}
               <li class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
                     <i class="bi bi-wallet-fill me-1"></i> Finanzas
@@ -173,40 +173,34 @@
                   <li><h6 class="dropdown-header">Caja Diaria</h6></li>
                   <li><a class="dropdown-item" href="{% url 'finanzas:movimiento_create' %}">Registrar Movimiento</a></li>
                   
-                  {% if es_operador_finanzas or es_staff_finanzas or es_admin_sistema %}
+                  {% if perms_ver_dinero_global %}
                       <li><a class="dropdown-item" href="{% url 'finanzas:movimiento_list' %}">Ver Movimientos</a></li>
-                  {% endif %}
-                  
-                  {% if es_staff_finanzas or es_admin_sistema %}
-                  <li><hr class="dropdown-divider"></li>
-                  <li><h6 class="dropdown-header">Tesorería</h6></li>
-                  <li><a class="dropdown-item" href="{% url 'finanzas:orden_pago_list' %}">Órdenes de Pago</a></li>
-                  <li><a class="dropdown-item" href="{% url 'finanzas:balance_resumen' %}">Balance General</a></li>
+                      <li><hr class="dropdown-divider"></li>
+                      <li><h6 class="dropdown-header">Tesorería</h6></li>
+                      <li><a class="dropdown-item" href="{% url 'finanzas:orden_pago_list' %}">Órdenes de Pago</a></li>
+                      <li><a class="dropdown-item" href="{% url 'finanzas:balance_resumen' %}">Balance General</a></li>
                   {% endif %}
                 </ul>
               </li>
               {% endif %}
 
-              {% if es_operador_finanzas or es_operador_social or es_admin_sistema %}
+              {% if perms_operar_operativo %}
               <li class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
                     <i class="bi bi-briefcase-fill me-1"></i> Operativo
                 </a>
                 <ul class="dropdown-menu">
-                  {% if es_operador_finanzas or es_admin_sistema or es_operador_social %}
                   <li><h6 class="dropdown-header">Compras</h6></li>
                   <li><a class="dropdown-item" href="{% url 'finanzas:proveedor_list' %}">Proveedores</a></li>
                   <li><a class="dropdown-item" href="{% url 'finanzas:oc_list' %}">Órdenes de Compra</a></li>
                   <li><hr class="dropdown-divider"></li>
-                  {% endif %}
-                  
                   <li><h6 class="dropdown-header">Servicios</h6></li>
                   <li><a class="dropdown-item" href="{% url 'finanzas:orden_trabajo_list' %}">Órdenes de Trabajo</a></li>
                 </ul>
               </li>
               {% endif %}
 
-              {% if es_operador_finanzas or es_operador_social or es_admin_sistema %}
+              {% if perms_operar_operativo %}
               <li class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
                     <i class="bi bi-truck-front-fill me-1"></i> Flota
@@ -219,14 +213,14 @@
                   <li><hr class="dropdown-divider"></li>
                   <li><a class="dropdown-item" href="{% url 'finanzas:vehiculo_list' %}">Parque Automotor</a></li>
                   
-                  {% if es_operador_finanzas or es_admin_sistema %}
+                  {% if perms_ver_dinero_global %}
                   <li><a class="dropdown-item" href="{% url 'finanzas:consumo_combustible' %}">Consumo Combustible</a></li>
                   {% endif %}
                 </ul>
               </li>
               {% endif %}
 
-              {% if es_operador_finanzas or es_admin_sistema or es_operador_social %}
+              {% if perms_operar_operativo %}
               <li class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
                     <i class="bi bi-box-seam-fill me-1"></i> Inventario
@@ -240,15 +234,13 @@
                       <i class="bi bi-tools me-2"></i>Control de Préstamos
                   </a></li>
                   <li><a class="dropdown-item" href="{% url 'inventario:stock_list' %}">Tablero de Pañol</a></li>
-                  
-                  {% if es_operador_finanzas or es_admin_sistema %}
                   <li><hr class="dropdown-divider"></li>
                   <li><a class="dropdown-item" href="{% url 'inventario:insumo_create' %}">Nuevo Artículo</a></li>
-                  {% endif %}
                 </ul>
               </li>
               {% endif %}
 
+              {% if perms_operar_social %}
               <li class="nav-item dropdown">
                  <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
                     <i class="bi bi-people-fill me-1"></i> Social
@@ -260,6 +252,7 @@
                     <li><a class="dropdown-item" href="{% url 'finanzas:persona_list' %}">Padrón de Personas</a></li>
                 </ul>
               </li>
+              {% endif %}
             </ul>
 
             <div class="d-flex align-items-center gap-3 pt-3 pt-lg-0">
@@ -272,7 +265,7 @@
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 mt-2 p-2">
                         <li><h6 class="dropdown-header">Sesión Activa</h6></li>
-                        {% if user.is_staff %}
+                        {% if user.is_staff or user.is_superuser %}
                         <li><a class="dropdown-item" href="{% url 'admin:index' %}"><i class="bi bi-gear-fill me-2"></i>Admin Panel</a></li>
                         {% endif %}
                         <li>

@@ -13,7 +13,7 @@
 
     <div class="d-flex justify-content-between align-items-center mb-4">
       <div>
-        <h1 class="h3 fw-bold text-dark mb-1">
+        <h1 class="h3 fw-bolder text-dark mb-1">
           {% if form.instance.pk %}
             <i class="bi bi-pencil-square me-2 text-primary"></i>Editar Operación
           {% else %}
@@ -21,19 +21,19 @@
           {% endif %}
         </h1>
         <p class="text-secondary mb-0 fw-medium small">
-          Gestión de Caja. <span class="text-danger">* Obligatorio.</span>
+          Gestión de Caja y Tesorería. <span class="text-danger">* Obligatorio.</span>
         </p>
       </div>
-      <a href="{% url 'finanzas:movimiento_list' %}" class="btn btn-white border shadow-sm btn-sm px-4 fw-bold text-secondary hover-lift">
+      <a href="{% url 'finanzas:movimiento_list' %}" class="btn btn-light border shadow-sm btn-sm px-4 fw-bold text-dark hover-lift">
         <i class="bi bi-x-lg me-1"></i> Cancelar
       </a>
     </div>
 
     {% if form.instance.pk and form.instance.esta_aprobado %}
-      <div class="alert alert-warning border-0 shadow-sm d-flex align-items-center mb-4 rounded-3 text-dark">
+      <div class="alert alert-warning border-0 shadow-sm d-flex align-items-center mb-4 rounded-4 text-dark fw-bold">
         <i class="bi bi-lock-fill fs-4 me-3 text-warning-emphasis"></i>
         <div>
-          <strong class="text-warning-emphasis">Operación Cerrada.</strong> Ya impactó en caja.
+          <strong class="text-warning-emphasis">Operación Cerrada.</strong> Este movimiento ya impactó en los saldos de caja.
         </div>
       </div>
     {% endif %}
@@ -43,12 +43,12 @@
       {% csrf_token %}
 
       {% if form.errors %}
-        <div class="alert alert-danger border-0 shadow-sm mb-4 rounded-3">
+        <div class="alert alert-danger border-0 shadow-sm mb-4 rounded-4">
           <div class="d-flex align-items-start gap-3">
             <i class="bi bi-exclamation-triangle-fill fs-4 text-danger"></i>
             <div>
-              <div class="fw-bold text-danger">Atención</div>
-              <ul class="mb-0 small text-danger-emphasis ps-3">
+              <div class="fw-bolder text-danger mb-1">Se encontraron errores:</div>
+              <ul class="mb-0 small text-danger-emphasis ps-3 fw-medium">
                 {% for field in form %}
                   {% if field.errors %}<li><strong>{{ field.label }}:</strong> {{ field.errors|striptags }}</li>{% endif %}
                 {% endfor %}
@@ -59,27 +59,27 @@
       {% endif %}
 
       <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
-        <div class="card-body p-4 p-lg-5">
-          <h6 class="text-uppercase text-primary fw-bold mb-4 ls-1 border-bottom pb-2">
-            <i class="bi bi-wallet2 me-2"></i>Datos Financieros
+        <div class="card-body p-4 p-lg-5 bg-white">
+          <h6 class="text-uppercase text-primary fw-bolder mb-4 ls-1 border-bottom pb-3">
+            <i class="bi bi-wallet2 me-2"></i>Datos Contables y Tesorería
           </h6>
           
           <div class="row g-4">
             <div class="col-md-4">
-                <label class="form-label small fw-bold text-secondary">TIPO OPERACIÓN *</label>
+                <label class="form-label small fw-bold text-dark text-uppercase">Tipo de Operación *</label>
                 {{ form.tipo }}
             </div>
             <div class="col-md-4">
-                <label class="form-label small fw-bold text-secondary">FECHA *</label>
-                <div class="input-group">
-                    <span class="input-group-text bg-light border-end-0"><i class="bi bi-calendar-event text-muted"></i></span>
+                <label class="form-label small fw-bold text-dark text-uppercase">Fecha *</label>
+                <div class="input-group shadow-sm rounded-3">
+                    <span class="input-group-text bg-light border-end-0"><i class="bi bi-calendar-event text-secondary"></i></span>
                     {{ form.fecha_operacion }}
                 </div>
             </div>
             <div class="col-md-4">
-                <label class="form-label small fw-bold text-success">MONTO TOTAL *</label>
-                <div class="input-group">
-                    <span class="input-group-text bg-success-subtle text-success border-success-subtle fw-bold">$</span>
+                <label class="form-label small fw-bolder text-success text-uppercase">Monto Total *</label>
+                <div class="input-group shadow-sm rounded-3">
+                    <span class="input-group-text bg-success bg-opacity-10 text-success border-success-subtle fw-bolder fs-5">$</span>
                     {{ form.monto }}
                 </div>
             </div>
@@ -87,9 +87,9 @@
             <div class="col-12"><hr class="border-light m-0"></div>
 
             <div class="col-md-6">
-                <label class="form-label small fw-bold text-secondary">CATEGORÍA / RUBRO *</label>
+                <label class="form-label small fw-bold text-dark text-uppercase">Categoría / Imputación *</label>
                 <div class="position-relative">
-                    <select name="{{ form.categoria.name }}" id="id_categoria" class="form-select no-select2" required>
+                    <select name="{{ form.categoria.name }}" id="id_categoria" class="form-select no-select2 shadow-sm" required>
                         <option value="">---------</option>
                         {% if form.instance.pk and form.instance.categoria %}
                             <option value="{{ form.instance.categoria.id }}" selected 
@@ -104,65 +104,96 @@
                     </div>
                 </div>
                 <div class="mt-2 d-flex align-items-center">
-                    <span id="catBadge" class="badge bg-secondary d-none"></span>
+                    <span id="catBadge" class="badge bg-secondary d-none px-3 py-2 rounded-pill fw-bold"></span>
                 </div>
             </div>
 
             <div class="col-md-6">
-                <label class="form-label small fw-bold text-secondary">ÁREA SOLICITANTE</label>
+                <label class="form-label small fw-bold text-dark text-uppercase">Área Solicitante</label>
                 {{ form.area }}
             </div>
 
             <div class="col-md-6" id="cuentaOrigenWrap">
-                <label class="form-label small fw-bold text-secondary">CUENTA ORIGEN</label>
-                {{ form.cuenta_origen_texto }}
+                <label class="form-label small fw-bold text-dark text-uppercase">
+                    <i class="bi bi-box-arrow-up-right text-danger me-1"></i> Caja Origen (Salida) *
+                </label>
+                <select name="{{ form.cuenta_origen.name }}" id="id_cuenta_origen" class="form-select fw-bold shadow-sm">
+                     <option value="" {% if not form.cuenta_origen.value %}selected{% endif %}>Seleccione una Caja...</option>
+                     {% for pk, choice in form.fields.cuenta_origen.choices %}
+                         {% if pk %}
+                             <option value="{{ pk }}" {% if form.cuenta_origen.value|stringformat:"s" == pk|stringformat:"s" %}selected{% endif %}>
+                                {% if 'Santa Fe' in choice|stringformat:'s' or 'Banco' in choice|stringformat:'s' %}
+                                    Caja Comuna de Tacuarendí
+                                {% else %}
+                                    {{ choice }}
+                                {% endif %}
+                             </option>
+                         {% endif %}
+                     {% endfor %}
+                </select>
             </div>
+            
             <div class="col-md-6" id="cuentaDestinoWrap">
-                <label class="form-label small fw-bold text-secondary">CUENTA DESTINO</label>
-                {{ form.cuenta_destino_texto }}
+                <label class="form-label small fw-bold text-dark text-uppercase">
+                    <i class="bi bi-box-arrow-in-down-left text-success me-1"></i> Caja Destino (Ingreso) *
+                </label>
+                <select name="{{ form.cuenta_destino.name }}" id="id_cuenta_destino" class="form-select fw-bold shadow-sm">
+                     <option value="" {% if not form.cuenta_destino.value %}selected{% endif %}>Seleccione una Caja...</option>
+                     {% for pk, choice in form.fields.cuenta_destino.choices %}
+                         {% if pk %}
+                             <option value="{{ pk }}" {% if form.cuenta_destino.value|stringformat:"s" == pk|stringformat:"s" %}selected{% endif %}>
+                                {% if 'Santa Fe' in choice|stringformat:'s' or 'Banco' in choice|stringformat:'s' %}
+                                    Caja Comuna de Tacuarendí
+                                {% else %}
+                                    {{ choice }}
+                                {% endif %}
+                             </option>
+                         {% endif %}
+                     {% endfor %}
+                </select>
             </div>
 
             <div class="col-12">
-                <label class="form-label small fw-bold text-secondary">DESCRIPCIÓN PÚBLICA *</label>
+                <label class="form-label small fw-bold text-dark text-uppercase">Descripción Pública (Para el recibo) *</label>
                 {{ form.descripcion }}
             </div>
           </div>
         </div>
       </div>
 
-      <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden" id="personaCard">
+      <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden bg-white" id="personaCard">
         <div class="card-body p-4 p-lg-5">
-          <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
-             <h6 class="text-uppercase text-indigo fw-bold mb-0 ls-1"><i class="bi bi-person-badge me-2"></i>Persona Vinculada</h6>
-             <span class="badge bg-light text-secondary border" id="personaBadge">Opcional</span>
+          <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+             <h6 class="text-uppercase text-dark fw-bolder mb-0 ls-1"><i class="bi bi-person-badge text-primary me-2"></i>Persona / Vecino Vinculado</h6>
+             <span class="badge bg-light text-secondary border px-3 py-2 rounded-pill fw-bold" id="personaBadge">Opcional</span>
           </div>
           <div class="row g-3">
             <div class="col-12">
-                <label class="form-label small fw-bold text-dark">BUSCAR EN PADRÓN</label>
-                <div class="input-group">
-                    <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-primary"></i></span>
+                <label class="form-label small fw-bold text-dark text-uppercase">Buscar en Padrón</label>
+                <div class="input-group shadow-sm rounded-3">
+                    <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-primary"></i></span>
                     {{ form.beneficiario }}
                 </div>
             </div>
             <div class="col-md-8">
-                <label class="form-label small fw-bold text-muted" style="font-size:0.7rem;">NOMBRE</label>
+                <label class="form-label small fw-bold text-muted text-uppercase" style="font-size:0.7rem;">Nombre Registrado</label>
                 {{ form.beneficiario_nombre }}
             </div>
             <div class="col-md-4">
-                <label class="form-label small fw-bold text-muted" style="font-size:0.7rem;">DNI</label>
+                <label class="form-label small fw-bold text-muted text-uppercase" style="font-size:0.7rem;">DNI</label>
                 {{ form.beneficiario_dni }}
             </div>
             
             <div class="col-12 mt-3">
-                <button class="btn btn-sm btn-outline-primary w-100 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#personaNuevaBox">
-                    <i class="bi bi-person-plus-fill me-1"></i>Cargar Persona Nueva (Express)
+                <button class="btn btn-sm btn-outline-dark rounded-pill px-4 fw-bold hover-lift" type="button" data-bs-toggle="collapse" data-bs-target="#personaNuevaBox">
+                    <i class="bi bi-person-plus-fill me-1"></i> Cargar Persona Nueva Rápido
                 </button>
-                <div id="personaNuevaBox" class="collapse mt-2">
-                    <div class="card card-body bg-light border-0">
-                        <div class="row g-2">
-                            <div class="col-md-3"><label class="small text-muted">DNI</label>{{ form.persona_nueva_dni }}</div>
-                            <div class="col-md-5"><label class="small text-muted">Apellidos</label>{{ form.persona_nueva_apellido }}</div>
-                            <div class="col-md-4"><label class="small text-muted">Nombres</label>{{ form.persona_nueva_nombre }}</div>
+                <div id="personaNuevaBox" class="collapse mt-3">
+                    <div class="card card-body bg-light border-0 rounded-4 shadow-sm">
+                        <div class="row g-3">
+                            <div class="col-md-3"><label class="small text-dark fw-bold">DNI</label>{{ form.persona_nueva_dni }}</div>
+                            <div class="col-md-5"><label class="small text-dark fw-bold">Apellidos</label>{{ form.persona_nueva_apellido }}</div>
+                            <div class="col-md-4"><label class="small text-dark fw-bold">Nombres</label>{{ form.persona_nueva_nombre }}</div>
                         </div>
                     </div>
                 </div>
@@ -172,60 +203,60 @@
       </div>
 
       <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden" id="assignCard">
-        <div class="card-header bg-white p-0 border-bottom">
+        <div class="card-header bg-light p-0 border-bottom">
           <ul class="nav nav-tabs nav-justified border-0" id="assignTab" role="tablist">
             <li class="nav-item">
-                <button class="nav-link active py-3 text-uppercase" id="proveedor-tab" data-bs-toggle="tab" data-bs-target="#proveedor-pane" type="button">
+                <button class="nav-link active py-3 text-uppercase fw-bold" id="proveedor-tab" data-bs-toggle="tab" data-bs-target="#proveedor-pane" type="button">
                     <i class="bi bi-shop me-2"></i>Proveedor
                 </button>
             </li>
             <li class="nav-item">
-                <button class="nav-link py-3 text-uppercase" id="ayuda-tab" data-bs-toggle="tab" data-bs-target="#ayuda-pane" type="button">
-                    <i class="bi bi-heart me-2"></i>Ayuda Social
+                <button class="nav-link py-3 text-uppercase fw-bold" id="ayuda-tab" data-bs-toggle="tab" data-bs-target="#ayuda-pane" type="button">
+                    <i class="bi bi-heart-pulse-fill me-2"></i>Ayuda Social
                 </button>
             </li>
             <li class="nav-item">
-                <button class="nav-link py-3 text-uppercase" id="vehiculo-tab" data-bs-toggle="tab" data-bs-target="#vehiculo-pane" type="button">
+                <button class="nav-link py-3 text-uppercase fw-bold" id="vehiculo-tab" data-bs-toggle="tab" data-bs-target="#vehiculo-pane" type="button">
                     <i class="bi bi-fuel-pump me-2"></i>Combustible
                 </button>
             </li>
           </ul>
         </div>
-        <div class="card-body p-4 bg-light bg-opacity-25">
+        <div class="card-body p-4 p-lg-5 bg-white">
           <div class="tab-content">
             
             <div class="tab-pane fade show active" id="proveedor-pane">
-                <div class="row g-3">
+                <div class="row g-4">
                     <div class="col-12">
-                        <label class="form-label small fw-bold text-dark">BUSCAR PROVEEDOR</label>
-                        {{ form.proveedor }}
+                        <label class="form-label small fw-bold text-dark text-uppercase">Buscar Proveedor</label>
+                        <div class="shadow-sm rounded-3">{{ form.proveedor }}</div>
                     </div>
                     <div class="col-md-8">
-                        <label class="form-label small fw-bold text-muted">RAZÓN SOCIAL</label>
+                        <label class="form-label small fw-bold text-muted text-uppercase">Razón Social</label>
                         {{ form.proveedor_nombre }}
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label small fw-bold text-muted">CUIT</label>
+                        <label class="form-label small fw-bold text-muted text-uppercase">CUIT</label>
                         {{ form.proveedor_cuit }}
                     </div>
 
-                    <div class="col-12 mt-3">
-                        <button class="btn btn-sm btn-outline-primary w-100 fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#provNuevoBox">
-                            <i class="bi bi-shop me-1"></i>Cargar Proveedor Nuevo (Express)
+                    <div class="col-12 mt-2">
+                        <button class="btn btn-sm btn-outline-dark rounded-pill px-4 fw-bold hover-lift" type="button" data-bs-toggle="collapse" data-bs-target="#provNuevoBox">
+                            <i class="bi bi-shop me-1"></i> Crear Proveedor Nuevo
                         </button>
-                        <div id="provNuevoBox" class="collapse mt-2">
-                            <div class="card card-body bg-light border-0">
-                                <div class="row g-2 align-items-end">
+                        <div id="provNuevoBox" class="collapse mt-3">
+                            <div class="card card-body bg-light border-0 rounded-4 shadow-sm">
+                                <div class="row g-3 align-items-end">
                                     <div class="col-md-5">
-                                        <label class="small text-muted">Razón Social *</label>
-                                        <input type="text" id="new_prov_nombre" class="form-control" placeholder="Ej: Ferretería El Norte">
+                                        <label class="small text-dark fw-bold">Razón Social *</label>
+                                        <input type="text" id="new_prov_nombre" class="form-control fw-medium" placeholder="Ej: Ferretería El Norte">
                                     </div>
                                     <div class="col-md-4">
-                                        <label class="small text-muted">CUIT (Opcional)</label>
-                                        <input type="text" id="new_prov_cuit" class="form-control" placeholder="Solo números">
+                                        <label class="small text-dark fw-bold">CUIT (Opcional)</label>
+                                        <input type="text" id="new_prov_cuit" class="form-control fw-medium" placeholder="Solo números">
                                     </div>
                                     <div class="col-md-3">
-                                        <button type="button" id="btnGuardarProv" class="btn btn-dark w-100 fw-bold">
+                                        <button type="button" id="btnGuardarProv" class="btn btn-dark w-100 fw-bold rounded-pill shadow-sm hover-lift">
                                             <i class="bi bi-save me-1"></i> Guardar
                                         </button>
                                     </div>
@@ -237,37 +268,65 @@
             </div>
 
             <div class="tab-pane fade" id="ayuda-pane">
-                <div class="row g-3">
-                    <div class="col-md-6"><label class="form-label small fw-bold text-dark">PROGRAMA</label>{{ form.programa_ayuda }}</div>
-                    <div class="col-md-6"><label class="form-label small fw-bold text-dark">MODALIDAD</label>{{ form.tipo_pago_persona }}</div>
-                    <div class="col-12"><label class="form-label small fw-bold text-dark">DETALLE</label>{{ form.programa_ayuda_texto }}</div>
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold text-dark text-uppercase">Programa Vinculado</label>
+                        <div class="shadow-sm rounded-3">{{ form.programa_ayuda }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold text-dark text-uppercase">Modalidad de Asistencia *</label>
+                        <div class="shadow-sm rounded-3">{{ form.tipo_pago_persona }}</div>
+                    </div>
+                    <div class="col-12" id="detalleAyudaWrap">
+                        <label class="form-label small fw-bold text-dark text-uppercase">Bienes / Elementos Entregados</label>
+                        <div class="shadow-sm rounded-3">{{ form.programa_ayuda_texto }}</div>
+                    </div>
                 </div>
             </div>
 
             <div class="tab-pane fade" id="vehiculo-pane">
-                <div class="row g-3">
-                    <div class="col-md-6"><label class="form-label small fw-bold text-dark">VEHÍCULO</label>{{ form.vehiculo }}</div>
-                    <div class="col-md-3"><label class="form-label small fw-bold text-dark">LITROS</label>{{ form.litros }}</div>
-                    <div class="col-md-3"><label class="form-label small fw-bold text-dark">TIPO</label>{{ form.tipo_combustible }}</div>
-                    <div class="col-md-6"><label class="form-label small fw-bold text-dark">PRECIO UNIT.</label>{{ form.precio_unitario }}</div>
-                    <div class="col-md-6"><label class="form-label small fw-bold text-muted">INFO</label>{{ form.vehiculo_texto }}</div>
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold text-dark text-uppercase">Seleccionar Vehículo</label>
+                        <div class="shadow-sm rounded-3">{{ form.vehiculo }}</div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold text-dark text-uppercase">Litros</label>
+                        <div class="shadow-sm rounded-3">{{ form.litros }}</div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold text-dark text-uppercase">Tipo</label>
+                        <div class="shadow-sm rounded-3">{{ form.tipo_combustible }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold text-dark text-uppercase">Precio Unitario</label>
+                        <div class="shadow-sm rounded-3">{{ form.precio_unitario }}</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold text-muted text-uppercase">Info Vehículo</label>
+                        {{ form.vehiculo_texto }}
+                    </div>
                 </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="card border-0 shadow-sm rounded-4 mb-5">
+      <div class="card border-0 shadow-sm rounded-4 mb-5 bg-warning bg-opacity-10 border-warning border-opacity-25">
         <div class="card-body p-4">
-            <label class="form-label small fw-bold text-dark">NOTAS INTERNAS</label>
+            <label class="form-label small fw-bolder text-warning text-uppercase"><i class="bi bi-sticky-fill me-1"></i>Notas Internas (Uso administrativo)</label>
             {{ form.observaciones }}
         </div>
       </div>
 
       <div class="fixed-bottom bg-white border-top shadow-lg py-3" style="z-index: 1020;">
-        <div class="container d-flex justify-content-end gap-2">
-            <button type="submit" name="accion" value="borrador" class="btn btn-white border shadow-sm fw-bold text-secondary px-4">Borrador</button>
-            <button type="submit" name="accion" value="aprobar" class="btn btn-success px-5 fw-bold shadow-sm">Aprobar Operación</button>
+        <div class="container d-flex justify-content-end gap-3 px-lg-5">
+            <button type="submit" name="accion" value="borrador" class="btn btn-light border shadow-sm fw-bold text-dark px-4 rounded-pill hover-lift">
+                <i class="bi bi-save me-1"></i> Guardar Borrador
+            </button>
+            <button type="submit" name="accion" value="aprobar" class="btn btn-dark px-5 fw-bold shadow-sm rounded-pill hover-lift">
+                <i class="bi bi-check-circle-fill me-1"></i> Aprobar Operación
+            </button>
         </div>
       </div>
 
@@ -279,29 +338,29 @@
 
 {% block extra_js %}
 <style>
-    .text-indigo { color: #4f46e5 !important; }
-    
+    /* Estilos base de los inputs */
     .form-control, .form-select { 
-        border: 1px solid #cbd5e1; padding: 0.65rem 0.8rem; border-radius: 8px; 
+        border: 1px solid #cbd5e1; padding: 0.75rem 1rem; border-radius: 8px; font-weight: 500; color: #0f172a; transition: all 0.2s;
     }
     .form-control:focus, .form-select:focus { 
-        border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); 
+        border-color: #3b82f6; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15); 
     }
     
-    /* Tabs */
+    /* Cajas bloqueadas grises (Mejor contraste) */
+    input[readonly].bg-light { background-color: #f1f5f9 !important; color: #475569 !important; font-weight: 700; border-color: #e2e8f0; }
+
+    /* Estilos de las Pestañas (Tabs) */
     #assignTab .nav-link { 
-        color: #000000 !important; font-weight: 800 !important; font-size: 1rem;
+        color: #64748b !important; font-weight: 700 !important; font-size: 0.9rem;
         letter-spacing: 0.5px; border: none; border-bottom: 4px solid transparent;
-        transition: all 0.2s ease-in-out; opacity: 0.6;
+        transition: all 0.2s ease-in-out; opacity: 0.7; padding: 1rem;
     }
-    #assignTab .nav-link:hover { background-color: #f8fafc; opacity: 1; }
+    #assignTab .nav-link:hover { background-color: #f8fafc; opacity: 1; color: #0f172a !important; }
     #assignTab .nav-link.active { 
-        color: #000000 !important; opacity: 1; background: transparent; border-bottom-color: #0d6efd;
+        color: #0f172a !important; opacity: 1; background: transparent; border-bottom-color: #0f172a;
     }
-    #assignTab #ayuda-tab.active { border-bottom-color: #dc3545; }
-    #assignTab #vehiculo-tab.active { border-bottom-color: #0dcaf0; }
-    
-    input[readonly].bg-light { background-color: #e2e8f0 !important; color: #000 !important; font-weight: 600; border-color: #cbd5e1; }
+    #assignTab #ayuda-tab.active { border-bottom-color: #0ea5e9; } /* Celeste Pro */
+    #assignTab #vehiculo-tab.active { border-bottom-color: #8b5cf6; } /* Morado Pro */
 </style>
 
 <script>
@@ -312,84 +371,107 @@
             // VARIABLES
             const $tipo = $('#id_tipo');
             const $cat = $('#id_categoria');
+            const $desc = $('#id_descripcion');
             const urlApi = $('#movimientoForm').data('categorias-url');
             const $loading = $('#catLoading');
             const $badge = $('#catBadge');
             let currentAjaxRequest = null;
 
-            // --- 1. PROVEEDOR EXPRESS ---
-            $('#btnGuardarProv').click(function() {
-                const nombre = $('#new_prov_nombre').val().trim();
-                const cuit = $('#new_prov_cuit').val().trim();
-                const btn = $(this);
-
-                if (!nombre) {
-                    Swal.fire("Falta nombre", "Debes ingresar la Razón Social", "warning");
-                    return;
+            // --- 1. FUNCIÓN CENTRAL DEL EFECTO DOMINÓ ---
+            function generarDescripcionAutomatica() {
+                let textoFinal = "";
+                let nombreCategoria = "";
+                
+                if ($cat.val()) {
+                    let data = $cat.select2('data');
+                    nombreCategoria = (data && data.length > 0 && data[0].text) ? data[0].text : $cat.find('option:selected').text();
+                    nombreCategoria = nombreCategoria.trim();
+                }
+                
+                let benData = $('#id_beneficiario').select2('data');
+                let provData = $('#id_proveedor').select2('data');
+                let vehData = $('#id_vehiculo').select2('data');
+                
+                let nombrePersona = "";
+                let nombreProveedor = "";
+                let nombreVehiculo = "";
+                
+                if (benData && benData.length > 0 && benData[0].id) {
+                    if (benData[0].apellido && benData[0].nombre) {
+                        nombrePersona = benData[0].apellido + ", " + benData[0].nombre;
+                    } else {
+                        nombrePersona = benData[0].text.split('(')[0].trim();
+                    }
+                }
+                
+                if (provData && provData.length > 0 && provData[0].id) {
+                    nombreProveedor = provData[0].text.split('(')[0].trim();
                 }
 
-                btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+                if (vehData && vehData.length > 0 && vehData[0].id) {
+                    nombreVehiculo = vehData[0].text;
+                }
+                
+                if (nombreCategoria) {
+                    textoFinal += nombreCategoria;
+                }
+                
+                if (nombrePersona) {
+                    textoFinal += (textoFinal ? " - " : "") + nombrePersona;
+                } else if (nombreProveedor) {
+                    textoFinal += (textoFinal ? " - " : "") + nombreProveedor;
+                } else if (nombreVehiculo) {
+                    textoFinal += (textoFinal ? " - " : "") + nombreVehiculo;
+                }
+                
+                if (textoFinal) {
+                    $desc.val(textoFinal);
+                }
+            }
 
-                $.ajax({
-                    url: "{% url 'finanzas:proveedor_create_express' %}",
-                    type: "POST",
-                    data: {
-                        'razon_social': nombre,
-                        'cuit': cuit,
-                        'csrfmiddlewaretoken': $('input[name=csrfmiddlewaretoken]').val()
-                    },
-                    success: function(response) {
-                        var newOption = new Option(response.text, response.id, true, true);
-                        $('#id_proveedor').append(newOption).trigger('change');
-                        $('#id_proveedor_nombre').val(response.razon_social);
-                        $('#id_proveedor_cuit').val(response.cuit);
-                        $('#provNuevoBox').collapse('hide');
-                        $('#new_prov_nombre').val('');
-                        $('#new_prov_cuit').val('');
-                        Swal.fire({
-                            icon: 'success', title: '¡Creado!',
-                            text: 'Proveedor agregado correctamente',
-                            timer: 1500, showConfirmButton: false
-                        });
-                    },
-                    error: function(xhr) {
-                        let msg = "Error desconocido";
-                        if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
-                        Swal.fire("Error", msg, "error");
-                    },
-                    complete: function() {
-                        btn.prop('disabled', false).html('<i class="bi bi-save me-1"></i> Guardar');
-                    }
-                });
-            });
-
-            // --- 2. AUTOCOMPLETADOS ---
+            // --- 2. EVENTOS DE AUTOCOMPLETADO (DOMINÓ) ---
             
-            // PERSONA
             $('#id_beneficiario').on('select2:select', function(e) {
                 var data = e.params.data;
                 var nombre = data.nombre && data.apellido ? data.apellido + ", " + data.nombre : data.text.split('(')[0].trim();
                 var dni = data.dni || data.documento || (data.text.match(/\(([^)]+)\)/) || [])[1] || '';
                 $('#id_beneficiario_nombre').val(nombre);
                 $('#id_beneficiario_dni').val(dni);
+                generarDescripcionAutomatica();
             });
+
             $('#id_beneficiario').on('select2:clear', function() {
                 $('#id_beneficiario_nombre').val(''); $('#id_beneficiario_dni').val('');
             });
 
-            // PROVEEDOR
             $('#id_proveedor').on('select2:select', function(e) {
                 var data = e.params.data;
                 var nombre = data.text.split('(')[0].trim();
                 var cuit = data.cuit || (data.text.match(/\(([^)]+)\)/) || [])[1] || '';
                 $('#id_proveedor_nombre').val(nombre);
                 $('#id_proveedor_cuit').val(cuit);
+                generarDescripcionAutomatica();
             });
+            
             $('#id_proveedor').on('select2:clear', function() {
                 $('#id_proveedor_nombre').val(''); $('#id_proveedor_cuit').val('');
             });
 
-            // --- 3. LÓGICA CATEGORÍAS ---
+            $('#id_vehiculo').on('select2:select', function(e) {
+                generarDescripcionAutomatica();
+            });
+
+            // Lógica visual para la Modalidad de Ayuda Social
+            $('#id_tipo_pago_persona').on('change', function() {
+                var val = $(this).val();
+                if(val === 'EFECTIVO' || val === 'TRANSFERENCIA' || val === 'NINGUNO') {
+                    $('#detalleAyudaWrap').addClass('d-none');
+                } else {
+                    $('#detalleAyudaWrap').removeClass('d-none');
+                }
+            });
+
+            // --- 3. LÓGICA DE CATEGORÍAS Y TABS ---
             function cargarCategorias() {
                 const tipoValor = $tipo.val();
                 if (currentAjaxRequest) currentAjaxRequest.abort();
@@ -432,46 +514,41 @@
                 });
             }
 
-            // === LÓGICA DE VISIBILIDAD (CORREGIDA) ===
+            // === LÓGICA DE VISIBILIDAD (CAJAS Y PESTAÑAS) ===
             function actualizarInterfaz() {
                 const tipoTexto = ($tipo.val() || "").toUpperCase();
                 const esIngreso = tipoTexto.includes("INGRESO");
                 const esTransferencia = tipoTexto.includes("TRANSFERENCIA");
-                
-                // GASTO se asume si no es ninguno de los otros dos y hay algo seleccionado
                 const esGasto = (!esIngreso && !esTransferencia && tipoTexto !== "");
 
-                // 1. PERSONA: Visible en INGRESO y GASTO. Oculta SOLO en TRANSFERENCIA.
                 if (esTransferencia) {
                     $('#personaCard').addClass('d-none');
                 } else {
                     $('#personaCard').removeClass('d-none');
                 }
                 
-                // 2. PROVEEDOR / AYUDA / COMBUSTIBLE: Visible SOLO en GASTO.
-                // (En ingresos, solo necesitamos la persona que paga, no proveedores)
                 if (esGasto) {
                     $('#assignCard').removeClass('d-none');
                 } else {
                     $('#assignCard').addClass('d-none');
                 }
 
-                // 3. CUENTAS
-                // Origen: Oculto en INGRESO (la plata "aparece" en la cuenta destino)
+                // Lógica de Cajas Reales
                 if (esIngreso) {
-                    $('#cuentaOrigenWrap').addClass('d-none');
-                } else {
-                    $('#cuentaOrigenWrap').removeClass('d-none');
-                }
-
-                // Destino: Oculto en GASTO (la plata sale de la cuenta origen)
-                if (esGasto) {
-                    $('#cuentaDestinoWrap').addClass('d-none');
-                } else {
+                    $('#cuentaOrigenWrap').addClass('d-none'); // En ingreso, entra plata (No hay origen)
                     $('#cuentaDestinoWrap').removeClass('d-none');
+                } else if (esGasto) {
+                    $('#cuentaOrigenWrap').removeClass('d-none'); // En gasto, sale plata (Hay origen)
+                    $('#cuentaDestinoWrap').addClass('d-none');
+                } else if (esTransferencia) {
+                    $('#cuentaOrigenWrap').removeClass('d-none');
+                    $('#cuentaDestinoWrap').removeClass('d-none');
+                } else {
+                    $('#cuentaOrigenWrap').addClass('d-none');
+                    $('#cuentaDestinoWrap').addClass('d-none');
                 }
 
-                // 4. PESTAÑAS AUTOMÁTICAS (Solo para Gastos)
+                // Lógica de Pestañas Automáticas (Gastos)
                 if (esGasto) {
                     let esAyuda = false;
                     let esComb = false;
@@ -489,14 +566,19 @@
                     } catch(e) {}
 
                     if (esAyuda) {
-                        $badge.removeClass('d-none bg-secondary bg-info').addClass('bg-danger').html('<i class="bi bi-heart"></i> Ayuda Social');
+                        $badge.removeClass('d-none bg-secondary bg-info bg-dark').addClass('bg-primary').text('Ayuda Social');
                         new bootstrap.Tab('#ayuda-tab').show();
-                    } else if (esComb) {
-                        $badge.removeClass('d-none bg-secondary bg-danger').addClass('bg-info text-dark').html('<i class="bi bi-fuel-pump"></i> Combustible');
-                        new bootstrap.Tab('#vehiculo-tab').show();
+                        $('#id_tipo_pago_persona').trigger('change');
                     } else {
-                        $badge.addClass('d-none');
-                        new bootstrap.Tab('#proveedor-tab').show();
+                        $('#id_tipo_pago_persona').val('NINGUNO'); // Blanqueo de seguridad
+                        
+                        if (esComb) {
+                            $badge.removeClass('d-none bg-secondary bg-primary bg-dark').addClass('bg-info text-dark').text('Combustible');
+                            new bootstrap.Tab('#vehiculo-tab').show();
+                        } else {
+                            $badge.removeClass('bg-primary bg-info').addClass('bg-dark text-white').removeClass('d-none').text('Gasto General');
+                            new bootstrap.Tab('#proveedor-tab').show();
+                        }
                     }
                 } else {
                     $badge.addClass('d-none');
@@ -504,7 +586,11 @@
             }
 
             $tipo.on('change', function() { cargarCategorias(); });
-            $cat.on('change', function() { actualizarInterfaz(); });
+            
+            $cat.on('change', function() { 
+                actualizarInterfaz(); 
+                generarDescripcionAutomatica();
+            });
 
             $('#id_beneficiario, #id_proveedor, #id_vehiculo').select2({ theme: 'bootstrap-5', width: '100%' });
 
@@ -515,6 +601,64 @@
                 $cat.select2({ theme: 'bootstrap-5', width: '100%' });
             }
             actualizarInterfaz();
+            
+            if(esEdicion){
+                $('#id_tipo_pago_persona').trigger('change');
+            }
+
+            // --- 4. PROVEEDOR EXPRESS ---
+            $('#btnGuardarProv').click(function() {
+                const nombre = $('#new_prov_nombre').val().trim();
+                const cuit = $('#new_prov_cuit').val().trim();
+                const btn = $(this);
+
+                if (!nombre) {
+                    Swal.fire("Atención", "Debe ingresar la Razón Social", "warning");
+                    return;
+                }
+
+                btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+
+                $.ajax({
+                    url: "{% url 'finanzas:proveedor_create_express' %}",
+                    type: "POST",
+                    data: {
+                        'razon_social': nombre,
+                        'cuit': cuit,
+                        'csrfmiddlewaretoken': $('input[name=csrfmiddlewaretoken]').val()
+                    },
+                    success: function(response) {
+                        var newOption = new Option(response.text, response.id, true, true);
+                        $('#id_proveedor').append(newOption).trigger('change');
+                        $('#provNuevoBox').collapse('hide');
+                        $('#new_prov_nombre').val('');
+                        $('#new_prov_cuit').val('');
+                        Swal.fire({
+                            icon: 'success', title: 'Registro exitoso',
+                            text: 'Proveedor agregado al padrón',
+                            timer: 1500, showConfirmButton: false
+                        });
+                    },
+                    error: function(xhr) {
+                        let msg = "Error en el servidor";
+                        if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                        Swal.fire("Error", msg, "error");
+                    },
+                    complete: function() {
+                        btn.prop('disabled', false).html('<i class="bi bi-save me-1"></i> Guardar');
+                    }
+                });
+            });
+            
+            // 🎭 MAGIA EXPERTA: Enmascarar "Banco Santa Fe" a "Caja Comuna de Tacuarendí"
+            // Esto asegura que si agregas otra cuenta (ej: "Caja Fuerte") en el futuro, no se pisen.
+            $('#id_cuenta_origen option, #id_cuenta_destino option').each(function() {
+                let texto = $(this).text().toUpperCase();
+                if (texto.includes('SANTA FE') || texto.includes('BANCO')) {
+                    $(this).text('Caja Comuna de Tacuarendí');
+                }
+            });
+
         });
     })(jQuery);
 </script>

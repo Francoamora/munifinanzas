@@ -116,11 +116,17 @@
           </div>
 
           <div class="mb-4">
-            <label class="form-label fw-bold text-dark small text-uppercase">Notas / Observaciones</label>
-            {{ form.observaciones }}
+            <label class="form-label fw-bold text-dark small text-uppercase mb-2 d-flex align-items-center gap-2">
+              <i class="bi bi-journal-text text-secondary fs-6"></i> Notas / Observaciones
+            </label>
+            <div class="textarea-pro-wrapper">
+              {{ form.observaciones }}
+            </div>
+            <div class="form-text small text-muted mt-2">
+              <i class="bi bi-info-circle me-1"></i> Detalles adicionales sobre el destino, estado del vehículo o pasajeros.
+            </div>
           </div>
-
-          <div class="d-grid gap-2 pt-3">
+          <div class="d-grid gap-2 pt-4 border-top mt-5">
             <button type="submit" class="btn btn-primary btn-lg fw-bold shadow hover-lift py-3">
               <i class="bi bi-save2 me-2"></i>CONFIRMAR SALIDA
             </button>
@@ -152,6 +158,29 @@
   /* READONLY INPUTS */
   input[readonly], input:disabled { background-color: #e2e8f0 !important; color: #64748b; }
   
+  /* === ESTILOS BLINDADOS TEXTAREA PRO === */
+  .textarea-pro-wrapper textarea {
+      display: block;
+      width: 100%; /* Obliga a ocupar todo el ancho */
+      min-height: 120px;
+      resize: vertical; /* Estira solo hacia abajo */
+      background-color: #f8fafc;
+      border: 1px solid #cbd5e1; /* Borde unificado */
+      border-radius: 8px; /* Redondeo igual que los inputs */
+      padding: 0.75rem 1rem;
+      font-size: 0.95rem;
+      color: #334155;
+      line-height: 1.5;
+      outline: none; /* Elimina el foco negro por defecto del navegador */
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);
+      transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .textarea-pro-wrapper textarea:focus {
+      background-color: #ffffff;
+      border-color: #0d6efd; /* Azul de foco */
+      box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15); /* Mismo resplandor que los inputs */
+  }
+  
   /* TRANSICIONES SUAVES */
   .transition-all { transition: all 0.3s ease; }
 </style>
@@ -172,7 +201,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const urlVehiculoBase = $('#hojaRutaForm').data('url-vehiculo-base'); // URL con '/0/detalle/'
 
     // --- 1. INICIALIZAR SELECT2 VEHÍCULO ---
-    // Usamos select2 básico para el vehículo (ya que son pocos comparado con personas)
     $vehiculo.select2({
         theme: 'bootstrap-5',
         width: '100%',
@@ -188,14 +216,9 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // Construir URL real reemplazando el placeholder '0' o '/0/'
-        // La URL base viene como ".../api/vehiculos/0/detalle/"
         const finalUrl = urlVehiculoBase.replace('/0/', '/' + vehiculoId + '/');
-
-        // Deshabilitar input mientras carga
         $odometro.prop('readonly', true).addClass('opacity-50');
 
-        // Llamada a la API
         fetch(finalUrl)
             .then(response => {
                 if (!response.ok) throw new Error("Error API");
@@ -203,29 +226,24 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .then(data => {
                 console.log("Datos Vehículo:", data);
-                // Rellenar input
                 const km = data.kilometraje || 0;
                 $odometro.val(km);
                 
-                // Mostrar feedback visual
                 $kmRef.text(km);
                 $feedback.removeClass('d-none');
                 
-                // Efecto visual (flash verde)
                 $odometro.addClass('bg-success bg-opacity-10 border-success');
                 setTimeout(() => $odometro.removeClass('bg-success bg-opacity-10 border-success'), 1500);
             })
             .catch(err => {
                 console.error("Error cargando KM:", err);
-                // Si falla, permitir edición manual pero avisar en consola
             })
             .finally(() => {
-                // Habilitar siempre para permitir corrección manual si el odómetro real difiere
                 $odometro.prop('readonly', false).removeClass('opacity-50');
             });
     });
 
-    // --- 3. SELECT2 AJAX PARA CHOFER (LA SOLUCIÓN AL DESPLIEGUE GIGANTE) ---
+    // --- 3. SELECT2 AJAX PARA CHOFER ---
     $chofer.select2({
         theme: 'bootstrap-5',
         width: '100%',
@@ -256,27 +274,23 @@ document.addEventListener('DOMContentLoaded', function() {
         const hayChofer = $chofer.val(); // Si hay valor seleccionado
         
         if (hayChofer) {
-            // Si eligió del padrón, bloqueamos el manual y lo limpiamos
             $choferNombre.val('').prop('readonly', true).addClass('bg-light');
         } else {
-            // Si no hay selección, permitimos escribir
             $choferNombre.prop('readonly', false).removeClass('bg-light');
         }
     }
 
     $chofer.on('change select2:select select2:clear', toggleManualInput);
     
-    // Si escribe en manual, limpiamos el select2
     $choferNombre.on('input', function() {
         if ($(this).val().length > 0) {
-            $chofer.val(null).trigger('change.select2'); // No disparar evento 'change' recursivo
+            $chofer.val(null).trigger('change.select2'); 
         }
     });
 
     // --- 5. INICIALIZACIÓN ---
     toggleManualInput();
     
-    // Si es edición o recarga y ya hay vehículo seleccionado, traer el KM
     if ($vehiculo.val() && !$odometro.val()) {
         $vehiculo.trigger({
             type: 'select2:select', 

@@ -101,6 +101,8 @@ if has_oc:
         path("ordenes-compra/nueva/", views_oc.OCCreateView.as_view(), name="oc_create"),
         path("ordenes-compra/<int:pk>/", views_oc.OCDetailView.as_view(), name="oc_detail"),
         path("ordenes-compra/<int:pk>/editar/", views_oc.OCUpdateView.as_view(), name="oc_update"),
+        # Agregar junto a las otras de OC
+        path("ordenes-compra/autorizar-masivo/", views_oc.OCAutorizarMasivoView.as_view(), name="oc_autorizar_masivo"),
         
         # Acciones de Estado (Apuntando a views_oc que es donde está la lógica nueva)
         path("ordenes-compra/<int:pk>/cambiar-estado/<str:accion>/", views_oc.OCCambiarEstadoView.as_view(), name="oc_cambiar_estado"),

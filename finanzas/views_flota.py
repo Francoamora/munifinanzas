@@ -10,6 +10,9 @@ from django.db import transaction
 from django.views.decorators.http import require_GET
 from django.contrib.auth.decorators import login_required
 
+# --- IMPORTACIONES CLAVE PARA FECHAS ---
+from datetime import datetime, timedelta, date
+
 # Modelos y Forms
 from .models import Vehiculo, HojaRuta, Movimiento, Traslado, OrdenCompraLinea, OrdenCompra
 from .forms import VehiculoForm, HojaRutaForm, HojaRutaCierreForm, TrasladoForm
@@ -76,8 +79,8 @@ class VehiculoDetailView(OperadorSocialRequiredMixin, DetailView):
         # Historial reciente
         ctx["hojas_ruta"] = self.object.hojas_ruta.select_related("chofer").order_by("-fecha")[:10]
         
-        # Estadísticas Semestrales (Solo si ve dinero mostramos montos, sino 0)
-        inicio_stats = timezone.now().date() - timezone.timedelta(days=180)
+        # Estadísticas Semestrales
+        inicio_stats = timezone.now().date() - timedelta(days=180)
         
         # 1. Cargas por Caja (Movimientos)
         cargas_caja = self.object.cargas_combustible.filter(
@@ -87,11 +90,6 @@ class VehiculoDetailView(OperadorSocialRequiredMixin, DetailView):
             total=Sum("monto"),
             litros=Sum("litros")
         )
-        
-        # 2. Cargas por Orden de Compra (OCs)
-        # Asumimos que OrdenCompraLinea tiene un campo 'vehiculo' (si no lo tiene, avisame)
-        # Si no tenés 'vehiculo' en la línea de OC, este cálculo no se puede hacer por vehículo individual
-        # (Por ahora dejamos solo Movimientos en el detalle individual si no está el campo)
         
         monto_caja = cargas_caja["total"] or 0
         litros_caja = cargas_caja["litros"] or 0
@@ -217,36 +215,56 @@ class FlotaCombustibleResumenView(SoloFinanzasMixin, TemplateView):
     
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
+        
+        # --- 1. LECTURA DINÁMICA DE FECHAS DESDE LA URL ---
         hoy = timezone.now().date()
-        inicio_mes = hoy.replace(day=1)
+        desde_str = self.request.GET.get("desde")
+        hasta_str = self.request.GET.get("hasta")
+
+        # Setear fechas por defecto (Mes actual) o desde el filtro
+        try:
+            if desde_str:
+                inicio_periodo = datetime.strptime(desde_str, "%Y-%m-%d").date()
+            else:
+                inicio_periodo = hoy.replace(day=1)
+                
+            if hasta_str:
+                fin_periodo = datetime.strptime(hasta_str, "%Y-%m-%d").date()
+            else:
+                fin_periodo = hoy
+        except ValueError:
+            # Si el usuario escribe una fecha inválida, volvemos al mes por defecto
+            inicio_periodo = hoy.replace(day=1)
+            fin_periodo = hoy
+
+        # 🚀 Filtro Anti-SQLite (Atrapa-horas)
+        fecha_limite = fin_periodo + timedelta(days=1)
+
+        # --- 2. LÓGICA HÍBRIDA (CAJA + OCs) ---
         
-        # --- LÓGICA HÍBRIDA (CAJA + OCs) ---
-        
-        # 1. Gasto por Movimientos de Caja (Pago directo)
+        # A. Gasto por Movimientos de Caja (Pago directo)
         movs_caja = Movimiento.objects.filter(
             tipo=Movimiento.TIPO_GASTO,
             estado=Movimiento.ESTADO_APROBADO,
             categoria__es_combustible=True,
             vehiculo__isnull=False,
-            fecha_operacion__gte=inicio_mes
+            fecha_operacion__gte=inicio_periodo,
+            fecha_operacion__lt=fecha_limite  # Uso del límite estricto
         ).values('vehiculo__patente', 'vehiculo__descripcion').annotate(
             total_dinero=Sum('monto'),
             total_litros=Sum('litros'),
             cantidad_cargas=Count('id')
         )
 
-        # 2. Gasto por Órdenes de Compra (Crédito)
-        # Importante: Solo si tenés un campo 'vehiculo' en OrdenCompra o OrdenCompraLinea.
-        # Si no lo tenés, las OCs se suman al total general pero no se pueden asignar a un vehículo específico.
-        # Asumo que NO lo tenés por ahora, así que sumamos al total general.
-        
+        # B. Gasto por Órdenes de Compra (Crédito)
         gasto_ocs_total = OrdenCompraLinea.objects.filter(
-            orden__fecha_oc__gte=inicio_mes,
-            orden__rubro_principal='CB', # Rubro Combustible
+            orden__fecha_oc__gte=inicio_periodo,
+            orden__fecha_oc__lt=fecha_limite,  # Uso del límite estricto
+            orden__rubro_principal='CB', 
             orden__estado__in=[OrdenCompra.ESTADO_AUTORIZADA, OrdenCompra.ESTADO_CERRADA]
         ).aggregate(t=Sum('monto'))['t'] or 0
 
-        # Procesamos los datos por vehículo (Solo Caja por ahora)
+        # --- 3. PROCESAMIENTO DE DATOS ---
         datos_por_vehiculo = []
         total_dinero_caja = 0
         total_litros_caja = 0
@@ -266,14 +284,20 @@ class FlotaCombustibleResumenView(SoloFinanzasMixin, TemplateView):
         # Totales Generales (Caja + OCs)
         total_dinero_real = total_dinero_caja + gasto_ocs_total
 
+        # --- 4. CONTEXTO A ENVIAR AL TEMPLATE ---
         ctx.update({
-            'reporte_vehiculos': datos_por_vehiculo, # Detalle por auto (solo caja)
-            'total_dinero_mes': total_dinero_real,   # Total Real (Caja + OCs)
-            'total_litros_mes': total_litros_caja,   # Litros (solo caja, OCs no suelen tener litros detallados)
-            'gasto_ocs_general': gasto_ocs_total,    # Dato extra para mostrar cuánto es fiado
-            'desde_fecha': inicio_mes,
-            'hasta_fecha': hoy
+            'reporte_vehiculos': datos_por_vehiculo, 
+            'total_dinero_mes': total_dinero_real,   
+            'total_litros_mes': total_litros_caja,   
+            'gasto_ocs_general': gasto_ocs_total,    
+            'desde_fecha': inicio_periodo,           
+            'hasta_fecha': fin_periodo               
         })
+        
+        # Mantenemos menú de roles sincronizado
+        if 'roles_ctx' in globals(): 
+            ctx.update(roles_ctx(self.request.user))
+            
         return ctx
 
 # =========================================================

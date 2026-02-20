@@ -1,22 +1,51 @@
-# Python
+# ==========================================
+# PYTHON & DJANGO
+# ==========================================
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# Entorno Virtual (¡Muy importante no subirlo!)
+# ==========================================
+# ENTORNOS VIRTUALES Y VARIABLES SENSIBLES
+# ==========================================
 venv/
 env/
+.venv/
 .env
+*.env
 
-# Base de Datos (Por seguridad y privacidad de la gente, NO subir a GitHub)
+# ==========================================
+# BASES DE DATOS LOCALES (SEGURIDAD MÁXIMA)
+# ==========================================
 db.sqlite3
 db_vieja.sqlite3
+db.sqlite3-journal
+db.sqlite3-shm
+db.sqlite3-wal
 
-# Archivos estáticos y media generados
+# ==========================================
+# CARPETAS DE PRUEBA / DESARROLLO
+# ==========================================
+pruebadatosreales/
+pruebadatosreales
+
+# ==========================================
+# ARCHIVOS ESTÁTICOS Y MULTIMEDIA
+# ==========================================
 staticfiles/
 media/
 
-# Archivos de sistema Mac
+# ==========================================
+# LOGS Y CACHÉ
+# ==========================================
+*.log
+.pytest_cache/
+
+# ==========================================
+# SISTEMA OPERATIVO Y CONFIGURACIÓN DE IDEs
+# ==========================================
 .DS_Store
-
-
-db.sqlite3
+Thumbs.db
+.vscode/
+.idea/
