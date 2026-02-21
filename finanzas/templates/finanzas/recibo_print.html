@@ -13,30 +13,41 @@
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #555; /* Fondo oscuro para la vista web */
+            background-color: #555; 
             margin: 0;
             padding: 20px;
         }
 
-        /* Hoja A4 en Pantalla */
+        /* 🚀 FIX EXPERTO: Le decimos al navegador que respete el A4 y elimine sus márgenes automáticos al imprimir */
+        @page {
+            size: A4;
+            margin: 0mm; 
+        }
+
+        /* Hoja A4 en Pantalla y PDF */
         .page-a4 {
             background: white;
             width: 210mm;
-            min-height: 297mm;
+            height: 297mm; /* 🚀 Altura exacta obligatoria */
             margin: 0 auto;
-            padding: 10mm 15mm;
+            padding: 12mm 15mm; /* Márgenes internos seguros */
+            box-sizing: border-box; /* 🚀 Evita que el padding sume milímetros extra */
             box-shadow: 0 0 15px rgba(0,0,0,0.5);
             position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between; /* Distribuye arriba y abajo perfecto */
         }
 
         /* ESTILOS DEL RECIBO */
         .recibo-box {
             border: 2px solid #000;
             border-radius: 12px;
-            padding: 25px;
-            margin-bottom: 40px; /* Espacio para el corte */
+            padding: 20px 25px; /* Reducido un poquito para cuidar espacio */
             position: relative;
-            height: 130mm; /* Altura fija para que entren 2 */
+            height: 125mm; /* 🚀 FIX: Bajamos de 130mm a 125mm para darle aire */
+            display: flex;
+            flex-direction: column;
         }
 
         .brand-section h1 { font-size: 1.4rem; font-weight: 800; text-transform: uppercase; margin-bottom: 0; line-height: 1; }
@@ -64,7 +75,7 @@
         }
 
         .total-section {
-            margin-top: 20px;
+            margin-top: auto; /* 🚀 FIX: Empuja esto SIEMPRE hacia abajo */
             display: flex;
             justify-content: flex-end;
         }
@@ -79,7 +90,7 @@
         }
 
         .footer-legal {
-            margin-top: 30px;
+            margin-top: 20px;
             border-top: 1px solid #ccc;
             padding-top: 5px;
             font-size: 0.7rem;
@@ -90,9 +101,9 @@
 
         .corte-linea {
             border-top: 2px dashed #aaa;
-            margin: 20px 0;
+            margin: 0; /* 🚀 Le quitamos el margen porque usamos flexbox */
             text-align: center;
-            height: 20px;
+            height: 0;
             position: relative;
         }
         .corte-icon {
@@ -106,7 +117,7 @@
             font-size: 1.2rem;
         }
 
-        /* Botón Flotante para Imprimir (Solo visible en pantalla) */
+        /* Botón Flotante para Imprimir */
         .fab-print {
             position: fixed;
             bottom: 30px;
@@ -128,14 +139,12 @@
         }
         .fab-print:hover { transform: scale(1.1); background: #0b5ed7; }
 
-        /* REGLAS DE IMPRESIÓN */
+        /* REGLAS ESTRICTAS DE IMPRESIÓN */
         @media print {
             body { background: none; margin: 0; padding: 0; }
-            .page-a4 { box-shadow: none; margin: 0; width: 100%; height: auto; padding: 0; }
+            .page-a4 { box-shadow: none; margin: 0; width: 210mm; height: 297mm; }
             .fab-print { display: none !important; }
             .no-print { display: none !important; }
-            
-            /* Forzar colores de fondo */
             * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
     </style>

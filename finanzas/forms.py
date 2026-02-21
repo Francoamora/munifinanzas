@@ -1411,3 +1411,114 @@ class DocumentoSensibleForm(EstiloFormMixin, forms.ModelForm):
         widgets = {
             'descripcion': forms.TextInput(attrs={'placeholder': 'Referencia interna (Opcional)'}),
         }
+
+
+# =========================================================
+# 9) PROVEEDORES Y COMERCIOS (Agenda Limpia)
+# =========================================================
+
+class ProveedorForm(EstiloFormMixin, forms.ModelForm):
+    class Meta:
+        model = Proveedor
+        fields = [
+            "nombre", "cuit", "direccion", "telefono", "email", 
+            "rubro", "alias", "cbu", "activo",
+            # --- Campos DReI ---
+            "es_contribuyente_drei", "padron_drei" # Solo dejamos Padrón para ID
+        ]
+        widgets = {
+            "direccion": forms.TextInput(attrs={"placeholder": "Calle y Número"}),
+            "cuit": forms.TextInput(attrs={"placeholder": "Sin guiones"}),
+            "padron_drei": forms.TextInput(attrs={"placeholder": "Dejar vacío para generar automáticamente"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['es_contribuyente_drei'].widget.attrs.update({'class': 'form-check-input'})
+        self.fields['padron_drei'].widget.attrs.update({'class': 'form-control drei-field'})
+
+    def clean(self):
+        cleaned = super().clean()
+        es_drei = cleaned.get("es_contribuyente_drei")
+        
+        # 🚀 FIX: Quitamos la validación que obligaba a cargar el padrón manualmente, 
+        # así el models.py puede autogenerarlo si viene vacío.
+        
+        if not es_drei:
+            # Si lo destildan, limpiamos el padrón para que no quede basura
+            cleaned["padron_drei"] = ""
+
+        return cleaned
+
+
+# =========================================================
+# 10) DECLARACIONES JURADAS DREI (Con Alícuota Manual)
+# =========================================================
+from .models import DeclaracionJuradaDrei, RubroDrei
+from django.core.exceptions import ValidationError
+
+class DeclaracionJuradaDreiForm(EstiloFormMixin, forms.ModelForm):
+    # 🚀 FIX: El usuario ingresa plata con comas.
+    ingresos_declarados = MontoDecimalField(
+        max_digits=15, decimal_places=2,
+        widget=forms.TextInput(attrs={
+            "inputmode": "decimal", 
+            "autocomplete": "off", 
+            "placeholder": "Facturación bruta...",
+            "class": "form-control text-end fw-bold text-success fs-5"
+        })
+    )
+
+    class Meta:
+        model = DeclaracionJuradaDrei
+        # 🚀 FIX: Agregamos actividad y alicuota_manual a la vista
+        fields = ["anio", "mes", "actividad", "ingresos_declarados", "alicuota_manual", "observaciones"]
+        widgets = {
+            "anio": forms.NumberInput(attrs={"placeholder": "Ej: 2026", "class": "form-control fw-bold text-center"}),
+            "mes": forms.Select(attrs={"class": "form-select fw-bold text-center"}),
+            "actividad": forms.Select(attrs={"class": "form-select fw-medium"}),
+            
+            # 🚀 FIX EXPERTO: Actualizamos las instrucciones visuales para la nueva matemática
+            "alicuota_manual": forms.NumberInput(attrs={
+                "step": "0.001", # Permite decimales como 0.5 o 0.75 sin tirar error de HTML
+                "class": "form-control text-end fw-bold fs-5 text-teal",
+                "placeholder": "Ej: 0.5",
+                "title": "Ejemplo: Para un 5% escriba 5. Para medio por ciento escriba 0.5"
+            }),
+            "observaciones": forms.Textarea(attrs={"rows": 2, "placeholder": "Aclaraciones o notas internas..."}),
+        }
+
+    def __init__(self, *args, comercio=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.comercio = comercio
+        
+        # Hacemos que el combo de actividades sea buscable (si usás select2 en frontend)
+        self.fields['actividad'].queryset = RubroDrei.objects.filter(activo=True)
+        self.fields['actividad'].empty_label = "Seleccione la Actividad Gravada..."
+        
+        if not self.instance.pk:
+            from django.utils import timezone
+            self.fields['anio'].initial = timezone.now().year
+            
+            mes_actual = timezone.now().month
+            mes_sugerido = mes_actual - 1 if mes_actual > 1 else 12
+            self.fields['mes'].initial = mes_sugerido
+            
+            if mes_sugerido == 12:
+                self.fields['anio'].initial = timezone.now().year - 1
+
+    def clean(self):
+        cleaned = super().clean()
+        anio = cleaned.get("anio")
+        mes = cleaned.get("mes")
+
+        # Evitar duplicados de DDJJ
+        if anio and mes and self.comercio:
+            qs = DeclaracionJuradaDrei.objects.filter(comercio=self.comercio, anio=anio, mes=mes)
+            if self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            
+            if qs.exists():
+                raise ValidationError(f"Este comercio ya presentó la DDJJ para el período {mes}/{anio}.")
+                
+        return cleaned

@@ -1,11 +1,12 @@
 from django.contrib import admin
 from unfold.admin import ModelAdmin  # <--- EL MOTOR VISUAL DE UNFOLD
 
-# Importamos todos tus modelos
+# Importamos todos tus modelos, INCLUYENDO LOS NUEVOS DEL DREI
 from .models import (
     Area, Cuenta, Categoria, Proveedor, Beneficiario,
     Movimiento, OrdenPago, OrdenCompra, HojaRuta, Traslado, 
-    Vehiculo, Atencion, ProgramaAyuda
+    Vehiculo, Atencion, ProgramaAyuda,
+    RubroDrei, DeclaracionJuradaDrei, LiquidacionDrei
 )
 
 @admin.register(Area)
@@ -15,7 +16,7 @@ class AreaAdmin(ModelAdmin):
 
 @admin.register(Cuenta)
 class CuentaAdmin(ModelAdmin):
-    list_display = ("nombre", "tipo", "activa")
+    list_display = ("nombre", "tipo", "saldo", "activa")
     list_filter = ("tipo", "activa")
 
 @admin.register(Categoria)
@@ -27,9 +28,27 @@ class CategoriaAdmin(ModelAdmin):
 
 @admin.register(Proveedor)
 class ProveedorAdmin(ModelAdmin):
-    list_display = ("nombre", "cuit", "activo")
-    search_fields = ("nombre", "cuit", "rubro")
-    list_filter = ("activo",)
+    # 🚀 FIX: Quitamos rubro_drei del list_display
+    list_display = ("nombre", "cuit", "es_contribuyente_drei", "padron_drei", "activo")
+    search_fields = ("nombre", "cuit", "rubro", "padron_drei")
+    # 🚀 FIX: Quitamos regimen_simplificado del list_filter
+    list_filter = ("activo", "es_contribuyente_drei")
+    
+    # 🚀 MAGIA DE UNFOLD: Separamos la vista en bloques elegantes
+    fieldsets = (
+        ("Datos Comerciales", {
+            "fields": ("nombre", "cuit", "rubro", "direccion", "telefono", "email", "activo")
+        }),
+        ("Datos Bancarios", {
+            "fields": ("alias", "cbu"),
+            "classes": ("collapse",) # Se puede ocultar
+        }),
+        ("Módulo Tributario (DReI)", {
+            # 🚀 FIX: Dejamos solo los campos impositivos que quedaron en Proveedor
+            "fields": ("es_contribuyente_drei", "padron_drei"),
+            "description": "Configuración impositiva básica para la Comuna."
+        }),
+    )
 
 @admin.register(Beneficiario)
 class BeneficiarioAdmin(ModelAdmin):
@@ -63,14 +82,12 @@ class OrdenCompraAdmin(ModelAdmin):
 
 @admin.register(Vehiculo)
 class VehiculoAdmin(ModelAdmin):
-    # Agregamos 'marca' y 'tipo' que ahora existen en el modelo
     list_display = ("patente", "descripcion", "marca", "activo", "kilometraje_referencia")
     list_filter = ("activo", "tipo")
     search_fields = ("patente", "descripcion", "marca")
 
 @admin.register(HojaRuta)
 class HojaRutaAdmin(ModelAdmin):
-    # Usamos km_recorridos que ahora es un campo real
     list_display = ("fecha", "vehiculo", "chofer_nombre", "estado", "km_recorridos")
     list_filter = ("estado", "fecha", "vehiculo")
     search_fields = ("vehiculo__patente", "chofer_nombre")
@@ -91,6 +108,33 @@ class AtencionAdmin(ModelAdmin):
 
 @admin.register(ProgramaAyuda)
 class ProgramaAyudaAdmin(ModelAdmin):
-    # CORREGIDO: Quitamos 'monto_default' para evitar el error
     list_display = ("nombre",) 
     search_fields = ("nombre",)
+
+# =========================================================
+# 🚀 REGISTRO DEL MÓDULO DREI (CORREGIDO)
+# =========================================================
+
+@admin.register(RubroDrei)
+class RubroDreiAdmin(ModelAdmin):
+    list_display = ("codigo", "descripcion", "alicuota", "minimo_mensual", "activo")
+    search_fields = ("codigo", "descripcion")
+    list_filter = ("activo",)
+    list_filter_submit = True
+
+@admin.register(DeclaracionJuradaDrei)
+class DeclaracionJuradaDreiAdmin(ModelAdmin):
+    # 🚀 FIX: Sumamos 'actividad' y 'alicuota_manual' a la vista de lista para mayor claridad
+    list_display = ("comercio", "mes", "anio", "actividad", "alicuota_manual", "ingresos_declarados", "impuesto_determinado", "fecha_presentacion")
+    list_filter = ("anio", "mes")
+    search_fields = ("comercio__nombre", "comercio__cuit")
+    readonly_fields = ("impuesto_determinado", "fecha_presentacion", "presentada_por")
+    date_hierarchy = "fecha_presentacion"
+
+@admin.register(LiquidacionDrei)
+class LiquidacionDreiAdmin(ModelAdmin):
+    list_display = ("__str__", "fecha_vencimiento", "total_a_pagar", "estado")
+    list_filter = ("estado", "fecha_vencimiento")
+    search_fields = ("ddjj__comercio__nombre",)
+    readonly_fields = ("total_a_pagar",)
+    date_hierarchy = "fecha_vencimiento"

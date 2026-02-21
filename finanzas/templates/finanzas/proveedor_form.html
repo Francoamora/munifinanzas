@@ -1,75 +1,224 @@
 {% extends "finanzas/base.html" %}
 
-{% block title %}{% if form.instance.pk %}Editar Proveedor{% else %}Nuevo Proveedor{% endif %}{% endblock %}
+{% block title %}
+    {% if form.instance.pk %}Editar: {{ form.instance.nombre }}{% else %}Nuevo Proveedor / Comercio{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Diseño premium de inputs */
+    .form-control, .form-select { 
+        border: 1px solid #cbd5e1; 
+        padding: 0.75rem 1rem; 
+        border-radius: 8px; 
+        transition: all 0.2s; 
+    }
+    .form-control:focus, .form-select:focus { 
+        border-color: #3b82f6; 
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15); 
+    }
+    
+    /* Input especial DReI */
+    .border-teal { border-color: #5eead4 !important; }
+    .border-teal:focus { border-color: #0d9488 !important; box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.15) !important; }
+    
+    /* Tipografías y Animaciones */
+    .fw-black { font-weight: 900 !important; }
+    .ls-1 { letter-spacing: 0.5px; }
+    .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Switch especial DReI */
+    .switch-drei .form-check-input {
+        width: 3rem;
+        height: 1.5rem;
+        cursor: pointer;
+    }
+    .switch-drei .form-check-input:checked {
+        background-color: #0d9488;
+        border-color: #0d9488;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-12 col-xl-8">
+<div class="row justify-content-center animate-fade-in" style="padding-bottom: 100px;">
+    <div class="col-12 col-xl-9">
         
-        <form method="post" class="needs-validation" novalidate>
+        <form method="post" class="needs-validation form-pro" novalidate>
             {% csrf_token %}
             
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1 class="h3 fw-bold text-dark mb-0">
-                    {% if form.instance.pk %}Editar Datos{% else %}Alta de Proveedor{% endif %}
+                <h1 class="h3 fw-bolder text-dark mb-0 ls-1">
+                    {% if form.instance.pk %}
+                        <i class="bi bi-pencil-square text-primary me-2"></i>Editar Ficha
+                    {% else %}
+                        <i class="bi bi-shop text-primary me-2"></i>Alta de Comercio / Proveedor
+                    {% endif %}
                 </h1>
-                <a href="{% url 'finanzas:proveedor_list' %}" class="btn btn-light border">Cancelar</a>
+                <a href="{% url 'finanzas:proveedor_list' %}" class="btn btn-light border shadow-sm fw-bold px-4 hover-lift">
+                    <i class="bi bi-x-lg me-1"></i> Cancelar
+                </a>
             </div>
 
-            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
-                <div class="card-header bg-white py-3 border-bottom">
-                    <h6 class="mb-0 fw-bold text-primary small text-uppercase ls-1">Datos Comerciales</h6>
+            {% if form.errors %}
+            <div class="alert alert-danger border-0 shadow-sm rounded-4 mb-4">
+                <div class="fw-bolder mb-1"><i class="bi bi-exclamation-triangle-fill me-2"></i>Se encontraron errores:</div>
+                <ul class="mb-0 small fw-bold text-danger-emphasis">
+                    {% for field in form %}
+                        {% if field.errors %}<li>{{ field.label }}: {{ field.errors|striptags }}</li>{% endif %}
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
+                <div class="card-header bg-white py-3 border-bottom px-4 px-lg-5">
+                    <h6 class="mb-0 fw-bolder text-primary small text-uppercase ls-1"><i class="bi bi-building me-2"></i>Datos Generales</h6>
                 </div>
-                <div class="card-body p-4">
-                    <div class="row g-3">
+                <div class="card-body p-4 p-lg-5">
+                    <div class="row g-4">
                         <div class="col-md-8">
-                            <label class="form-label text-dark fw-bold small">Razón Social / Nombre</label>
-                            <input type="text" name="nombre" class="form-control" value="{{ form.nombre.value|default:'' }}" required>
+                            <label class="form-label text-dark fw-bold small text-uppercase">Razón Social / Nombre Comercial *</label>
+                            {{ form.nombre }}
+                            <div class="text-danger small mt-1">{{ form.nombre.errors }}</div>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label text-dark fw-bold small">CUIT</label>
-                            <input type="text" name="cuit" class="form-control" value="{{ form.cuit.value|default:'' }}">
+                            <label class="form-label text-dark fw-bold small text-uppercase">CUIT</label>
+                            {{ form.cuit }}
+                            <div class="text-danger small mt-1">{{ form.cuit.errors }}</div>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label text-dark fw-bold small">Rubro Principal</label>
-                            <input type="text" name="rubro" class="form-control" value="{{ form.rubro.value|default:'' }}" placeholder="Ej: Ferretería, Combustible...">
+                            <label class="form-label text-dark fw-bold small text-uppercase">Rubro Principal</label>
+                            {{ form.rubro }}
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label text-dark fw-bold small">Teléfono</label>
-                            <input type="text" name="telefono" class="form-control" value="{{ form.telefono.value|default:'' }}">
+                            <label class="form-label text-dark fw-bold small text-uppercase">Teléfono</label>
+                            {{ form.telefono }}
                         </div>
-                        <div class="col-12">
-                            <label class="form-label text-dark fw-bold small">Dirección</label>
-                            <input type="text" name="direccion" class="form-control" value="{{ form.direccion.value|default:'' }}">
+                        <div class="col-md-12">
+                            <label class="form-label text-dark fw-bold small text-uppercase">Dirección</label>
+                            {{ form.direccion }}
                         </div>
-                        <div class="col-12">
-                            <label class="form-label text-dark fw-bold small">Email</label>
-                            <input type="email" name="email" class="form-control" value="{{ form.email.value|default:'' }}">
+                        <div class="col-md-12">
+                            <label class="form-label text-dark fw-bold small text-uppercase">Email</label>
+                            {{ form.email }}
+                        </div>
+                        
+                        <div class="col-12 mt-4">
+                            <div class="form-check form-switch fs-5">
+                                {{ form.activo }}
+                                <label class="form-check-label fw-bold text-dark ms-2" for="{{ form.activo.id_for_label }}">
+                                    Comercio Activo en el Sistema
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
                 
-                <div class="card-header bg-light py-2 border-top border-bottom">
-                    <h6 class="mb-0 fw-bold text-secondary small text-uppercase ls-1">Información Bancaria</h6>
+                <div class="card-header bg-light py-3 border-top border-bottom px-4 px-lg-5">
+                    <h6 class="mb-0 fw-bolder text-secondary small text-uppercase ls-1"><i class="bi bi-bank me-2"></i>Información Bancaria (Opcional)</h6>
                 </div>
-                <div class="card-body p-4 bg-light bg-opacity-25">
-                    <div class="row g-3">
+                <div class="card-body p-4 p-lg-5 bg-light bg-opacity-25">
+                    <div class="row g-4">
                         <div class="col-md-6">
-                            <label class="form-label text-dark fw-bold small">CBU / CVU</label>
-                            <input type="text" name="cbu" class="form-control font-monospace" value="{{ form.cbu.value|default:'' }}">
+                            <label class="form-label text-dark fw-bold small text-uppercase">CBU / CVU</label>
+                            {{ form.cbu }}
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label text-dark fw-bold small">Alias</label>
-                            <input type="text" name="alias" class="form-control" value="{{ form.alias.value|default:'' }}">
+                            <label class="form-label text-dark fw-bold small text-uppercase">Alias Bancario</label>
+                            {{ form.alias }}
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <div class="card-footer bg-white p-3 text-end">
-                    <button type="submit" class="btn btn-primary px-5 fw-bold shadow-sm">Guardar Ficha</button>
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-5" style="border: 2px solid #ccfbf1 !important; background-color: #f0fdfa;">
+                
+                <div class="card-header border-bottom py-3 px-4 px-lg-5 d-flex justify-content-between align-items-center" style="background-color: #ccfbf1; border-color: #99f6e4 !important;">
+                    <div>
+                        <h6 class="mb-0 fw-black small text-uppercase ls-1" style="color: #0f766e;">
+                            <i class="bi bi-calculator me-2"></i>Módulo Impositivo Comunal
+                        </h6>
+                    </div>
+                    <div class="form-check form-switch m-0 switch-drei" title="Activar para habilitar el expediente tributario">
+                        {{ form.es_contribuyente_drei }}
+                    </div>
+                </div>
+                
+                <div class="card-body p-4 p-lg-5" id="drei-panel" style="display: none;">
+                    <p class="text-muted small fw-medium mb-4"><i class="bi bi-info-circle me-1"></i>Al activar esta opción, este comercio aparecerá en el Padrón DReI y habilitará el expediente para liquidarle impuestos.</p>
+                    
+                    <div class="row g-4 align-items-center">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-dark text-uppercase">N° Padrón DReI (Opcional)</label>
+                            {{ form.padron_drei }}
+                            <div class="form-text small text-muted"><i class="bi bi-magic me-1"></i> Dejar en blanco para generar número automático (Ej: DREI-0001).</div>
+                            <div class="text-danger small mt-1">{{ form.padron_drei.errors }}</div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="alert alert-info border-0 mb-0 d-flex align-items-center gap-2" style="background-color: #e0f2fe; color: #0369a1;">
+                                <i class="bi bi-lightbulb fs-4"></i>
+                                <span class="small fw-medium">La actividad (rubro) y la alícuota porcentual se definen dinámicamente al crear cada Declaración Jurada mensual.</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
+
+            <div class="fixed-bottom bg-white border-top shadow-lg py-3" style="z-index: 1020;">
+                <div class="container d-flex justify-content-end px-lg-5">
+                    <button type="submit" class="btn btn-dark px-5 py-2 fw-bold shadow-sm rounded-pill hover-lift fs-6">
+                        <i class="bi bi-save2-fill me-2"></i> Guardar Ficha
+                    </button>
+                </div>
+            </div>
+
         </form>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        
+        // --- ESTILOS AUTOMÁTICOS PARA INPUTS DE DJANGO ---
+        const textInputs = document.querySelectorAll('input[type="text"], input[type="email"], select, input[type="number"]');
+        textInputs.forEach(el => {
+            el.classList.add('form-control');
+        });
+        
+        const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(el => {
+            if(!el.classList.contains('form-check-input')) {
+                el.classList.add('form-check-input');
+            }
+        });
+
+        // Estilos específicos para la zona DReI
+        const padronInput = document.getElementById('{{ form.padron_drei.id_for_label }}');
+        if(padronInput) { padronInput.classList.add('border-teal', 'fw-bold', 'text-dark', 'fs-5'); }
+
+        // --- LÓGICA DE APARICIÓN DEL PANEL DREI ---
+        const toggleDrei = document.getElementById('{{ form.es_contribuyente_drei.id_for_label }}');
+        const panelDrei = document.getElementById('drei-panel');
+        
+        function updateDreiPanel() {
+            if (toggleDrei.checked) {
+                panelDrei.style.display = 'block';
+                panelDrei.classList.add('animate-fade-in');
+            } else {
+                panelDrei.style.display = 'none';
+                // Si el usuario desactiva el DReI, limpiamos el padrón
+                if(padronInput) padronInput.value = '';
+            }
+        }
+
+        if (toggleDrei) {
+            toggleDrei.addEventListener('change', updateDreiPanel);
+            updateDreiPanel(); // Verificar al cargar la página
+        }
+    });
+</script>
 {% endblock %}

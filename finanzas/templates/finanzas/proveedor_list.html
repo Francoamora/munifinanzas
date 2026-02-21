@@ -1,17 +1,18 @@
 {% extends "finanzas/base.html" %}
-{% load static %}
+{% load static humanize %}
 
-{% block title %}Directorio de Proveedores{% endblock %}
+{% block title %}Directorio Comercial y Proveedores{% endblock %}
 
 {% block extra_css %}
 <style>
     .provider-card {
-        transition: all 0.2s ease-in-out;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         border: 1px solid #e2e8f0;
+        position: relative;
     }
     .provider-card:hover {
         transform: translateY(-5px);
-        box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1) !important;
+        box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.15) !important;
         border-color: #cbd5e1;
     }
     .avatar-circle {
@@ -28,6 +29,28 @@
         text-decoration: none;
     }
     .contact-btn:hover { background-color: #f1f5f9; }
+    
+    /* === NUEVOS ESTILOS DREI === */
+    .badge-drei {
+        position: absolute;
+        top: -12px;
+        right: 20px;
+        box-shadow: 0 4px 6px -1px rgba(13, 148, 136, 0.2);
+    }
+    .kpi-mini { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 1.25rem; transition: 0.2s; }
+    .kpi-mini:hover { border-color: #cbd5e1; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+    .kpi-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
+
+    /* Botón Panel DReI */
+    .btn-panel-drei {
+        background-color: #0d9488;
+        color: white;
+        border: none;
+    }
+    .btn-panel-drei:hover {
+        background-color: #0f766e;
+        color: white;
+    }
 </style>
 {% endblock %}
 
@@ -35,25 +58,61 @@
 
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-end mb-4 gap-3 animate-fade-in">
     <div>
-        <h6 class="text-uppercase text-primary fw-bold small ls-1 mb-1">Compras y Suministros</h6>
-        <h1 class="display-6 fw-bold text-dark mb-0">Proveedores</h1>
+        <h6 class="text-uppercase text-primary fw-bold small ls-1 mb-1">Compras y Tributos</h6>
+        <h1 class="display-6 fw-bold text-dark mb-0">Directorio Comercial</h1>
     </div>
     <a href="{% url 'finanzas:proveedor_create' %}" class="btn btn-primary shadow-sm fw-bold px-4 hover-lift">
-        <i class="bi bi-plus-lg me-2"></i>Nuevo Proveedor
+        <i class="bi bi-plus-lg me-2"></i>Nuevo Registro
     </a>
+</div>
+
+<div class="row g-3 mb-4 animate-fade-in">
+    <div class="col-md-4">
+        <div class="kpi-mini d-flex align-items-center gap-3 h-100">
+            <div class="kpi-icon bg-primary bg-opacity-10 text-primary"><i class="bi bi-shop"></i></div>
+            <div>
+                <p class="text-muted text-uppercase fw-bold small mb-0" style="font-size: 0.7rem; letter-spacing: 0.5px;">Total Padrón</p>
+                <h4 class="fw-black text-dark mb-0" style="font-weight: 900;">{{ kpi_total_proveedores }} <span class="fs-6 text-muted fw-medium">registros</span></h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="kpi-mini d-flex align-items-center gap-3 h-100" style="border-color: #ccfbf1; background-color: #f0fdfa;">
+            <div class="kpi-icon bg-white shadow-sm" style="color: #0d9488;"><i class="bi bi-calculator"></i></div>
+            <div>
+                <p class="text-uppercase fw-bold small mb-0" style="color: #0d9488; font-size: 0.7rem; letter-spacing: 0.5px;">Contribuyentes DReI</p>
+                <h4 class="fw-black text-dark mb-0" style="font-weight: 900;">{{ kpi_total_drei }} <span class="fs-6 text-muted fw-medium">comercios</span></h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="kpi-mini d-flex align-items-center gap-3 h-100" style="border-color: #ffe4e6; background-color: #fff1f2;">
+            <div class="kpi-icon bg-white text-danger shadow-sm"><i class="bi bi-exclamation-octagon"></i></div>
+            <div>
+                <p class="text-danger text-uppercase fw-bold small mb-0" style="font-size: 0.7rem; letter-spacing: 0.5px;">Deuda DReI en calle</p>
+                <h4 class="fw-black text-danger mb-0" style="font-weight: 900;">${{ kpi_deuda_global_drei|intcomma }}</h4>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="card border-0 shadow-sm rounded-4 mb-5 overflow-hidden">
     <div class="card-body p-3 bg-light bg-opacity-25">
         <form method="get" class="row g-2 align-items-center">
-            <div class="col-12 col-md-10">
+            <div class="col-12 col-md-8">
                 <div class="input-group input-group-lg shadow-sm">
                     <span class="input-group-text bg-white border-0 ps-4 text-muted"><i class="bi bi-search"></i></span>
-                    <input type="text" name="q" class="form-control border-0 fs-6" placeholder="Buscar por razón social, CUIT, rubro o teléfono..." value="{{ request.GET.q }}">
+                    <input type="text" name="q" class="form-control border-0 fs-6 fw-medium" placeholder="Buscar por nombre, CUIT, rubro o N° Padrón DReI..." value="{{ request.GET.q }}">
                 </div>
             </div>
             <div class="col-12 col-md-2">
-                <button type="submit" class="btn btn-dark w-100 h-100 fw-bold shadow-sm">Buscar</button>
+                <select name="drei" class="form-select form-select-lg border-0 shadow-sm fw-bold text-secondary text-uppercase" style="font-size: 0.85rem;">
+                    <option value="">Todos los registros</option>
+                    <option value="si" {% if filtro_drei_activo %}selected{% endif %}>Solo DReI</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-2">
+                <button type="submit" class="btn btn-dark w-100 h-100 fw-bold shadow-sm rounded-3">Filtrar</button>
             </div>
         </form>
     </div>
@@ -62,16 +121,26 @@
 <div class="row g-4">
     {% for p in proveedores %}
     <div class="col-12 col-md-6 col-xl-4">
-        <div class="card h-100 border-0 shadow-sm provider-card rounded-4">
-            <div class="card-body p-4">
+        
+        <div class="card h-100 border-0 shadow-sm provider-card rounded-4" {% if p.es_contribuyente_drei %}style="border: 1px solid #99f6e4 !important;"{% endif %}>
+            
+            {% if p.es_contribuyente_drei %}
+                <span class="badge badge-drei px-3 py-2 rounded-pill fw-bold" style="background-color: #0d9488; color: white;">
+                    <i class="bi bi-calculator me-1"></i> DReI {{ p.padron_drei }}
+                </span>
+            {% endif %}
+
+            <div class="card-body p-4 mt-2">
                 
                 <div class="d-flex justify-content-between align-items-start mb-3">
                     <div class="d-flex align-items-center gap-3">
-                        <div class="avatar-circle bg-primary bg-opacity-10 text-primary fw-bold shadow-sm">
+                        <div class="avatar-circle {% if p.es_contribuyente_drei %}bg-white shadow-sm{% else %}bg-primary bg-opacity-10 text-primary shadow-sm{% endif %} fw-bold" {% if p.es_contribuyente_drei %}style="color: #0d9488; border: 1px solid #ccfbf1;"{% endif %}>
                             {{ p.nombre|first|upper }}
                         </div>
                         <div>
-                            {% if p.rubro %}
+                            {% if p.rubro_drei %}
+                                <span class="badge bg-light text-secondary border fw-bold mb-1"><i class="bi bi-tag me-1"></i>{{ p.rubro_drei.descripcion|truncatechars:20 }}</span>
+                            {% elif p.rubro %}
                                 <span class="badge bg-light text-secondary border fw-normal mb-1">{{ p.rubro|truncatechars:20 }}</span>
                             {% else %}
                                 <span class="badge bg-light text-muted border fw-normal mb-1">Sin Rubro</span>
@@ -96,16 +165,38 @@
 
                 <div class="bg-light bg-opacity-50 rounded-3 p-3 mb-3 border border-light">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="small text-muted fw-bold">CUIT</span>
+                        <span class="small text-muted fw-bold text-uppercase" style="font-size: 0.7rem;">CUIT</span>
                         <span class="font-monospace text-dark fw-medium">{{ p.cuit|default:"--" }}</span>
                     </div>
+                    
                     {% if p.saldo_pendiente %}
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span class="small text-muted fw-bold">Saldo Pendiente</span>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="small text-muted fw-bold text-uppercase" style="font-size: 0.7rem;">Saldo a favor</span>
                         <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
                             ${{ p.saldo_pendiente|floatformat:2 }}
                         </span>
                     </div>
+                    {% endif %}
+
+                    {% if p.total_compras and p.total_compras > 0 %}
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="small text-muted fw-bold text-uppercase" style="font-size: 0.7rem;">Historial Compras</span>
+                        <span class="fw-bold text-primary">${{ p.total_compras|intcomma }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if p.es_contribuyente_drei %}
+                        <hr class="my-2 opacity-10">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="small text-muted fw-bold text-uppercase" style="font-size: 0.7rem;">Deuda DReI</span>
+                            {% if p.deuda_drei and p.deuda_drei > 0 %}
+                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1">
+                                    ${{ p.deuda_drei|intcomma }} <small class="ms-1 opacity-75">({{ p.meses_adeudados }} mes{{ p.meses_adeudados|pluralize:"es" }})</small>
+                                </span>
+                            {% else %}
+                                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">Al día</span>
+                            {% endif %}
+                        </div>
                     {% endif %}
                 </div>
 
@@ -137,14 +228,23 @@
                 </div>
 
                 <div class="row g-2">
+                    {% if p.es_contribuyente_drei %}
                     <div class="col-6">
-                        <a href="{% url 'finanzas:oc_create' %}?proveedor={{ p.pk }}" class="btn btn-light border w-100 fw-medium text-secondary btn-sm" title="Generar Orden de Compra">
-                            <i class="bi bi-cart-plus me-1"></i>Compra
+                        <a href="{% url 'finanzas:proveedor_drei_panel' p.pk %}" class="btn btn-panel-drei w-100 fw-bold btn-sm shadow-sm">
+                            <i class="bi bi-calculator me-1"></i>Panel DReI
                         </a>
                     </div>
+                    {% else %}
                     <div class="col-6">
-                        <a href="{% url 'finanzas:proveedor_detail' p.pk %}" class="btn btn-outline-primary w-100 fw-bold btn-sm shadow-sm">
-                            <i class="bi bi-journal-text me-1"></i>Cuenta
+                        <a href="{% url 'finanzas:oc_create' %}?proveedor={{ p.pk }}" class="btn btn-light border w-100 fw-medium text-secondary btn-sm shadow-sm">
+                            <i class="bi bi-cart-plus me-1"></i>Comprar
+                        </a>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="col-6">
+                        <a href="{% url 'finanzas:proveedor_detail' p.pk %}" class="btn btn-dark w-100 fw-bold btn-sm shadow-sm">
+                            <i class="bi bi-person-lines-fill me-1"></i>Ficha Adm.
                         </a>
                     </div>
                 </div>
@@ -154,13 +254,13 @@
     </div>
     {% empty %}
     <div class="col-12">
-        <div class="text-center py-5">
-            <div class="mb-3 opacity-25">
-                <i class="bi bi-shop-window fs-1"></i>
+        <div class="text-center py-5 bg-white rounded-4 shadow-sm border">
+            <div class="mb-3 opacity-25 text-primary">
+                <i class="bi bi-shop-window display-1"></i>
             </div>
-            <h5 class="fw-bold text-secondary">No se encontraron proveedores</h5>
-            <p class="text-muted small">Intenta con otro término de búsqueda o registra uno nuevo.</p>
-            <a href="{% url 'finanzas:proveedor_create' %}" class="btn btn-sm btn-primary px-4 mt-2">Registrar Proveedor</a>
+            <h4 class="fw-bold text-dark">No se encontraron comercios</h4>
+            <p class="text-muted">Intente con otro término de búsqueda o registre uno nuevo.</p>
+            <a href="{% url 'finanzas:proveedor_create' %}" class="btn btn-primary px-4 mt-2 fw-bold shadow-sm rounded-pill">Registrar Comercio</a>
         </div>
     </div>
     {% endfor %}

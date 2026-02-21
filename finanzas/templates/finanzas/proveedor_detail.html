@@ -1,7 +1,7 @@
 {% extends "finanzas/base.html" %}
 {% load humanize %}
 
-{% block title %}{{ proveedor.nombre }}{% endblock %}
+{% block title %}Ficha: {{ proveedor.nombre }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -49,6 +49,7 @@
     /* Líneas de color */
     #pagos-tab.active { border-top: 4px solid #198754; } /* Verde para Pagos */
     #ocs-tab.active { border-top: 4px solid #0d6efd; }   /* Azul para Compras */
+    #drei-tab.active { border-top: 4px solid #0d9488; }  /* Teal para DReI */
 
     /* Tarjetas KPI */
     .kpi-card {
@@ -56,12 +57,17 @@
         border: 1px solid #f1f5f9;
     }
     .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 4px 15px rgba(0,0,0,0.05) !important; }
+
+    /* Módulo DReI Específico */
+    .bg-teal-subtle { background-color: #f0fdfa !important; }
+    .text-teal { color: #0f766e !important; }
+    .border-teal { border-color: #ccfbf1 !important; }
 </style>
 {% endblock %}
 
 {% block content %}
 
-<div class="row g-4 animate-fade-in">
+<div class="row g-4 animate-fade-in" style="padding-bottom: 80px;">
     
     <div class="col-lg-4">
         <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
@@ -81,6 +87,14 @@
                 <p class="text-secondary font-monospace mb-4 small">
                     <i class="bi bi-card-heading me-1"></i>{{ proveedor.cuit|default:"S/D" }}
                 </p>
+                
+                {% if proveedor.es_contribuyente_drei %}
+                <div class="mb-4">
+                    <span class="badge bg-teal-subtle text-teal border border-teal px-3 py-2 rounded-pill shadow-sm">
+                        <i class="bi bi-calculator me-1"></i> Padrón DReI: <strong>{{ proveedor.padron_drei }}</strong>
+                    </span>
+                </div>
+                {% endif %}
                 
                 <div class="d-grid gap-2">
                     <a href="{% url 'finanzas:oc_create' %}?proveedor={{ proveedor.pk }}" class="btn btn-primary shadow-sm fw-bold hover-lift">
@@ -143,21 +157,40 @@
                     </div>
                 </div>
             </div>
+            
+            {% if proveedor.es_contribuyente_drei %}
             <div class="col-md-6">
-                <div class="card border-0 shadow-sm kpi-card h-100 rounded-4">
+                <div class="card border-0 shadow-sm kpi-card h-100 rounded-4" style="background-color: #fff1f2; border-color: #ffe4e6 !important;">
                     <div class="card-body p-4">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <small class="text-uppercase text-secondary fw-bold ls-1" style="font-size: 0.7rem;">Órdenes Compra</small>
-                                <div class="fs-3 fw-bold text-dark mt-1">{{ ultimas_ocs.count }}</div>
+                                <small class="text-uppercase fw-bold ls-1" style="font-size: 0.7rem; color: #e11d48;">Deuda DReI</small>
+                                <div class="fs-3 fw-bold mt-1" style="color: #be123c;">${{ deuda_drei|default:"0"|intcomma }}</div>
                             </div>
-                            <div class="bg-primary bg-opacity-10 text-primary rounded-circle p-3">
+                            <div class="bg-white text-danger rounded-circle p-3 shadow-sm">
                                 <i class="bi bi-receipt-cutoff fs-3"></i>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
+            {% else %}
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm kpi-card h-100 rounded-4">
+                    <div class="card-body p-4">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <small class="text-uppercase text-secondary fw-bold ls-1" style="font-size: 0.7rem;">Órdenes Compra</small>
+                                <div class="fs-3 fw-bold text-dark mt-1">{{ ultimas_ocs|length }}</div>
+                            </div>
+                            <div class="bg-primary bg-opacity-10 text-primary rounded-circle p-3">
+                                <i class="bi bi-cart-check fs-3"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
         </div>
 
         <div class="card border-0 shadow-sm rounded-4 overflow-hidden bg-white">
@@ -174,6 +207,13 @@
                             <i class="bi bi-cart-check me-2"></i>Historial Compras
                         </button>
                     </li>
+                    {% if proveedor.es_contribuyente_drei %}
+                    <li class="nav-item">
+                        <button class="nav-link" id="drei-tab" data-bs-toggle="tab" data-bs-target="#drei" type="button">
+                            <i class="bi bi-calculator me-2"></i>Tributos DReI
+                        </button>
+                    </li>
+                    {% endif %}
                 </ul>
             </div>
             
@@ -265,11 +305,135 @@
                         </div>
                     </div>
 
+                    {% if proveedor.es_contribuyente_drei %}
+                    <div class="tab-pane fade" id="drei">
+                        
+                        <div class="d-flex justify-content-between align-items-center p-4 bg-teal-subtle border-bottom border-teal">
+                            <div>
+                                <div class="small fw-bold text-uppercase text-muted mb-1 ls-1">Rubro Impositivo / Alícuota</div>
+                                <div class="fw-bolder text-teal fs-6">{{ proveedor.rubro_drei.codigo }} - {{ proveedor.rubro_drei.descripcion }} <span class="badge bg-white text-teal ms-2 shadow-sm">{{ proveedor.rubro_drei.alicuota }}%</span></div>
+                            </div>
+                            <button class="btn btn-dark fw-bold rounded-pill px-4 shadow-sm hover-lift" data-bs-toggle="modal" data-bs-target="#modalDDJJ">
+                                <i class="bi bi-plus-circle me-1"></i> Cargar DDJJ
+                            </button>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="bg-light text-dark">
+                                    <tr>
+                                        <th class="ps-4 py-3 small fw-bold text-uppercase">Período</th>
+                                        <th class="py-3 small fw-bold text-uppercase text-end">Base Imponible</th>
+                                        <th class="py-3 small fw-bold text-uppercase text-end">Boleta a Pagar</th>
+                                        <th class="py-3 small fw-bold text-uppercase text-center">Estado</th>
+                                        <th class="text-end pe-4 py-3 small fw-bold text-uppercase">Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for liq in historial_drei %}
+                                    <tr>
+                                        <td class="ps-4">
+                                            <div class="fw-bold text-dark">{{ liq.ddjj.mes }}/{{ liq.ddjj.anio }}</div>
+                                            <small class="text-muted">Pres: {{ liq.ddjj.fecha_presentacion|date:"d/m/Y" }}</small>
+                                        </td>
+                                        <td class="text-end text-dark fw-medium">${{ liq.ddjj.ingresos_declarados|intcomma }}</td>
+                                        <td class="text-end">
+                                            <span class="fs-6 fw-bold {% if liq.estado == 'PENDIENTE' %}text-danger{% else %}text-success{% endif %}">
+                                                ${{ liq.total_a_pagar|intcomma }}
+                                            </span>
+                                            <div class="small text-muted">Vto: {{ liq.fecha_vencimiento|date:"d/m/Y" }}</div>
+                                        </td>
+                                        <td class="text-center">
+                                            {% if liq.estado == 'PENDIENTE' %}
+                                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-3 py-1">Pendiente</span>
+                                            {% elif liq.estado == 'PAGADO' %}
+                                                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">Pagado</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary rounded-pill px-3 py-1">{{ liq.estado }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-end pe-4">
+                                            {% if liq.estado == 'PENDIENTE' %}
+                                            <a href="{% url 'finanzas:movimiento_create' %}?tipo=INGRESO&monto={{ liq.total_a_pagar|stringformat:'f' }}&desc=Cobro DReI {{ liq.ddjj.mes }}/{{ liq.ddjj.anio }} - Padrón {{ proveedor.padron_drei }}" 
+                                               class="btn btn-sm btn-outline-dark fw-bold rounded-pill px-3 hover-lift">
+                                                Cobrar
+                                            </a>
+                                            {% else %}
+                                            <button class="btn btn-sm btn-light border text-muted px-3 rounded-pill" disabled><i class="bi bi-check-lg"></i></button>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="5" class="text-center py-5">
+                                            <div class="opacity-25 mb-2 text-teal"><i class="bi bi-receipt fs-1"></i></div>
+                                            <p class="text-muted fw-bold small">No hay declaraciones juradas presentadas aún.</p>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endif %}
+
                 </div>
             </div>
         </div>
 
     </div>
 </div>
+
+{% if proveedor.es_contribuyente_drei %}
+<div class="modal fade" id="modalDDJJ" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            
+            <div class="modal-header border-0 bg-teal-subtle pb-0 pt-4 px-4">
+                <div>
+                    <h5 class="fw-bolder text-teal mb-1"><i class="bi bi-file-earmark-bar-graph me-2"></i>Nueva DDJJ Mensual</h5>
+                    <p class="small text-muted fw-medium mb-3">Declare la facturación para generar la boleta de pago.</p>
+                </div>
+                <button type="button" class="btn-close mb-4" data-bs-dismiss="modal"></button>
+            </div>
+            
+            <div class="modal-body p-4 bg-white">
+                <form action="{% url 'finanzas:proveedor_ddjj_create' proveedor.pk %}" method="post">
+                    {% csrf_token %}
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold text-secondary text-uppercase ls-1">Mes Fiscal</label>
+                            {{ form_ddjj.mes }}
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold text-secondary text-uppercase ls-1">Año</label>
+                            {{ form_ddjj.anio }}
+                        </div>
+                        
+                        <div class="col-12 mt-4">
+                            <div class="p-3 border rounded-3 bg-light">
+                                <label class="form-label small fw-bolder text-dark text-uppercase ls-1 mb-2">Base Imponible (Total Facturado API)</label>
+                                <div class="input-group input-group-lg shadow-sm">
+                                    <span class="input-group-text bg-white border-end-0 text-success fw-bold">$</span>
+                                    {{ form_ddjj.ingresos_declarados }}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-12 mt-3">
+                            <label class="form-label small fw-bold text-secondary text-uppercase ls-1">Aclaraciones (Opcional)</label>
+                            {{ form_ddjj.observaciones }}
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-dark w-100 rounded-pill py-3 fw-bold shadow-sm mt-4 fs-6 hover-lift">
+                        <i class="bi bi-gear-fill me-2"></i> Procesar y Generar Boleta
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {% endblock %}

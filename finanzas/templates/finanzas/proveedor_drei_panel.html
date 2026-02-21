@@ -1,0 +1,378 @@
+{% extends "finanzas/base.html" %}
+{% load static humanize %}
+
+{% block title %}Expediente DReI: {{ comercio.nombre }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Estilos específicos para el Módulo DReI */
+    .bg-teal-subtle { background-color: #f0fdfa !important; }
+    .text-teal { color: #0d9488 !important; }
+    .border-teal { border-color: #ccfbf1 !important; }
+    .btn-teal { background-color: #0d9488; color: white; transition: 0.2s; }
+    .btn-teal:hover { background-color: #0f766e; color: white; transform: translateY(-2px); box-shadow: 0 4px 6px rgba(13,148,136,0.2); }
+    
+    .kpi-card { transition: 0.2s; }
+    .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+    
+    /* Estilo para los inputs del form */
+    .form-control, .form-select { border-radius: 8px; border-color: #cbd5e1; }
+    .form-control:focus, .form-select:focus { border-color: #0d9488; box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.15); }
+    .select2-container--bootstrap-5 .select2-selection { border-radius: 8px; }
+    
+    /* 🚀 MEJORA: Diseño premium para el textarea de observaciones */
+    .textarea-premium {
+        resize: vertical;
+        min-height: 100px;
+        background-color: #f8fafc;
+        border: 1px solid #cbd5e1;
+        transition: all 0.3s;
+    }
+    .textarea-premium:focus {
+        background-color: #ffffff;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+    }
+    .numero-texto-helper {
+        font-weight: 700;
+        color: #059669; /* Verde oscuro */
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center gap-3 mb-4 animate-fade-in">
+    <a href="{% url 'finanzas:padron_drei_list' %}" class="btn btn-light border rounded-circle p-2 shadow-sm text-secondary hover-lift" title="Volver al Padrón">
+        <i class="bi bi-arrow-left fs-5"></i>
+    </a>
+    <div>
+        <h6 class="text-teal text-uppercase fw-bold small ls-1 mb-1"><i class="bi bi-calculator me-1"></i> Expediente Tributario</h6>
+        <h2 class="fw-black text-dark mb-0">{{ comercio.nombre }}</h2>
+    </div>
+    <div class="ms-auto">
+        <button type="button" class="btn btn-teal fw-bold px-4 py-2 rounded-pill shadow-sm hover-lift" data-bs-toggle="modal" data-bs-target="#modalDDJJ">
+            <i class="bi bi-plus-circle me-2"></i>Nueva Declaración
+        </button>
+    </div>
+</div>
+
+<div class="row g-4 animate-fade-in">
+    
+    <div class="col-lg-4">
+        
+        <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden kpi-card {% if deuda_total > 0 %}border-danger-subtle{% else %}border-teal-subtle{% endif %}" 
+             style="border: 2px solid transparent;">
+            <div class="card-body p-4 text-center {% if deuda_total > 0 %}bg-danger bg-opacity-10{% else %}bg-teal-subtle{% endif %}">
+                <h6 class="text-uppercase fw-bold small mb-2 {% if deuda_total > 0 %}text-danger{% else %}text-teal{% endif %}" style="letter-spacing: 1px;">
+                    Estado de Deuda DReI
+                </h6>
+                {% if deuda_total > 0 %}
+                    <h1 class="display-5 fw-black text-danger mb-1">${{ deuda_total|intcomma }}</h1>
+                    <span class="badge bg-danger-subtle text-danger border border-danger rounded-pill px-3 py-1 mt-2">
+                        <i class="bi bi-exclamation-triangle me-1"></i> Requiere Intimación
+                    </span>
+                {% else %}
+                    <h1 class="display-5 fw-black text-teal mb-1">$0.00</h1>
+                    <span class="badge bg-white text-teal border border-teal rounded-pill px-3 py-1 mt-2 shadow-sm">
+                        <i class="bi bi-check-circle me-1"></i> Contribuyente al Día
+                    </span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-header bg-white border-0 pt-4 pb-2 px-4 d-flex justify-content-between align-items-center">
+                <h6 class="fw-bold mb-0 text-dark"><i class="bi bi-card-checklist text-muted me-2"></i>Datos de Empadronamiento</h6>
+                <a href="{% url 'finanzas:proveedor_update' comercio.pk %}" class="btn btn-sm btn-light border text-secondary"><i class="bi bi-pencil"></i></a>
+            </div>
+            <div class="card-body px-4 pb-4">
+                <ul class="list-unstyled mb-0 small text-secondary space-y-3">
+                    <li class="d-flex justify-content-between border-bottom pb-2">
+                        <span class="fw-medium">N° Padrón DReI</span>
+                        <span class="badge bg-dark px-2 py-1 fs-6 font-monospace shadow-sm">{{ comercio.padron_drei|default:"S/D" }}</span>
+                    </li>
+                    <li class="d-flex justify-content-between border-bottom pb-2 pt-2">
+                        <span class="fw-medium">CUIT</span>
+                        <span class="font-monospace text-dark fw-bold">{{ comercio.cuit|default:"No registrado" }}</span>
+                    </li>
+                    <li class="d-flex justify-content-between border-bottom pb-2 pt-2">
+                        <span class="fw-medium">Rubro Comercial</span>
+                        <span class="text-dark fw-medium text-end" style="max-width: 150px;">{{ comercio.rubro|default:"--" }}</span>
+                    </li>
+                </ul>
+
+                <div class="mt-4 p-3 bg-light rounded-3 border border-info border-opacity-25 text-center">
+                    <i class="bi bi-info-circle text-info fs-4 d-block mb-1"></i>
+                    <p class="small text-muted mb-0 lh-sm">
+                        Las alícuotas y el nomenclador se asignan ahora de forma dinámica <b>al crear cada Declaración Jurada</b>.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-header bg-white border-bottom pt-4 pb-3 px-4 d-flex justify-content-between align-items-center">
+                <h5 class="fw-bold mb-0 text-dark">Sábana de Declaraciones y Pagos</h5>
+                <span class="badge bg-light text-secondary border">{{ liquidaciones|length }} períodos</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="bg-light text-muted small text-uppercase">
+                            <tr>
+                                <th class="ps-4 py-3 fw-bold">Período</th>
+                                <th class="py-3 fw-bold">Actividad / Facturado</th>
+                                <th class="py-3 fw-bold text-end">Total a Pagar</th>
+                                <th class="py-3 fw-bold text-center">Estado</th>
+                                <th class="pe-4 py-3 text-end">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for liq in liquidaciones %}
+                            <tr>
+                                <td class="ps-4">
+                                    <div class="fw-bold text-dark">{{ liq.ddjj.get_mes_display }} {{ liq.ddjj.anio }}</div>
+                                    <small class="text-muted font-monospace" style="font-size: 0.7rem;">Vence: {{ liq.fecha_vencimiento|date:"d/m/y" }}</small>
+                                </td>
+                                <td>
+                                    <div class="fw-medium text-secondary mb-1">
+                                        <i class="bi bi-cash me-1 text-success"></i>${{ liq.ddjj.ingresos_declarados|intcomma }}
+                                    </div>
+                                    <div style="font-size: 0.65rem;" class="text-muted text-truncate" style="max-width: 200px;" title="{{ liq.ddjj.actividad.descripcion|default:'Sin actividad' }}">
+                                        {{ liq.ddjj.actividad.descripcion|default:"Sin actividad"|truncatechars:35 }} <br>
+                                        <strong class="text-teal">Alícuota: {{ liq.ddjj.alicuota_manual }}%</strong>
+                                    </div>
+                                </td>
+                                <td class="text-end">
+                                    <span class="fw-bold fs-6 {% if liq.estado == 'PENDIENTE' %}text-danger{% else %}text-success{% endif %}">
+                                        ${{ liq.total_a_pagar|intcomma }}
+                                    </span>
+                                </td>
+                                <td class="text-center">
+                                    {% if liq.estado == 'PENDIENTE' %}
+                                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-3 py-1">Pendiente</span>
+                                    {% elif liq.estado == 'PAGADO' %}
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">Pagado</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary rounded-pill px-3 py-1">{{ liq.get_estado_display }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end pe-4">
+                                    <div class="d-flex justify-content-end gap-2">
+                                        <a href="{% url 'finanzas:drei_boleta_print' liq.pk %}" target="_blank" class="btn btn-sm btn-light border text-secondary rounded-pill px-3 hover-lift" title="Imprimir Comprobante">
+                                            <i class="bi bi-printer"></i>
+                                        </a>
+
+                                        {% if liq.estado == 'PENDIENTE' %}
+                                            <a href="{% url 'finanzas:drei_boleta_cobrar' liq.pk %}" 
+                                               class="btn btn-sm btn-outline-dark fw-bold rounded-pill px-3 hover-lift" title="Cobrar Boleta en Caja">
+                                                <i class="bi bi-cash-coin"></i> Cobrar
+                                            </a>
+                                        {% else %}
+                                            <button class="btn btn-sm btn-light border text-success rounded-pill px-3" disabled title="Abonado"><i class="bi bi-check2-all"></i> OK</button>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center py-5">
+                                    <div class="opacity-25 mb-3 text-teal"><i class="bi bi-file-earmark-bar-graph display-3"></i></div>
+                                    <h5 class="fw-bold text-dark mb-1">Sin historial impositivo</h5>
+                                    <p class="text-muted small">Este comercio aún no ha presentado declaraciones juradas.</p>
+                                    <button class="btn btn-teal rounded-pill px-4 mt-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#modalDDJJ">Cargar primera DDJJ</button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalDDJJ" tabindex="-1" aria-labelledby="modalDDJJLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            
+            <div class="modal-header border-0 bg-teal-subtle pb-0 pt-4 px-4">
+                <div>
+                    <h5 class="fw-bolder text-teal mb-1" id="modalDDJJLabel"><i class="bi bi-calculator me-2"></i>Liquidación de Impuesto (DDJJ)</h5>
+                    <p class="small text-muted fw-medium mb-3">Configure los parámetros del mes. El sistema calculará el impuesto a cobrar.</p>
+                </div>
+                <button type="button" class="btn-close mb-4" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            
+            <div class="modal-body p-4 bg-white">
+                <form action="{% url 'finanzas:proveedor_ddjj_create' comercio.pk %}" method="post" id="formNuevaDDJJ">
+                    {% csrf_token %}
+                    
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-secondary text-uppercase ls-1">Mes Fiscal</label>
+                            {{ form_ddjj.mes }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-secondary text-uppercase ls-1">Año Fiscal</label>
+                            {{ form_ddjj.anio }}
+                        </div>
+                        
+                        <div class="col-12 mt-4">
+                            <label class="form-label small fw-bold text-secondary text-uppercase ls-1">Actividad Gravada (Nomenclador) *</label>
+                            {{ form_ddjj.actividad }}
+                            <div class="form-text small"><i class="bi bi-info-circle me-1"></i>Seleccione la actividad principal desarrollada este mes. Se usará para verificar el "Mínimo Mensual".</div>
+                        </div>
+
+                        <div class="col-md-8 mt-4">
+                            <div class="p-3 border rounded-3 h-100" style="background-color: #f8fafc; border-color: #cbd5e1 !important;">
+                                <label class="form-label small fw-bolder text-dark text-uppercase ls-1 mb-2">Base Imponible (Facturado)</label>
+                                <div class="input-group input-group-lg shadow-sm">
+                                    <span class="input-group-text bg-white border-end-0 text-success fw-bold"><i class="bi bi-currency-dollar"></i></span>
+                                    <input type="text" name="{{ form_ddjj.ingresos_declarados.name }}" id="{{ form_ddjj.ingresos_declarados.id_for_label }}" class="form-control text-end fw-bold text-success input-monto" placeholder="Ej: 1.500.000" required autocomplete="off">
+                                </div>
+                                <div class="mt-2 text-end">
+                                    <span id="texto-monto" class="numero-texto-helper">CERO PESOS</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4 mt-4">
+                            <div class="p-3 border rounded-3 h-100 border-teal bg-teal-subtle">
+                                <label class="form-label small fw-bolder text-teal text-uppercase ls-1 mb-2">Alícuota Aplicar</label>
+                                <div class="input-group input-group-lg shadow-sm">
+                                    {{ form_ddjj.alicuota_manual }}
+                                    <span class="input-group-text bg-white border-start-0 text-teal fw-bold">%</span>
+                                </div>
+                                <div class="form-text mt-2 small text-teal opacity-75">Ej: Escriba 0.005 para 0.5%</div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-12 mt-4">
+                            <div class="bg-light p-3 rounded-4 border">
+                                <label class="form-label small fw-bold text-primary text-uppercase ls-1 mb-2">
+                                    <i class="bi bi-journal-text me-1"></i> Aclaraciones Adicionales <span class="text-muted fw-normal text-capitalize">(Opcional)</span>
+                                </label>
+                                <textarea name="{{ form_ddjj.observaciones.name }}" id="{{ form_ddjj.observaciones.id_for_label }}" class="form-control textarea-premium" placeholder="Notas internas para el contador o la caja..."></textarea>
+                                <div class="form-text small text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Esta información aparecerá en el comprobante impreso entregado al contribuyente.</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid mt-5 pt-2">
+                        <button type="submit" class="btn btn-teal rounded-pill py-3 fw-bold shadow-sm fs-5 d-flex justify-content-center align-items-center gap-2">
+                            <i class="bi bi-gear-wide-connected"></i> Generar Boleta DReI
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cleave.js/1.6.0/cleave.min.js"></script>
+
+<script>
+    // 🚀 LIBRERÍA LIVIANA PARA CONVERTIR NÚMEROS A LETRAS EN ESPAÑOL
+    var numeroALetras = (function() {
+        function Unidades(num){
+            switch(num) {
+                case 1: return "Un"; case 2: return "Dos"; case 3: return "Tres"; case 4: return "Cuatro"; case 5: return "Cinco";
+                case 6: return "Seis"; case 7: return "Siete"; case 8: return "Ocho"; case 9: return "Nueve"; default: return "";
+            }
+        }
+        function Decenas(num){
+            var decena = Math.floor(num/10); var unidad = num - (decena * 10);
+            switch(decena) {
+                case 1: switch(unidad) { case 0: return "Diez"; case 1: return "Once"; case 2: return "Doce"; case 3: return "Trece"; case 4: return "Catorce"; case 5: return "Quince"; default: return "Dieci" + Unidades(unidad).toLowerCase(); }
+                case 2: switch(unidad) { case 0: return "Veinte"; default: return "Veinti" + Unidades(unidad).toLowerCase(); }
+                case 3: return DecenasY("Treinta", unidad); case 4: return DecenasY("Cuarenta", unidad); case 5: return DecenasY("Cincuenta", unidad);
+                case 6: return DecenasY("Sesenta", unidad); case 7: return DecenasY("Setenta", unidad); case 8: return DecenasY("Ochenta", unidad); case 9: return DecenasY("Noventa", unidad); case 0: return Unidades(unidad);
+            }
+        }
+        function DecenasY(strSin, numUnidades) { if (numUnidades > 0) return strSin + " y " + Unidades(numUnidades) ; return strSin; }
+        function Centenas(num) {
+            var centenas = Math.floor(num / 100); var decenas = num - (centenas * 100);
+            switch(centenas) {
+                case 1: if (decenas > 0) return "Ciento " + Decenas(decenas); return "Cien";
+                case 2: return "Doscientos " + Decenas(decenas); case 3: return "Trescientos " + Decenas(decenas); case 4: return "Cuatrocientos " + Decenas(decenas); case 5: return "Quinientos " + Decenas(decenas);
+                case 6: return "Seiscientos " + Decenas(decenas); case 7: return "Setecientos " + Decenas(decenas); case 8: return "Ochocientos " + Decenas(decenas); case 9: return "Novecientos " + Decenas(decenas); default: return Decenas(decenas);
+            }
+        }
+        function Seccion(num, divisor, strSingular, strPlural) {
+            var cientos = Math.floor(num / divisor); var resto = num - (cientos * divisor); var letras = "";
+            if (cientos > 0) { if (cientos > 1) letras = Centenas(cientos) + " " + strPlural; else letras = strSingular; }
+            if (resto > 0) letras += ""; return letras;
+        }
+        function Miles(num) {
+            var divisor = 1000; var cientos = Math.floor(num / divisor); var resto = num - (cientos * divisor);
+            var strMiles = Seccion(num, divisor, "Un Mil", "Mil"); var strCentenas = Centenas(resto);
+            if(strMiles == "") return strCentenas; return strMiles + " " + strCentenas;
+        }
+        function Millones(num) {
+            var divisor = 1000000; var cientos = Math.floor(num / divisor); var resto = num - (cientos * divisor);
+            var strMillones = Seccion(num, divisor, "Un Millón", "Millones"); var strMiles = Miles(resto);
+            if(strMillones == "") return strMiles; return strMillones + " " + strMiles;
+        }
+        return function(num) {
+            var data = { numero: num, enteros: Math.floor(num), letrasMonedaPlural: "Pesos", letrasMonedaSingular: "Peso" };
+            if (data.enteros == 0) return "Cero " + data.letrasMonedaPlural;
+            if (data.enteros == 1) return Millones(data.enteros) + " " + data.letrasMonedaSingular;
+            return Millones(data.enteros) + " " + data.letrasMonedaPlural;
+        };
+    })();
+
+    document.addEventListener('DOMContentLoaded', function() {
+        
+        if (typeof jQuery !== 'undefined' && jQuery.fn.select2) {
+            jQuery('#{{ form_ddjj.actividad.id_for_label }}').select2({
+                theme: 'bootstrap-5',
+                dropdownParent: jQuery('#modalDDJJ'),
+                placeholder: 'Escriba para buscar una actividad...',
+                allowClear: true
+            });
+        }
+
+        var inputBaseId = '{{ form_ddjj.ingresos_declarados.id_for_label }}';
+        var textoMontoLabel = document.getElementById('texto-monto');
+        
+        var cleaveMonto = new Cleave('#' + inputBaseId, {
+            numeral: true,
+            numeralThousandsGroupStyle: 'thousand',
+            numeralDecimalMark: ',',
+            delimiter: '.'
+        });
+
+        // 🚀 Magia: Actualiza el texto en letras mientras el usuario escribe
+        document.getElementById(inputBaseId).addEventListener('input', function(e) {
+            var valorCrudo = cleaveMonto.getRawValue().replace(',', '.');
+            var numeroFloat = parseFloat(valorCrudo);
+            
+            if (!isNaN(numeroFloat) && numeroFloat > 0) {
+                textoMontoLabel.textContent = numeroALetras(numeroFloat);
+            } else {
+                textoMontoLabel.textContent = "CERO PESOS";
+            }
+        });
+
+        document.getElementById('formNuevaDDJJ').addEventListener('submit', function(e) {
+            var inputBase = document.getElementById(inputBaseId);
+            if (inputBase) {
+                var valorLimpio = cleaveMonto.getRawValue(); 
+                valorLimpio = valorLimpio.replace(',', '.');
+                inputBase.value = valorLimpio;
+            }
+        });
+
+    });
+</script>
+{% endblock %}
+{% endblock %}

@@ -196,6 +196,9 @@
                   <li><hr class="dropdown-divider"></li>
                   <li><h6 class="dropdown-header">Servicios</h6></li>
                   <li><a class="dropdown-item" href="{% url 'finanzas:orden_trabajo_list' %}">Órdenes de Trabajo</a></li>
+                  <li><hr class="dropdown-divider"></li>
+                  <li><h6 class="dropdown-header text-teal"><i class="bi bi-calculator me-1"></i> Tributos</h6></li>
+                  <li><a class="dropdown-item fw-bold text-teal" href="{% url 'finanzas:padron_drei_list' %}">Padrón DReI</a></li>
                 </ul>
               </li>
               {% endif %}

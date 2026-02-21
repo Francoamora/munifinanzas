@@ -1,15 +1,15 @@
 import json
 from decimal import Decimal
 from datetime import datetime, timedelta, date
-from .models import DocumentoSensible
-from .forms import DocumentoSensibleForm
-from .mixins import GeneroRequiredMixin
+from itertools import chain
+from operator import attrgetter
+from .models import Cuenta, Categoria, Movimiento
 
 # Django Imports
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.db.models import Sum, Q, Count, F, Avg
+from django.db.models import Sum, Q, Count, F, Avg, Value, CharField
 from django.http import JsonResponse
 from django.shortcuts import redirect, get_object_or_404, render
 from django.urls import reverse_lazy, reverse
@@ -44,19 +44,19 @@ from .models import (
     Movimiento, Categoria, Area, Proveedor, Beneficiario,
     OrdenPago, OrdenPagoLinea, OrdenCompra, OrdenCompraLinea, 
     Vehiculo, ProgramaAyuda, HojaRuta, 
-    OrdenTrabajo, OrdenTrabajoMaterial, Atencion  # <--- ¡ATENCIÓN AHORA SE IMPORTA AQUÍ!
+    OrdenTrabajo, OrdenTrabajoMaterial, Atencion,
+    DocumentoBeneficiario, DocumentoSensible, Cuenta,
+    RubroDrei, DeclaracionJuradaDrei, LiquidacionDrei # 🚀 IMPORTACIONES DREI
 )
 
 # === FORMULARIOS ===
 from .forms import (
     MovimientoForm, BeneficiarioForm, OrdenPagoForm, OrdenPagoLineaFormSet,
     OrdenCompraForm, OrdenCompraLineaFormSet,
-    OrdenTrabajoForm, OrdenTrabajoMaterialFormSet
+    OrdenTrabajoForm, OrdenTrabajoMaterialFormSet,
+    DocumentoBeneficiarioForm, DocumentoSensibleForm,
+    ProveedorForm, DeclaracionJuradaDreiForm          # 🚀 IMPORTACIONES DREI FORMS
 )
-
-# === SUBIR DOCUMENTACION BENEFICIARIOS===
-from .models import DocumentoBeneficiario
-from .forms import DocumentoBeneficiarioForm
 
 # =========================================================
 # IMPORTACIONES MODULARES (FLOTA, OC, OT, ATENCIONES)
@@ -160,28 +160,34 @@ def categorias_por_tipo(request):
 def proveedor_create_express(request):
     """API para crear proveedores al vuelo desde el formulario de movimientos."""
     try:
-        razon_social = request.POST.get('razon_social', '').strip()
+        # CORRECCIÓN: Ajustamos para recibir 'nombre' en lugar de 'razon_social'
+        # ya que tu modelo Proveedor usa 'nombre'. Mantengo el fallback 'razon_social' 
+        # por si tu frontend manda eso.
+        nombre = request.POST.get('nombre', '').strip()
+        if not nombre:
+            nombre = request.POST.get('razon_social', '').strip()
+            
         cuit = request.POST.get('cuit', '').strip()
         telefono = request.POST.get('telefono', '').strip()
 
-        if not razon_social:
-            return JsonResponse({'status': 'error', 'message': 'La Razón Social es obligatoria.'}, status=400)
+        if not nombre:
+            return JsonResponse({'status': 'error', 'message': 'El Nombre es obligatorio.'}, status=400)
 
         if cuit and Proveedor.objects.filter(cuit=cuit).exists():
             return JsonResponse({'status': 'error', 'message': 'Ya existe un proveedor con ese CUIT.'}, status=400)
 
         proveedor = Proveedor.objects.create(
-            razon_social=razon_social,
+            nombre=nombre, # Usando 'nombre'
             cuit=cuit,
             telefono=telefono,
-            creado_por=request.user
+            # No pasamos 'creado_por' porque tu modelo no tiene ese campo. Si lo tiene, agregalo.
         )
 
         return JsonResponse({
             'status': 'success',
             'id': proveedor.id,
-            'text': f"{proveedor.razon_social} ({proveedor.cuit or 'S/C'})",
-            'razon_social': proveedor.razon_social,
+            'text': f"{proveedor.nombre} ({proveedor.cuit or 'S/C'})",
+            'razon_social': proveedor.nombre, # Mantengo la key para frontend
             'cuit': proveedor.cuit or ''
         })
 
@@ -553,8 +559,10 @@ class BalanceResumenView(SoloFinanzasMixin, TemplateView):
 
 
 # =========================================================
-# 3) PROVEEDORES
+# 3) PROVEEDORES Y COMERCIOS (MÓDULO TRIBUTARIO PRO)
 # =========================================================
+from django.db.models.functions import Coalesce 
+from django.db.models import DecimalField  # 🚀 FIX: Importamos el campo que faltaba
 
 class ProveedorListView(OperadorOperativoRequiredMixin, ListView):
     model = Proveedor
@@ -565,48 +573,169 @@ class ProveedorListView(OperadorOperativoRequiredMixin, ListView):
     def get_queryset(self):
         qs = Proveedor.objects.all().order_by("nombre")
         q = (self.request.GET.get("q") or "").strip()
+        
         if q:
-            qs = qs.filter(Q(nombre__icontains=q) | Q(cuit__icontains=q) | Q(rubro__icontains=q))
+            qs = qs.filter(
+                Q(nombre__icontains=q) | 
+                Q(cuit__icontains=q) | 
+                Q(rubro__icontains=q) |
+                Q(padron_drei__icontains=q)
+            )
+            
+        es_drei = self.request.GET.get("drei")
+        if es_drei == "si":
+            qs = qs.filter(es_contribuyente_drei=True)
+            
+        # 🚀 FIX: Usamos DecimalField() limpio gracias a la nueva importación
+        qs = qs.annotate(
+            total_compras=Coalesce(
+                Sum(
+                    'movimiento__monto', 
+                    filter=Q(movimiento__tipo='GASTO', movimiento__estado='APROBADO')
+                ),
+                Value(0, output_field=DecimalField())
+            ),
+            deuda_drei=Coalesce(
+                Sum(
+                    'ddjj_drei__liquidacion__total_a_pagar',
+                    filter=Q(ddjj_drei__liquidacion__estado='PENDIENTE')
+                ),
+                Value(0, output_field=DecimalField())
+            ),
+            meses_adeudados=Count(
+                'ddjj_drei__liquidacion',
+                filter=Q(ddjj_drei__liquidacion__estado='PENDIENTE')
+            )
+        )
         return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        todos = Proveedor.objects.all()
+        ctx['kpi_total_proveedores'] = todos.count()
+        ctx['kpi_total_drei'] = todos.filter(es_contribuyente_drei=True).count()
+        
+        deuda_global = LiquidacionDrei.objects.filter(
+            estado='PENDIENTE'
+        ).aggregate(Sum('total_a_pagar'))['total_a_pagar__sum']
+        
+        ctx['kpi_deuda_global_drei'] = deuda_global if deuda_global else 0
+        ctx['filtro_drei_activo'] = self.request.GET.get("drei") == "si"
+        
+        return ctx
+
 
 class ProveedorCreateView(OperadorOperativoRequiredMixin, CreateView):
     model = Proveedor
-    fields = ["nombre", "cuit", "telefono", "email", "direccion", "rubro", "cbu", "alias"] 
+    form_class = ProveedorForm
     template_name = "finanzas/proveedor_form.html"
-    success_url = reverse_lazy("finanzas:proveedor_list")
+
+    def get_success_url(self):
+        return reverse_lazy("finanzas:proveedor_detail", kwargs={"pk": self.object.pk})
 
     def form_valid(self, form):
-        messages.success(self.request, "Proveedor registrado exitosamente.")
+        messages.success(self.request, "Comercio/Proveedor registrado exitosamente.")
         return super().form_valid(form)
+
 
 class ProveedorUpdateView(OperadorOperativoRequiredMixin, UpdateView):
     model = Proveedor
-    fields = ["nombre", "cuit", "telefono", "email", "direccion", "rubro", "cbu", "alias"]
+    form_class = ProveedorForm
     template_name = "finanzas/proveedor_form.html"
-    success_url = reverse_lazy("finanzas:proveedor_list")
+    
+    def get_success_url(self):
+        return reverse_lazy("finanzas:proveedor_detail", kwargs={"pk": self.object.pk})
     
     def form_valid(self, form):
-        messages.success(self.request, "Datos actualizados.")
+        messages.success(self.request, "Datos actualizados correctamente.")
         return super().form_valid(form)
 
+
 class ProveedorDetailView(OperadorOperativoRequiredMixin, DetailView):
+    """ Ficha Administrativa: Compras, Pagos y Datos de Contacto """
     model = Proveedor
     template_name = "finanzas/proveedor_detail.html"
     context_object_name = "proveedor"
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        pagos = Movimiento.objects.filter(proveedor=self.object, tipo=Movimiento.TIPO_GASTO, estado=Movimiento.ESTADO_APROBADO).order_by("-fecha_operacion")
-        total_pagado = pagos.aggregate(Sum("monto"))["monto__sum"] or 0
-        ocs = OrdenCompra.objects.filter(proveedor=self.object).order_by("-fecha_oc")
+        ver_dinero = puede_ver_historial_economico(self.request.user)
+        
+        # Pagos realizados por la comuna a este proveedor
+        pagos = Movimiento.objects.filter(
+            proveedor=self.object, 
+            tipo='GASTO', 
+            estado='APROBADO'
+        ).order_by("-fecha_operacion")
         
         ctx["ultimos_pagos"] = pagos[:10]
-        ctx["ultimas_ocs"] = ocs[:10]
-        # Ocultamos la suma total si el usuario no tiene permisos para ver dinero global
-        ctx["total_pagado_historico"] = total_pagado if puede_ver_historial_economico(self.request.user) else None
+        ctx["total_pagado_historico"] = pagos.aggregate(Sum("monto"))["monto__sum"] or 0 if ver_dinero else None
+        ctx["ultimas_ocs"] = OrdenCompra.objects.filter(proveedor=self.object).order_by("-fecha_oc")[:10]
+        
+        return ctx
+
+# 🚀 NUEVA VISTA: EL EXPEDIENTE TRIBUTARIO (PANEL DEL CONTADOR)
+class ProveedorDreiPanelView(OperadorOperativoRequiredMixin, DetailView):
+    """ Panel exclusivo para gestión de tasas y declaraciones juradas """
+    model = Proveedor
+    template_name = "finanzas/proveedor_drei_panel.html"
+    context_object_name = "comercio"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        
+        # Sábana de liquidaciones histórica
+        liquidaciones = LiquidacionDrei.objects.filter(
+            ddjj__comercio=self.object
+        ).select_related('ddjj', 'ddjj__presentada_por').order_by('-ddjj__anio', '-ddjj__mes')
+        
+        ctx["liquidaciones"] = liquidaciones
+        
+        deuda = liquidaciones.filter(estado='PENDIENTE').aggregate(Sum('total_a_pagar'))['total_a_pagar__sum']
+        ctx["deuda_total"] = deuda if deuda else 0
+        
+        # Formulario para el modal de carga
+        ctx["form_ddjj"] = DeclaracionJuradaDreiForm(comercio=self.object)
         return ctx
 
 
+class DDJJDreiCreateView(OperadorOperativoRequiredMixin, CreateView):
+    """ Procesa la DDJJ y genera la boleta. Redirige al Panel DReI. """
+    model = DeclaracionJuradaDrei
+    form_class = DeclaracionJuradaDreiForm
+    
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['comercio'] = get_object_or_404(Proveedor, pk=self.kwargs['pk'])
+        return kwargs
+
+    def form_valid(self, form):
+        comercio = get_object_or_404(Proveedor, pk=self.kwargs['pk'])
+        
+        ddjj = form.save(commit=False)
+        ddjj.comercio = comercio
+        ddjj.presentada_por = self.request.user
+        ddjj.save()
+        
+        # Generación de la boleta (Liquidación)
+        from datetime import date
+        mes_v = ddjj.mes + 1 if ddjj.mes < 12 else 1
+        anio_v = ddjj.anio if ddjj.mes < 12 else ddjj.anio + 1
+        
+        LiquidacionDrei.objects.create(
+            ddjj=ddjj,
+            fecha_vencimiento=date(anio_v, mes_v, 15),
+            total_a_pagar=ddjj.impuesto_determinado,
+            estado='PENDIENTE'
+        )
+        
+        messages.success(self.request, f"DDJJ {ddjj.get_mes_display()}/{ddjj.anio} procesada. Boleta generada.")
+        return redirect("finanzas:proveedor_drei_panel", pk=comercio.pk)
+
+    def form_invalid(self, form):
+        messages.error(self.request, "Error en la declaración. Verifique si el período ya fue cargado.")
+        return redirect("finanzas:proveedor_drei_panel", pk=self.kwargs['pk'])
+        
 # =========================================================
 # 4) MOVIMIENTOS
 # =========================================================
@@ -1587,3 +1716,188 @@ def oc_generar_movimiento(request, pk):
     except Exception as e:
         messages.error(request, f"Error al generar el pago: {e}")
         return redirect('finanzas:oc_detail', pk=pk)
+
+
+# =========================================================
+# 🚀 MÓDULO TRIBUTARIO DREI (Vistas de Recaudación)
+# =========================================================
+from django.db.models.functions import Coalesce 
+from django.db.models import DecimalField, Sum, Count, Q, Value
+from django.shortcuts import get_object_or_404, redirect
+from django.contrib import messages
+from django.views.generic import ListView, DetailView, CreateView
+from django.utils import timezone # Importante para la fecha del cobro
+from .forms import DeclaracionJuradaDreiForm 
+from .models import Proveedor, DeclaracionJuradaDrei, LiquidacionDrei, Cuenta, Categoria, Movimiento
+
+class PadronDreiListView(OperadorOperativoRequiredMixin, ListView):
+    """ Panel de Control Global para Recaudación DReI """
+    model = Proveedor
+    template_name = "finanzas/padron_drei_list.html"
+    context_object_name = "contribuyentes"
+    paginate_by = 30
+
+    def get_queryset(self):
+        qs = Proveedor.objects.filter(es_contribuyente_drei=True).order_by('nombre')
+        q = (self.request.GET.get("q") or "").strip()
+        if q:
+            qs = qs.filter(
+                Q(nombre__icontains=q) | 
+                Q(cuit__icontains=q) | 
+                Q(padron_drei__icontains=q)
+            )
+        
+        # Calculamos la deuda en tiempo real para el semáforo
+        qs = qs.annotate(
+            deuda_total=Coalesce(
+                Sum(
+                    'ddjj_drei__liquidacion__total_a_pagar',
+                    filter=Q(ddjj_drei__liquidacion__estado='PENDIENTE')
+                ),
+                Value(0, output_field=DecimalField())
+            ),
+            meses_adeudados=Count(
+                'ddjj_drei__liquidacion',
+                filter=Q(ddjj_drei__liquidacion__estado='PENDIENTE')
+            )
+        )
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        contribuyentes = Proveedor.objects.filter(es_contribuyente_drei=True)
+        ctx['total_contribuyentes'] = contribuyentes.count()
+        
+        deuda_global = LiquidacionDrei.objects.filter(
+            estado='PENDIENTE'
+        ).aggregate(Sum('total_a_pagar'))['total_a_pagar__sum']
+        
+        ctx['deuda_global'] = deuda_global if deuda_global else 0
+        return ctx
+
+
+class ProveedorDreiPanelView(OperadorOperativoRequiredMixin, DetailView):
+    """ Panel exclusivo para gestión de tasas y declaraciones juradas de un comercio """
+    model = Proveedor
+    template_name = "finanzas/proveedor_drei_panel.html"
+    context_object_name = "comercio"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        
+        # Sábana de liquidaciones histórica
+        liquidaciones = LiquidacionDrei.objects.filter(
+            ddjj__comercio=self.object
+        ).select_related('ddjj', 'ddjj__presentada_por', 'ddjj__actividad').order_by('-ddjj__anio', '-ddjj__mes')
+        
+        ctx["liquidaciones"] = liquidaciones
+        
+        deuda = liquidaciones.filter(estado='PENDIENTE').aggregate(Sum('total_a_pagar'))['total_a_pagar__sum']
+        ctx["deuda_total"] = deuda if deuda else 0
+        
+        # Pasamos el formulario para el modal de nueva DDJJ
+        ctx["form_ddjj"] = DeclaracionJuradaDreiForm(comercio=self.object)
+        return ctx
+
+
+class DDJJDreiCreateView(OperadorOperativoRequiredMixin, CreateView):
+    """ Procesa la DDJJ y genera la boleta. Redirige al Panel DReI. """
+    model = DeclaracionJuradaDrei
+    form_class = DeclaracionJuradaDreiForm
+    
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['comercio'] = get_object_or_404(Proveedor, pk=self.kwargs['pk'])
+        return kwargs
+
+    def form_valid(self, form):
+        comercio = get_object_or_404(Proveedor, pk=self.kwargs['pk'])
+        
+        ddjj = form.save(commit=False)
+        ddjj.comercio = comercio
+        ddjj.presentada_por = self.request.user
+        ddjj.save()
+        
+        # Generación de la boleta (Liquidación)
+        from datetime import date
+        mes_v = ddjj.mes + 1 if ddjj.mes < 12 else 1
+        anio_v = ddjj.anio if ddjj.mes < 12 else ddjj.anio + 1
+        
+        LiquidacionDrei.objects.create(
+            ddjj=ddjj,
+            fecha_vencimiento=date(anio_v, mes_v, 15),
+            total_a_pagar=ddjj.impuesto_determinado,
+            estado='PENDIENTE'
+        )
+        
+        messages.success(self.request, f"DDJJ {ddjj.get_mes_display()}/{ddjj.anio} procesada. Boleta generada.")
+        return redirect("finanzas:proveedor_drei_panel", pk=comercio.pk)
+
+    def form_invalid(self, form):
+        messages.error(self.request, "Error en la declaración. Verifique los datos o si el período ya fue cargado.")
+        return redirect("finanzas:proveedor_drei_panel", pk=self.kwargs['pk'])
+
+
+class LiquidacionDreiPrintView(OperadorOperativoRequiredMixin, DetailView):
+    """ Genera la Boleta/Comprobante en formato imprimible """
+    model = LiquidacionDrei
+    template_name = "finanzas/liquidacion_drei_print.html"
+    context_object_name = "liquidacion"
+
+class LiquidacionDreiCobrarView(OperadorOperativoRequiredMixin, DetailView):
+    """ Pantalla de Checkout y procesamiento de pago de DReI """
+    model = LiquidacionDrei
+    template_name = "finanzas/liquidacion_drei_cobrar.html"
+    context_object_name = "liquidacion"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        # Traemos solo las cajas/cuentas activas para recibir el dinero
+        ctx['cuentas'] = Cuenta.objects.filter(activa=True)
+        return ctx
+
+    def post(self, request, *args, **kwargs):
+        liquidacion = self.get_object()
+        
+        # 1. Seguridad: Evitar doble cobro
+        if liquidacion.estado == 'PAGADO':
+            messages.warning(request, "Esta liquidación ya fue cobrada anteriormente.")
+            return redirect('finanzas:proveedor_drei_panel', pk=liquidacion.ddjj.comercio.pk)
+
+        # 2. Validar que eligió una cuenta
+        cuenta_id = request.POST.get('cuenta_id')
+        if not cuenta_id:
+            messages.error(request, "Debe seleccionar la Caja o Cuenta de destino.")
+            return self.get(request, *args, **kwargs)
+
+        cuenta = get_object_or_404(Cuenta, pk=cuenta_id)
+        
+        # 3. Buscar o crear la Categoría Contable "Recaudación DReI"
+        categoria, _ = Categoria.objects.get_or_create(
+            nombre="Recaudación DReI",
+            tipo="INGRESO",
+            defaults={"grupo": "Tributario"}
+        )
+
+        # 4. 🚀 FIX EXPERTO: Crear el Movimiento con 'cuenta_destino' y estado 'APROBADO'
+        # Esto gatilla la actualización automática de saldo definida en tu modelo Movimiento.
+        movimiento = Movimiento.objects.create(
+            tipo="INGRESO",
+            fecha_operacion=timezone.now().date(),
+            monto=liquidacion.total_a_pagar,
+            categoria=categoria,
+            cuenta_destino=cuenta,             # <--- Atado contablemente a la Caja
+            cuenta_destino_texto=cuenta.nombre,
+            proveedor=liquidacion.ddjj.comercio,
+            descripcion=f"Cobro DReI {liquidacion.ddjj.mes}/{liquidacion.ddjj.anio} - {liquidacion.ddjj.comercio.nombre}",
+            estado="APROBADO",                 # <--- Obligatorio para que sume saldo
+            creado_por=request.user
+        )
+
+        # 5. Marcar la Boleta como Pagada y atarle el recibo
+        liquidacion.estado = 'PAGADO'
+        liquidacion.movimiento_pago = movimiento
+        liquidacion.save()
+
+        messages.success(request, f"¡Cobro procesado con éxito! Se ingresaron ${liquidacion.total_a_pagar} a {cuenta.nombre}.")
+        return redirect('finanzas:proveedor_drei_panel', pk=liquidacion.ddjj.comercio.pk)

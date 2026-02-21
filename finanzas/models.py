@@ -5,6 +5,8 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.db.models import Sum, Q, F     # <--- ESTA TAMBIÉN ES IMPORTANTE
+from django.core.validators import MinValueValidator
+from django.contrib.auth.models import User
 
 # =========================================================
 # 1. NÚCLEO / AUXILIARES
@@ -94,27 +96,40 @@ class Categoria(models.Model):
         return True
 
 
-class Proveedor(models.Model):
-    nombre = models.CharField(max_length=200)
-    cuit = models.CharField(max_length=20, blank=True, db_index=True)
-    direccion = models.CharField(max_length=255, blank=True)
-    telefono = models.CharField(max_length=50, blank=True)
-    email = models.EmailField(blank=True)
+# =========================================================
+# 1) CONFIGURACIÓN TRIBUTARIA (Cerebro del Sistema)
+# =========================================================
+from django.db import models
+from django.core.validators import MinValueValidator
+from django.contrib.auth.models import User
+from decimal import Decimal
 
-    # === CAMPOS NUEVOS AGREGADOS ===
-    rubro = models.CharField(max_length=100, blank=True, null=True, help_text="Ej: Ferretería, Combustible")
-    cbu = models.CharField(max_length=100, blank=True, null=True, verbose_name="CBU/CVU")
-    alias = models.CharField(max_length=100, blank=True, null=True, verbose_name="Alias Bancario")
-    # ===============================
-
+class RubroDrei(models.Model):
+    """
+    Define las reglas de juego según el Anexo I de la Ordenanza.
+    Permite al contador ajustar alícuotas y mínimos globales.
+    """
+    codigo = models.CharField(max_length=10, help_text="Código según Ordenanza (ej: 101)")
+    descripcion = models.CharField(max_length=255)
+    alicuota = models.DecimalField(
+        max_digits=6, decimal_places=5, 
+        help_text="Ej: 0.005 para 0.5%",
+        validators=[MinValueValidator(0)]
+    )
+    minimo_mensual = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text="Monto mínimo si la venta es baja o nula."
+    )
     activo = models.BooleanField(default=True)
 
     class Meta:
-        verbose_name = "Proveedor"
-        verbose_name_plural = "Proveedores"
+        verbose_name = "Rubro DReI"
+        verbose_name_plural = "Rubros DReI (Anexo I)"
+        ordering = ['codigo']
 
     def __str__(self):
-        return f"{self.nombre} ({self.cuit})" if self.cuit else self.nombre
+        # 🚀 FIX: Mostramos solo código y descripción, súper limpio. ¡Chau 0%!
+        return f"{self.codigo} - {self.descripcion}"
 
 
 class ProgramaAyuda(models.Model):
@@ -128,6 +143,173 @@ class ProgramaAyuda(models.Model):
 
     def __str__(self):
         return self.nombre
+
+
+# =========================================================
+# 2) PROVEEDORES Y COMERCIOS (Agenda Limpia)
+# =========================================================
+
+class Proveedor(models.Model):
+    """
+    Ficha limpia: Solo datos comerciales y de contacto.
+    La configuración de impuestos se decide al hacer la DDJJ.
+    """
+    nombre = models.CharField(max_length=200, help_text="Razón social o Nombre comercial")
+    cuit = models.CharField(max_length=20, blank=True, null=True, db_index=True)
+    direccion = models.CharField(max_length=200, blank=True)
+    telefono = models.CharField(max_length=50, blank=True)
+    email = models.EmailField(blank=True)
+    
+    rubro = models.CharField(max_length=200, blank=True, null=True, help_text="Rubro comercial general libre (Ej: Ferretería)")
+    alias = models.CharField(max_length=100, blank=True, null=True)
+    cbu = models.CharField(max_length=50, blank=True, null=True)
+    activo = models.BooleanField(default=True)
+    
+    # === EL ÚNICO DATO DREI EN EL PROVEEDOR ===
+    es_contribuyente_drei = models.BooleanField(
+        default=False, 
+        verbose_name="Activo en Padrón DReI",
+        help_text="Marcar para que aparezca en el sistema de recaudación comunal."
+    )
+    padron_drei = models.CharField(max_length=50, blank=True, null=True, verbose_name="N° Padrón DReI")
+
+    class Meta:
+        verbose_name = "Proveedor / Comercio"
+        verbose_name_plural = "Proveedores y Comercios"
+        ordering = ['nombre']
+
+    def __str__(self):
+        return f"{self.nombre} (CUIT: {self.cuit})" if self.cuit else self.nombre
+
+    def save(self, *args, **kwargs):
+        # 🚀 MAGIA AUTOMÁTICA: Generación de Padrón DReI
+        if self.es_contribuyente_drei and not self.padron_drei:
+            # Buscamos si ya hay contribuyentes con padrón automático (empiezan con DREI-)
+            ultimo_padron = Proveedor.objects.filter(
+                padron_drei__startswith='DREI-'
+            ).order_by('padron_drei').last()
+
+            if ultimo_padron and ultimo_padron.padron_drei:
+                try:
+                    # Extraemos el número (ej: de "DREI-0042" sacamos "0042" y le sumamos 1)
+                    numero_actual = int(ultimo_padron.padron_drei.split('-')[1])
+                    siguiente_numero = numero_actual + 1
+                except (IndexError, ValueError):
+                    siguiente_numero = 1
+            else:
+                siguiente_numero = 1
+
+            # Asignamos el nuevo formato con ceros a la izquierda (ej: DREI-0001)
+            self.padron_drei = f"DREI-{siguiente_numero:04d}"
+            
+        super().save(*args, **kwargs)
+
+
+# =========================================================
+# 3) GESTIÓN TRIBUTARIA (Módulo Independiente DReI)
+# =========================================================
+
+class DeclaracionJuradaDrei(models.Model):
+    MESES = [
+        (1, 'Enero'), (2, 'Febrero'), (3, 'Marzo'), (4, 'Abril'),
+        (5, 'Mayo'), (6, 'Junio'), (7, 'Julio'), (8, 'Agosto'),
+        (9, 'Septiembre'), (10, 'Octubre'), (11, 'Noviembre'), (12, 'Diciembre'),
+    ]
+
+    # 1. ¿A QUIÉN LE COBRAMOS?
+    comercio = models.ForeignKey(Proveedor, on_delete=models.CASCADE, related_name="ddjj_drei")
+    
+    # 2. ¿QUÉ PERÍODO?
+    mes = models.PositiveSmallIntegerField(choices=MESES)
+    anio = models.PositiveIntegerField(default=2026)
+    
+    # 3. DATOS CARGADOS MANUALMENTE
+    actividad = models.ForeignKey(
+        RubroDrei, 
+        on_delete=models.SET_NULL, 
+        null=True, blank=True, 
+        verbose_name="Actividad Declarada (Nomenclador)"
+    )
+    ingresos_declarados = models.DecimalField(
+        max_digits=15, decimal_places=2, default=0, 
+        verbose_name="Facturación Mensual"
+    )
+    alicuota_manual = models.DecimalField(
+        max_digits=6, decimal_places=5, default=0.5, 
+        verbose_name="Alícuota Aplicada (%)", 
+        help_text="Ej: Escriba 0.5 para 0.5% (Medio por ciento) o 5 para 5%."
+    )
+    
+    # 4. EL RESULTADO (Se calcula solo)
+    impuesto_determinado = models.DecimalField(max_digits=12, decimal_places=2, editable=False, default=0)
+    observaciones = models.TextField(blank=True, verbose_name="Aclaraciones o notas")
+    
+    # Auditoría
+    fecha_presentacion = models.DateTimeField(auto_now_add=True)
+    presentada_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+
+    def save(self, *args, **kwargs):
+        """ Lógica impositiva: Multiplica facturación por la alícuota que el contador escribió """
+        if not self.pk: # Solo si es un registro nuevo
+            # 🚀 FIX MATEMÁTICO EXPERTO: Dividimos la alicuota manual por 100 
+            # Ej: Si el usuario escribe 5, el sistema calcula 0.05 para multiplicar.
+            alicuota_real = self.alicuota_manual / Decimal('100.0')
+            
+            # 1. Base Imponible x Porcentaje Real
+            calculo_base = self.ingresos_declarados * alicuota_real
+            
+            # 2. Compara con el mínimo del Nomenclador elegido (si eligió uno)
+            minimo = self.actividad.minimo_mensual if self.actividad else Decimal('0')
+            
+            # 3. El impuesto final es el mayor valor
+            self.impuesto_determinado = max(calculo_base, minimo)
+        
+        super().save(*args, **kwargs)
+
+    class Meta:
+        unique_together = ('comercio', 'mes', 'anio') 
+        verbose_name = "DDJJ DReI"
+        verbose_name_plural = "Declaraciones Juradas DReI"
+        ordering = ['-anio', '-mes']
+
+    def get_mes_display(self):
+        return dict(self.MESES).get(self.mes, str(self.mes))
+
+
+class LiquidacionDrei(models.Model):
+    """ Boleta generada para el cobro, atada a la DDJJ """
+    ESTADOS = [('PENDIENTE', 'Pendiente'), ('PAGADO', 'Pagado'), ('ANULADO', 'Anulado')]
+    
+    ddjj = models.OneToOneField(DeclaracionJuradaDrei, on_delete=models.CASCADE, related_name="liquidacion")
+    fecha_vencimiento = models.DateField()
+    
+    monto_original = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    recargos = models.DecimalField(max_digits=14, decimal_places=2, default=0, help_text="Intereses por mora")
+    total_a_pagar = models.DecimalField(max_digits=14, decimal_places=2)
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='PENDIENTE')
+    
+    movimiento_pago = models.OneToOneField(
+        'Movimiento', 
+        on_delete=models.SET_NULL, 
+        null=True, blank=True, 
+        related_name='liquidacion_drei',
+        help_text="Recibo de caja asociado a este pago."
+    )
+
+    def save(self, *args, **kwargs):
+        if not self.pk and not self.monto_original:
+            self.monto_original = self.ddjj.impuesto_determinado
+            
+        self.total_a_pagar = self.monto_original + self.recargos
+        super().save(*args, **kwargs)
+
+    class Meta:
+        verbose_name = "Liquidación DReI"
+        verbose_name_plural = "Liquidaciones DReI"
+        ordering = ['-fecha_vencimiento']
+
+    def __str__(self):
+        return f"Liq {self.ddjj.comercio.nombre} - {self.ddjj.mes}/{self.ddjj.anio}"
 
 
 class SerieOC(models.Model):
@@ -995,3 +1177,4 @@ class DocumentoSensible(models.Model):
 
     def __str__(self):
         return f"RESERVADO: {self.get_tipo_display()} ({self.beneficiario})"
+
